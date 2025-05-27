@@ -2611,7 +2611,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                               method: "POST",
                               credentials: "include",
                             });
-                            window.location.reload();
                           } catch (error) {
                             console.error("Logout failed:", error);
                           }
