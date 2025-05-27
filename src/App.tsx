@@ -24,14 +24,6 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: "/ty*",
-    element: (
-      <ProtectedRoute>
-        <ElementDefaultScreen />
-      </ProtectedRoute>
-    ),
-  },
-  {
     path: "/1920w-default",
     element: (
       <ProtectedRoute>
