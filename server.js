@@ -11,7 +11,6 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import path from 'path';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
