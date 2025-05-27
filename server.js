@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -20,6 +21,12 @@ const port = process.env.PORT || 3001;
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const frontendBuildPath = path.join(__dirname, 'dist');
+app.use(express.static(frontendBuildPath));
 
 app.use(cors({
   origin: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'],
@@ -692,6 +699,12 @@ app.get('/api/health', (req, res) => {
     auth_configured: !!authCredentials,
     uptime: process.uptime()
   });
+});
+
+app.get('/*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
+  }
 });
 
 app.listen(port, () => {
