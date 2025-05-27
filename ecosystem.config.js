@@ -4,7 +4,6 @@ module.exports = {
     {
       name: "ai-miseninc-admin",
       script: "server.js",
-      instances: "max",
       exec_mode: "fork",
       watch: false,
       instances: 1,
