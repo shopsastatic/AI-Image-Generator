@@ -4,20 +4,67 @@ interface ImageInfoDropdownProps {
   title: string;
   children?: React.ReactNode;
   isOpen?: boolean;
+  onCopyContent?: () => void; // NEW: Function to get content for copying
+  copyContent?: string; // NEW: Direct content to copy
 }
 
 const ImageInfoDropdown: React.FC<ImageInfoDropdownProps> = ({ 
   title, 
   children,
-  isOpen: initialIsOpen = false
+  isOpen: initialIsOpen = false,
+  onCopyContent,
+  copyContent
 }) => {
   const [isOpen, setIsOpen] = useState(initialIsOpen);
+  const [isCopied, setIsCopied] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const toggleDropdown = () => {
     setIsOpen(!isOpen);
   };
+
+  const handleCopyClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent dropdown toggle
+    
+    let textToCopy = '';
+    
+    // Method 1: Use provided copyContent
+    if (copyContent) {
+      textToCopy = copyContent;
+    }
+    // Method 2: Use onCopyContent callback
+    else if (onCopyContent) {
+      onCopyContent();
+      return; // Let the callback handle the copying
+    }
+    // Method 3: Extract text from children content
+    else if (contentRef.current) {
+      textToCopy = contentRef.current.innerText || contentRef.current.textContent || '';
+    }
+    
+    if (textToCopy.trim()) {
+      navigator.clipboard.writeText(textToCopy.trim())
+        .then(() => {
+          // Change icon to copied state
+          setIsCopied(true);
+        })
+        .catch((err) => {
+          console.error('Failed to copy text: ', err);
+        });
+    }
+  };
+
+  // Reset icon after 2 seconds
+  useEffect(() => {
+    if (isCopied) {
+      const timer = setTimeout(() => {
+        setIsCopied(false);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isCopied]);
 
   useEffect(() => {
     if (isOpen && containerRef.current) {
@@ -45,11 +92,39 @@ const ImageInfoDropdown: React.FC<ImageInfoDropdownProps> = ({
     >
       <div className="dropdown-container">
         <div className="dropdown-header" onClick={toggleDropdown}>
-          <div className="info-icon">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 11V16M12 8V8.01M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" 
-                    stroke="#484848" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+          <div className="copy-icon-wrapper" onClick={handleCopyClick}>
+            {isCopied ? (
+              // Checkmark icon when copied
+              <svg 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                className="copy-icon"
+              >
+                <path 
+                  d="M20 6L9 17L4 12" 
+                  stroke="#10a37f"
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              // Copy icon (default)
+              <svg 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                className="copy-icon"
+              >
+                <path 
+                  d="M7 5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-2v2a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h2V5Zm2 2h5a3 3 0 0 1 3 3v5h2a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v2ZM5 9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5Z" 
+                  fill="#484848"
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
           </div>
           <div className="dropdown-title">{title}</div>
           <div className={`dropdown-arrow ${isOpen ? 'open' : ''}`}>

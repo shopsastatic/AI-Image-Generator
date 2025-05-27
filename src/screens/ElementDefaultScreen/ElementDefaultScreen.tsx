@@ -40,8 +40,18 @@ const parseClaudeResponse = (response: string) => {
             jsonData.length,
             "prompts"
           );
+
+          // Map JSON data and ensure imageName exists
+          const prompts = jsonData.map((item, index) => ({
+            prompt: item.prompt,
+            adCreativeA: item.adCreativeA || "",
+            adCreativeB: item.adCreativeB || "",
+            imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
+            targeting: item.targeting || "",
+          }));
+
           return {
-            prompts: jsonData,
+            prompts: prompts,
             fullResponse: response,
             jsonData: jsonData,
           };
@@ -93,6 +103,8 @@ const parseClaudeResponse = (response: string) => {
           prompt: response,
           adCreativeA: "",
           adCreativeB: "",
+          imageName: `ai-image-fallback-${Date.now()}`,
+          targeting: "",
         },
       ],
       fullResponse: response,
@@ -100,32 +112,36 @@ const parseClaudeResponse = (response: string) => {
   }
 };
 
-const getImageSizeForIndex = (index: number): { width: number, height: number } => {
+const getImageSizeForIndex = (
+  index: number
+): { width: number; height: number } => {
   const sizes = [
     { width: 1024, height: 1024 }, // Square (index 0)
     { width: 1024, height: 1792 }, // Portrait (index 1)
     { width: 1792, height: 1024 }, // Landscape (index 2)
   ];
-  
+
   // Đảm bảo index nằm trong phạm vi hợp lệ
   const safeIndex = Math.min(Math.max(0, index), sizes.length - 1);
   return sizes[safeIndex];
 };
 
-const getImageSizeByType = (type: string): { width: number, height: number } => {
-  const sizeMap: Record<string, { width: number, height: number }> = {
-    'Square': { width: 1024, height: 1024 },
-    'Portrait': { width: 1024, height: 1792 },
-    'Landscape': { width: 1792, height: 1024 },
-    'auto': { width: 1024, height: 1024 }, // mặc định Square cho 'auto'
+const getImageSizeByType = (
+  type: string
+): { width: number; height: number } => {
+  const sizeMap: Record<string, { width: number; height: number }> = {
+    Square: { width: 1024, height: 1024 },
+    Portrait: { width: 1024, height: 1792 },
+    Landscape: { width: 1792, height: 1024 },
+    auto: { width: 1024, height: 1024 }, // mặc định Square cho 'auto'
   };
-  
+
   return sizeMap[type] || sizeMap.Square;
 };
 
 const getSizeNameForIndex = (index: number): string => {
-  const sizeNames = ['Square', 'Portrait', 'Landscape'];
-  return sizeNames[index] || 'Square';
+  const sizeNames = ["Square", "Portrait", "Landscape"];
+  return sizeNames[index] || "Square";
 };
 
 const parseIndividualPrompt = (text: string, index: number) => {
@@ -240,6 +256,130 @@ const parseIndividualPrompt = (text: string, index: number) => {
 
   return result;
 };
+
+const extractImageNameFromClaudeResponse = (
+  claudeResponse: string,
+  imageIndex: number = 0
+): string => {
+  if (!claudeResponse) {
+    return `ai-image-${imageIndex + 1}-${Date.now()}`;
+  }
+
+  try {
+    console.log("🔍 Extracting image name from Claude response...");
+
+    // Method 1: Try JSON format first
+    try {
+      const jsonMatch =
+        claudeResponse.match(/```json\s*([\s\S]*?)\s*```/) ||
+        claudeResponse.match(/\[\s*{\s*".*?":/);
+
+      if (jsonMatch) {
+        let jsonText = jsonMatch[1] || claudeResponse;
+        jsonText = jsonText
+          .replace(/^[\s\S]*?\[/, "[")
+          .replace(/\][\s\S]*$/, "]");
+
+        const jsonData = JSON.parse(jsonText);
+
+        if (
+          Array.isArray(jsonData) &&
+          jsonData[imageIndex] &&
+          jsonData[imageIndex].imageName
+        ) {
+          const imageName = jsonData[imageIndex].imageName;
+          console.log("✅ Found imageName in JSON:", imageName);
+          return cleanFileName(imageName);
+        }
+      }
+    } catch (jsonError) {
+      console.log("⚠️ JSON parsing failed, trying text patterns...");
+    }
+
+    // Method 2: Try various text patterns for imageName
+    const imageNamePatterns = [
+      // Pattern for "Image Name: something"
+      /Image Name[:\-]?\s*["']?([^"'\n\r,]+)["']?/gi,
+      // Pattern for "imageName": "something"
+      /"imageName"[\s]*:[\s]*["']([^"']+)["']/gi,
+      // Pattern for specific image in sequence
+      new RegExp(
+        `(?:Image|Prompt)\\s*${
+          imageIndex + 1
+        }[\\s\\S]*?(?:Image Name|Name)[:\\-]?\\s*["']?([^"'\\n\\r,]+)["']?`,
+        "i"
+      ),
+    ];
+
+    // Try each pattern
+    for (const pattern of imageNamePatterns) {
+      pattern.lastIndex = 0; // Reset regex state
+      const matches = Array.from(claudeResponse.matchAll(pattern));
+
+      if (
+        matches.length > imageIndex &&
+        matches[imageIndex] &&
+        matches[imageIndex][1]
+      ) {
+        const imageName = matches[imageIndex][1].trim();
+        if (imageName && imageName.length > 0) {
+          console.log(
+            `✅ Found imageName with pattern ${pattern.source}:`,
+            imageName
+          );
+          return cleanFileName(imageName);
+        }
+      }
+    }
+
+    // Method 3: Generate from prompt content if available
+    const promptPatterns = [
+      /Create an image[^:]*:\s*([^.\n]{20,80})/i,
+      /Visual Composition[^:]*:\s*([^.\n]{20,80})/i,
+      /prompt[^:]*:\s*["']?([^"'\n]{20,80})["']?/i,
+    ];
+
+    for (const pattern of promptPatterns) {
+      const match = claudeResponse.match(pattern);
+      if (match && match[1]) {
+        const promptText = match[1].trim();
+        // Convert prompt to filename
+        const words = promptText
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, "")
+          .split(/\s+/)
+          .filter((word) => word.length > 3)
+          .slice(0, 4)
+          .join("-");
+
+        if (words) {
+          const generatedName = `${words}-${imageIndex + 1}`;
+          console.log("✅ Generated name from prompt:", generatedName);
+          return cleanFileName(generatedName);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("❌ Error extracting image name:", error);
+  }
+
+  // Fallback name
+  const fallbackName = `ai-image-${imageIndex + 1}-${Date.now()}`;
+  console.log("📝 Using fallback name:", fallbackName);
+  return fallbackName;
+};
+
+// Hàm helper để clean filename
+const cleanFileName = (fileName: string): string => {
+  return fileName
+    .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
+    .replace(/\s+/g, "-") // Replace spaces with hyphens
+    .replace(/[-]{2,}/g, "-") // Replace multiple hyphens with single
+    .toLowerCase()
+    .substring(0, 50) // Limit length
+    .replace(/^-+|-+$/g, ""); // Remove leading/trailing hyphens
+};
+
 // Convert image URL to base64
 const convertUrlToBase64 = async (imageUrl: string): Promise<string> => {
   // Return immediately if already base64
@@ -1097,7 +1237,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       // Tạo array các promises với signal
       const imagePromises = parsedResponse.prompts.map((promptData, index) => {
         const originalPrompt = promptData.prompt;
-        const imageSize = getImageSizeForIndex(index);
+        const sizeType = getSizeNameForIndex(index);
 
         // Kiểm tra nếu đã bị hủy
         if (signal.aborted) {
@@ -1105,7 +1245,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         }
 
         // Gọi OpenAI API với signal
-        return generateImageWithChatGPT(promptData.prompt, imageSize, signal)
+        return generateImageWithChatGPT(promptData.prompt, sizeType, signal)
           .then((imageBase64) => {
             // Kiểm tra nếu đã bị hủy
             if (signal.aborted) {
@@ -1113,7 +1253,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
             }
 
             console.log(
-              `Image ${index + 1} (${imageSize}) completed:`,
+              `Image ${index + 1} (${sizeType}) completed:`, // ✅ Sửa imageSize thành sizeType
               imageBase64.startsWith("data:") ? "SUCCESS" : "FAILED"
             );
 
@@ -1122,7 +1262,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
               prompt: promptData.prompt,
               claudeResponse: claudeResponseText,
               timestamp: new Date().toISOString(),
-              size: imageSize,
+              size: sizeType, // ✅ Sửa imageSize thành sizeType
               quality: selectedQuality,
               AdCreativeA: promptData.adCreativeA,
               AdCreativeB: promptData.adCreativeB,
@@ -1145,7 +1285,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
               prompt: promptData.prompt,
               claudeResponse: claudeResponseText,
               timestamp: new Date().toISOString(),
-              size: imageSize,
+              size: sizeType, // ✅ Sửa imageSize thành sizeType
               quality: selectedQuality,
               AdCreativeA: promptData.adCreativeA,
               AdCreativeB: promptData.adCreativeB,
@@ -1719,12 +1859,28 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   // Download image
-  const downloadImage = async (imageUrl: string) => {
+  const downloadImage = async (
+    imageUrl: string,
+    claudeResponse?: string,
+    imageIndex?: number
+  ) => {
     try {
+      // Extract imageName from Claude response
+      const baseFileName = claudeResponse
+        ? extractImageNameFromClaudeResponse(claudeResponse, imageIndex || 0)
+        : `ai-image-${Date.now()}`;
+
+      // Add extension if not present
+      const fileName = baseFileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+        ? baseFileName
+        : `${baseFileName}.jpg`;
+
+      console.log("⬇️ Downloading image with filename:", fileName);
+
       if (imageUrl.startsWith("data:")) {
         const link = document.createElement("a");
         link.href = imageUrl;
-        link.download = `ai-image-${Date.now()}.jpg`;
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -1740,13 +1896,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
       }
 
       const blob = await response.blob();
-
       const blobUrl = URL.createObjectURL(blob);
 
       const link = document.createElement("a");
       link.href = blobUrl;
-
-      const fileName = imageUrl.split("/").pop() || `image-${Date.now()}.jpg`;
       link.download = fileName;
 
       document.body.appendChild(link);
@@ -1754,9 +1907,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
       document.body.removeChild(link);
 
       URL.revokeObjectURL(blobUrl);
+
+      console.log("✅ Download completed:", fileName);
     } catch (error) {
       console.error("Error downloading image:", error);
-
+      // Fallback: try opening in new tab
       window.open(imageUrl, "_blank");
     }
   };
@@ -2290,7 +2445,51 @@ export const ElementDefaultScreen = (): JSX.Element => {
                               className="image-action-btn"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                downloadImage(img.imageUrl);
+
+                                // Get Claude response and image index
+                                const image = selectedImages[index];
+                                let claudeResponse = image.claudeResponse;
+                                let imageIndex = 0;
+
+                                // If we have sessionId, try to get more accurate data
+                                if (image.sessionId) {
+                                  const session = selectedSessions.find(
+                                    (s) => s.sessionId === image.sessionId
+                                  );
+
+                                  if (session) {
+                                    // Get the Claude response from session (might be more complete)
+                                    if (session.list[0]?.claudeResponse) {
+                                      claudeResponse =
+                                        session.list[0].claudeResponse;
+                                    }
+
+                                    // Get the correct image index within the session
+                                    if (image.imageIndex !== undefined) {
+                                      imageIndex = image.imageIndex;
+                                    } else {
+                                      // Find the index by matching the image
+                                      const foundIndex = session.list.findIndex(
+                                        (img) =>
+                                          img.imageBase64 === image.imageUrl ||
+                                          img.prompt === image.prompt
+                                      );
+                                      if (foundIndex !== -1) {
+                                        imageIndex = foundIndex;
+                                      }
+                                    }
+                                  }
+                                }
+
+                                console.log("📥 Download with:", {
+                                  claudeResponse: !!claudeResponse,
+                                  imageIndex,
+                                });
+                                downloadImage(
+                                  img.imageUrl,
+                                  claudeResponse,
+                                  imageIndex
+                                );
                               }}
                               title="Download"
                             >
@@ -2304,6 +2503,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                 <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
                               </svg>
                             </button>
+
                             <button
                               className="image-action-btn"
                               onClick={(e) => {
@@ -2777,7 +2977,20 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     </div>
 
                     <div className="image-info-dropdowns">
-                      <ImageInfoDropdown title="Describe">
+                      <ImageInfoDropdown
+                        title="Describe"
+                        copyContent={(() => {
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (session && session.describe) {
+                              return session.describe;
+                            }
+                          }
+                          return "Thông tin mô tả về ảnh này";
+                        })()}
+                      >
                         {(() => {
                           let describeText = "Thông tin mô tả về ảnh này";
 
@@ -2794,7 +3007,33 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         })()}
                       </ImageInfoDropdown>
 
-                      <ImageInfoDropdown title="Image Prompt" isOpen={false}>
+                      <ImageInfoDropdown
+                        title="Image Prompt"
+                        isOpen={false}
+                        copyContent={(() => {
+                          let currentImagePrompt = "";
+
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (
+                              session &&
+                              session.list[currentSessionImageIndex]
+                            ) {
+                              currentImagePrompt =
+                                session.list[currentSessionImageIndex].prompt;
+                            }
+                          } else if (
+                            selectedImages[currentViewImageIndex]?.prompt
+                          ) {
+                            currentImagePrompt =
+                              selectedImages[currentViewImageIndex].prompt;
+                          }
+
+                          return currentImagePrompt || "No prompt available";
+                        })()}
+                      >
                         {(() => {
                           let currentImagePrompt = "";
 
@@ -2830,7 +3069,34 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         })()}
                       </ImageInfoDropdown>
 
-                      <ImageInfoDropdown title="Ad Creative A">
+                      <ImageInfoDropdown
+                        title="Ad Creative A"
+                        copyContent={(() => {
+                          let adCreativeText = "";
+
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (
+                              session &&
+                              session.list[currentSessionImageIndex] &&
+                              session.list[currentSessionImageIndex].AdCreativeA
+                            ) {
+                              adCreativeText =
+                                session.list[currentSessionImageIndex]
+                                  .AdCreativeA;
+                            }
+                          } else if (
+                            selectedImages[currentViewImageIndex]?.AdCreativeA
+                          ) {
+                            adCreativeText =
+                              selectedImages[currentViewImageIndex].AdCreativeA;
+                          }
+
+                          return adCreativeText || "No Ad Creative A available";
+                        })()}
+                      >
                         {(() => {
                           let adCreativeText = "";
 
@@ -2858,14 +3124,43 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             <div
                               className="prompt-text html-content"
                               dangerouslySetInnerHTML={{
-                                __html: adCreativeText,
+                                __html:
+                                  adCreativeText ||
+                                  "No Ad Creative A available",
                               }}
                             />
                           );
                         })()}
                       </ImageInfoDropdown>
 
-                      <ImageInfoDropdown title="Ad Creative B">
+                      <ImageInfoDropdown
+                        title="Ad Creative B"
+                        copyContent={(() => {
+                          let adCreativeText = "";
+
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (
+                              session &&
+                              session.list[currentSessionImageIndex] &&
+                              session.list[currentSessionImageIndex].AdCreativeB
+                            ) {
+                              adCreativeText =
+                                session.list[currentSessionImageIndex]
+                                  .AdCreativeB;
+                            }
+                          } else if (
+                            selectedImages[currentViewImageIndex]?.AdCreativeB
+                          ) {
+                            adCreativeText =
+                              selectedImages[currentViewImageIndex].AdCreativeB;
+                          }
+
+                          return adCreativeText || "No Ad Creative B available";
+                        })()}
+                      >
                         {(() => {
                           let adCreativeText = "";
 
@@ -2893,68 +3188,14 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             <div
                               className="prompt-text html-content"
                               dangerouslySetInnerHTML={{
-                                __html: adCreativeText,
+                                __html:
+                                  adCreativeText ||
+                                  "No Ad Creative B available",
                               }}
                             />
                           );
                         })()}
                       </ImageInfoDropdown>
-                    </div>
-
-                    <div className="image-viewer-actions">
-                      <button
-                        className="image-viewer-action-btn copy-btn"
-                        onClick={() => {
-                          let promptText = "";
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex]
-                            ) {
-                              promptText =
-                                session.list[currentSessionImageIndex].prompt;
-                            } else if (
-                              selectedImages[currentViewImageIndex].prompt
-                            ) {
-                              promptText =
-                                selectedImages[currentViewImageIndex].prompt;
-                            }
-                          }
-
-                          if (promptText) {
-                            navigator.clipboard
-                              .writeText(promptText)
-                              .then(() => {
-                                const notification =
-                                  document.createElement("div");
-                                notification.textContent = "Prompt copied!";
-                                notification.className = "copy-notification";
-                                document.body.appendChild(notification);
-                                setTimeout(() => {
-                                  document.body.removeChild(notification);
-                                }, 2000);
-                              })
-                              .catch((err) => {
-                                console.error("Failed to copy text: ", err);
-                              });
-                          }
-                        }}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          fill="currentColor"
-                          viewBox="0 0 16 16"
-                        >
-                          <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z" />
-                          <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z" />
-                        </svg>
-                        <span>Copy</span>
-                      </button>
                     </div>
                   </div>
                 </div>

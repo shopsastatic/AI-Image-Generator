@@ -550,11 +550,19 @@ The response MUST follow this exact format:
 
 [
   {
+    "imageName": "Descriptive name for the image file (e.g., 'health_breakthrough_credibility_square', 'weight_loss_transformation_portrait')",
     "prompt": "Full text of the image prompt creation specifications",
     "adCreativeA": "Full HTML/text content of Ad Creative A",
-    "adCreativeB": "Full HTML/text content of Ad Creative B",
+    "adCreativeB": "Full HTML/text content of Ad Creative B", 
     "targeting": "Targeting information"
   },
 ]
+
+IMAGE NAME GUIDELINES:
+- Maximum 12 words.
+- Use descriptive names that reflect the advertorial content and template type
+- Use underscores instead of spaces
+- Keep names concise but informative
+- Names should help identify the content and purpose of each image
 
 Any text outside of the JSON structure will cause technical issues with the integration.

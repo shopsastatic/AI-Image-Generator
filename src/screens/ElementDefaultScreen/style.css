@@ -1494,7 +1494,8 @@ button {
 
 .image-viewer-left {
   flex: 1.5;
-  position: relative;
+  position: sticky;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2079,7 +2080,6 @@ button {
 
 /* Container bao cả header và content */
 .dropdown-container {
-  border-radius: 12px;
   box-shadow: 0 0 0 1px #ececf1;
   overflow: hidden;
   transition: box-shadow 0.2s;
@@ -2648,4 +2648,184 @@ button {
 .history-sidebar .history-content {
   position: relative;
   min-height: 200px;
+}
+
+
+/* Add these styles to your existing ImageInfoDropdown CSS */
+
+.image-info-dropdown {
+  margin-bottom: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.image-info-dropdown.opened {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dropdown-container {
+  background: white;
+}
+
+.dropdown-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: background-color 0.2s ease;
+  position: relative;
+}
+
+.dropdown-header:hover {
+  background: #f5f5f5;
+}
+
+/* Copy icon wrapper */
+.copy-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 12px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  z-index: 1; /* Ensure it's above the dropdown toggle */
+}
+
+.copy-icon-wrapper:hover {
+  background-color: #e5e7eb;
+  transform: scale(1.05);
+}
+
+.copy-icon-wrapper:active {
+  transform: scale(0.95);
+}
+
+/* Copy icon styling */
+.copy-icon {
+  width: 16px;
+  height: 16px;
+  transition: all 0.2s ease;
+}
+
+.copy-icon-wrapper:hover .copy-icon path {
+  fill: #374151;
+}
+
+.dropdown-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  user-select: none;
+}
+
+.dropdown-arrow {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.dropdown-arrow svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dropdown-content {
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  background: white;
+}
+
+.dropdown-content.open {
+  padding: 16px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.dropdown-content.closed {
+  padding: 0 16px;
+}
+
+/* Content styling */
+.prompt-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.html-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.html-content strong {
+  font-weight: 600;
+}
+
+.html-content br {
+  display: none;
+}
+
+.html-content p {
+  margin: 0 0 12px 0;
+}
+
+.html-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Copy notification animation */
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.copy-notification {
+  animation: slideIn 0.3s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .dropdown-header {
+    padding: 10px 12px;
+  }
+  
+  .dropdown-content.open {
+    padding: 12px;
+  }
+  
+  .copy-icon-wrapper {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+  }
+  
+  .copy-icon {
+    width: 14px;
+    height: 14px;
+  }
 }
