@@ -2,12 +2,13 @@
 module.exports = {
   apps: [
     {
-      name: "ai-miseninc",
+      name: "ai-miseninc-admin",
       script: "server.js",
-      instances: "max", // Sử dụng tất cả CPU cores
-      exec_mode: "cluster", // Chế độ cluster để tối ưu hiệu suất
+      instances: "max",
+      exec_mode: "fork",
       watch: false,
-      max_memory_restart: "500M", // Khởi động lại nếu sử dụng quá 500MB
+      instances: 1,
+      max_memory_restart: "500M",
       env: {
         NODE_ENV: "production",
         PORT: 3002
