@@ -85,7 +85,7 @@ const router = createBrowserRouter([
 
 export const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
 
   useEffect(() => {
     checkAuthStatus();
@@ -114,60 +114,60 @@ export const App = () => {
     setIsAuthenticated(true);
   };
 
-  if (isAuthLoading) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100vh",
-          backgroundColor: "#f9f9f9",
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "16px",
-          }}
-        >
-          <div
-            style={{
-              width: "40px",
-              height: "40px",
-              border: "4px solid #e3e3e3",
-              borderTop: "4px solid #10a37f",
-              borderRadius: "50%",
-              animation: "spin 1s linear infinite",
-            }}
-          ></div>
-          <div
-            style={{
-              color: "#5d5d5d",
-              fontSize: "14px",
-            }}
-          >
-            Checking authentication...
-          </div>
-        </div>
+  // if (isAuthLoading) {
+  //   return (
+  //     <div
+  //       style={{
+  //         display: "flex",
+  //         alignItems: "center",
+  //         justifyContent: "center",
+  //         height: "100vh",
+  //         backgroundColor: "#f9f9f9",
+  //         fontFamily:
+  //           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  //       }}
+  //     >
+  //       <div
+  //         style={{
+  //           display: "flex",
+  //           flexDirection: "column",
+  //           alignItems: "center",
+  //           gap: "16px",
+  //         }}
+  //       >
+  //         <div
+  //           style={{
+  //             width: "40px",
+  //             height: "40px",
+  //             border: "4px solid #e3e3e3",
+  //             borderTop: "4px solid #10a37f",
+  //             borderRadius: "50%",
+  //             animation: "spin 1s linear infinite",
+  //           }}
+  //         ></div>
+  //         <div
+  //           style={{
+  //             color: "#5d5d5d",
+  //             fontSize: "14px",
+  //           }}
+  //         >
+  //           Checking authentication...
+  //         </div>
+  //       </div>
 
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
-  }
+  //       <style>{`
+  //         @keyframes spin {
+  //           0% { transform: rotate(0deg); }
+  //           100% { transform: rotate(360deg); }
+  //         }
+  //       `}</style>
+  //     </div>
+  //   );
+  // }
 
-  if (!isAuthenticated) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
-  }
+  // if (!isAuthenticated) {
+  //   return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  // }
 
   return <RouterProvider router={router} />;
 };
