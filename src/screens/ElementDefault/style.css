@@ -1,0 +1,427 @@
+.element-default {
+  background-color: #f5f5f5;
+  height: 780px;
+  position: relative;
+  width: 390px;
+}
+
+.element-default .main {
+  height: 718px;
+  left: 8px;
+  position: absolute;
+  top: 54px;
+  width: 374px;
+}
+
+.element-default .background-border {
+  background-color: #ffffff;
+  border: 1px solid;
+  border-color: #ececf1;
+  border-radius: 8px;
+  height: 718px;
+  overflow: hidden;
+  position: relative;
+}
+
+.element-default .container {
+  height: 716px;
+  left: 1px;
+  overflow: scroll;
+  position: relative;
+  top: 1px;
+  width: 372px;
+}
+
+.element-default .container::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+
+.element-default .horizontal-border {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-color: #ececf1;
+  height: 48px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 372px;
+}
+
+.element-default .heading-images {
+  color: #202123;
+  font-family: "Inter", Helvetica;
+  font-size: 17.3px;
+  font-weight: 600;
+  left: 14px;
+  letter-spacing: -0.16px;
+  line-height: 40px;
+  position: absolute;
+  top: 2px;
+  white-space: nowrap;
+  width: 60px;
+}
+
+.element-default .button {
+  height: 30px;
+  left: 326px;
+  position: absolute;
+  top: 8px;
+  width: 42px;
+}
+
+.element-default .SVG {
+  height: 18px;
+  left: 12px;
+  position: absolute;
+  top: 6px;
+  width: 18px;
+}
+
+.element-default .overlay-shadow {
+  background-color: #ffffff01;
+  box-shadow: 0px 0px 0px 1px #ececf1;
+  height: 372px;
+  left: 0;
+  overflow: scroll;
+  position: absolute;
+  top: 48px;
+  width: 372px;
+}
+
+.element-default .overlay-shadow::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+
+.element-default .overlap {
+  background-color: #ffffff01;
+  box-shadow: 0px 0px 0px 1px #ececf1;
+  height: 372px;
+  left: 0;
+  position: absolute;
+  top: 421px;
+  width: 372px;
+}
+
+.element-default .overlay-border {
+  -webkit-backdrop-filter: blur(6px) brightness(100%);
+  backdrop-filter: blur(6px) brightness(100%);
+  background-color: #f7f7f8d9;
+  border: 1px solid;
+  border-color: #0000001a;
+  border-radius: 24px;
+  box-shadow: 0px 2px 5px #0000000a, 0px 9px 9px #00000003;
+  height: 106px;
+  left: 16px;
+  overflow: hidden;
+  position: relative;
+  top: 156px;
+  width: 340px;
+}
+
+.element-default .textarea {
+  border-radius: 4px;
+  height: 50px;
+  left: 13px;
+  overflow: scroll;
+  position: absolute;
+  top: 1px;
+  width: 314px;
+}
+
+.element-default .textarea::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+
+.element-default .text-wrapper {
+  color: #8e8ea0;
+  font-family: "Inter", Helvetica;
+  font-size: 15px;
+  font-weight: 400;
+  left: 3px;
+  letter-spacing: -0.16px;
+  line-height: 24px;
+  position: absolute;
+  top: 11px;
+  white-space: nowrap;
+  width: 228px;
+}
+
+.element-default .button-menu {
+  height: 36px;
+  left: 13px;
+  position: absolute;
+  top: 58px;
+  width: 36px;
+}
+
+.element-default .overlap-group {
+  border-radius: 30px;
+  height: 36px;
+  position: relative;
+}
+
+.element-default .background {
+  background-color: #e3e3eb;
+  border-radius: 30px;
+  height: 36px;
+  left: 0;
+  opacity: 0.7;
+  position: absolute;
+  top: 0;
+  width: 36px;
+}
+
+.element-default .img {
+  height: 20px;
+  left: 8px;
+  position: absolute;
+  top: 8px;
+  width: 20px;
+}
+
+.element-default .overlap-wrapper {
+  height: 36px;
+  left: 49px;
+  position: absolute;
+  top: 58px;
+  width: 36px;
+}
+
+.element-default .overlap-group-wrapper {
+  height: 36px;
+  left: 85px;
+  position: absolute;
+  top: 58px;
+  width: 36px;
+}
+
+.element-default .div {
+  color: #202123;
+  font-family: "Inter", Helvetica;
+  font-size: 12.7px;
+  font-weight: 400;
+  left: 12px;
+  letter-spacing: -0.15px;
+  line-height: 15px;
+  position: absolute;
+  text-align: center;
+  top: 8px;
+  white-space: nowrap;
+  width: 13px;
+}
+
+.element-default .div-wrapper {
+  height: 36px;
+  left: 121px;
+  position: absolute;
+  top: 58px;
+  width: 36px;
+}
+
+.element-default .SVG-wrapper {
+  background-color: #10a37f;
+  border-radius: 30px;
+  height: 36px;
+  left: 291px;
+  opacity: 0.5;
+  position: absolute;
+  top: 58px;
+  width: 36px;
+}
+
+.element-default .overlay-shadow-2 {
+  background-color: #ffffff01;
+  box-shadow: 0px 0px 0px 1px #ececf1;
+  height: 372px;
+  left: 0;
+  overflow: scroll;
+  position: absolute;
+  top: 794px;
+  width: 372px;
+}
+
+.element-default .overlay-shadow-2::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+
+.element-default .container-2 {
+  height: 54px;
+  left: 8px;
+  position: fixed;
+  top: 0;
+  width: 374px;
+}
+
+.element-default .button-2 {
+  height: 32px;
+  left: 0;
+  position: absolute;
+  top: 11px;
+  width: 188px;
+}
+
+.element-default .container-3 {
+  height: 25px;
+  left: 8px;
+  position: absolute;
+  top: 4px;
+  width: 156px;
+}
+
+.element-default .container-4 {
+  height: 21px;
+  left: 33px;
+  position: absolute;
+  top: 2px;
+  width: 123px;
+}
+
+.element-default .text-wrapper-2 {
+  color: #353740;
+  font-family: "Inter", Helvetica;
+  font-size: 14px;
+  font-weight: 600;
+  left: 0;
+  letter-spacing: -0.14px;
+  line-height: 21px;
+  position: absolute;
+  text-align: center;
+  top: 1px;
+  white-space: nowrap;
+  width: 120px;
+}
+
+.element-default .background-2 {
+  background-color: #202123;
+  border-radius: 25px;
+  height: 25px;
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  width: 25px;
+}
+
+.element-default .text-wrapper-3 {
+  color: #ffffff;
+  font-family: "Inter", Helvetica;
+  font-size: 12.5px;
+  font-weight: 600;
+  left: 8px;
+  letter-spacing: -0.14px;
+  line-height: 18.8px;
+  position: absolute;
+  text-align: center;
+  top: 2px;
+  white-space: nowrap;
+  width: 8px;
+}
+
+.element-default .SVG-2 {
+  height: 11px;
+  left: 172px;
+  position: absolute;
+  top: 10px;
+  width: 8px;
+}
+
+.element-default .text-wrapper-4 {
+  color: #acacbe;
+  font-family: "Inter", Helvetica;
+  font-size: 14px;
+  font-weight: 400;
+  left: 192px;
+  letter-spacing: -0.16px;
+  line-height: 21px;
+  position: absolute;
+  top: 16px;
+  white-space: nowrap;
+  width: 6px;
+}
+
+.element-default .button-dialog {
+  height: 32px;
+  left: 201px;
+  position: absolute;
+  top: 11px;
+  width: 125px;
+}
+
+.element-default .overlap-group-2 {
+  border-radius: 6px;
+  height: 32px;
+  position: relative;
+}
+
+.element-default .background-3 {
+  background-color: #e3e3eb;
+  border-radius: 6px;
+  height: 32px;
+  left: 0;
+  opacity: 0.7;
+  position: absolute;
+  top: 0;
+  width: 125px;
+}
+
+.element-default .container-5 {
+  height: 21px;
+  left: 8px;
+  position: absolute;
+  top: 6px;
+  width: 93px;
+}
+
+.element-default .text-wrapper-5 {
+  color: #353740;
+  font-family: "Inter", Helvetica;
+  font-size: 13.6px;
+  font-weight: 600;
+  left: 0;
+  letter-spacing: -0.14px;
+  line-height: 21px;
+  position: absolute;
+  text-align: center;
+  top: 1px;
+  white-space: nowrap;
+  width: 78px;
+}
+
+.element-default .SVG-3 {
+  height: 11px;
+  left: 109px;
+  position: absolute;
+  top: 10px;
+  width: 8px;
+}
+
+.element-default .button-3 {
+  height: 18px;
+  left: 341px;
+  overflow: hidden;
+  position: absolute;
+  top: 18px;
+  width: 18px;
+}
+
+.element-default .horizontal-divider {
+  background-color: #202123;
+  height: 2px;
+  left: 0;
+  position: absolute;
+  top: 4px;
+  width: 18px;
+}
+
+.element-default .horizontal-divider-2 {
+  background-color: #202123;
+  height: 2px;
+  left: -6px;
+  position: absolute;
+  top: 12px;
+  width: 18px;
+}

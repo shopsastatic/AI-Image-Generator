@@ -1,0 +1,38 @@
+import react from "@vitejs/plugin-react";
+import { defineConfig, loadEnv } from "vite";
+
+// https://vite.dev/config/
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  
+  const backendUrl = env.VITE_API_BASE_URL || 'http://localhost:3001';
+  
+  return {
+    plugins: [react()],
+    server: {
+      proxy: {
+        '/api': {
+          target: backendUrl,
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy, _options) => {
+            proxy.on('error', (err, _req, _res) => {
+              console.log('🚨 Proxy error:', err);
+            });
+            proxy.on('proxyReq', (proxyReq, req, _res) => {
+              console.log('📤 Sending Request:', req.method, req.url, '→', backendUrl + req.url);
+            });
+            proxy.on('proxyRes', (proxyRes, req, _res) => {
+              console.log('📥 Received Response:', proxyRes.statusCode, req.method, req.url);
+            });
+          },
+        },
+      },
+    },
+    publicDir: "./static",
+    base: "./",
+    define: {
+      __API_BASE_URL__: JSON.stringify(backendUrl),
+    },
+  };
+});
