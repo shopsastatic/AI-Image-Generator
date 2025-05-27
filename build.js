@@ -1,7 +1,13 @@
-// build.js - Script build ứng dụng
-const { execSync } = require('child_process');
-const fs = require('fs');
-const dotenv = require('dotenv');
+// build.js - Script build ứng dụng (ES modules)
+import { execSync } from 'child_process';
+import fs from 'fs';
+import * as dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// Lấy __dirname trong ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Màu sắc cho output
 const colors = {

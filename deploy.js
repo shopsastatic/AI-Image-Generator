@@ -1,6 +1,12 @@
-// deploy.js - Script triển khai đơn giản
-const { execSync } = require('child_process');
-const fs = require('fs');
+// deploy.js - Script triển khai đơn giản (ES modules)
+import { execSync } from 'child_process';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// Lấy __dirname trong ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Màu sắc cho output
 const colors = {
