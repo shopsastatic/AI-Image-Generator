@@ -16,7 +16,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 
 const router = createBrowserRouter([
   {
-    path: "/*",
+    path: "/",
+    element: (
+      <ProtectedRoute>
+        <ElementDefaultScreen />
+      </ProtectedRoute>
+    ),
+  },
+  // Sử dụng route cụ thể thay vì wildcard
+  {
+    path: "/ty",
     element: (
       <ProtectedRoute>
         <ElementDefaultScreen />
@@ -60,6 +69,15 @@ const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <ElementWDefaultWrapper />
+      </ProtectedRoute>
+    ),
+  },
+  // Route 404 - phải đặt cuối cùng
+  {
+    path: "*",
+    element: (
+      <ProtectedRoute>
+        <ElementDefaultScreen />
       </ProtectedRoute>
     ),
   },
