@@ -31,7 +31,6 @@ interface HistorySidebarProps {
     sessionId?: string;
   }>;
   onSelectAll?: (unselectedCount: number) => void;
-  maxGridItems?: number;
 }
 
 const ClearHistoryOverlay: React.FC<{
@@ -73,7 +72,6 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onItemClick,
   selectedImages,
   onSelectAll,
-  maxGridItems
 }) => {
   const [historyData, setHistoryData] = useState<HistoryDateGroup[]>([]);
   const [hasUnselectedItems, setHasUnselectedItems] = useState<boolean>(false);

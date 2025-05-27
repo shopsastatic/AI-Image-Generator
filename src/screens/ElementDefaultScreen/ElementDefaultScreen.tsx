@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import "./style.css";
-import HistorySidebar from "./HistorySidebar";
+import HistorySidebar from "./HistorySideBar";
 import ImageInfoDropdown from "./ImageInfoDropdown";
 import ImageSizeSelector from "./ImageSizeSelector";
 import { API_ENDPOINTS } from "../../utils/apiConfig";
