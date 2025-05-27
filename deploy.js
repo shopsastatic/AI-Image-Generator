@@ -42,11 +42,12 @@ try {
     apps: [{
       name: "ai-image-app",
       script: "server.js",
-      exec_mode: "cluster",
+      instances: 1,
+      exec_mode: "fork",
       instances: "max",
       env: {
         NODE_ENV: "production",
-        PORT: process.env.PORT || 3001
+        PORT: 3002
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       merge_logs: true,
