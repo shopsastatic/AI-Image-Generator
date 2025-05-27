@@ -10,7 +10,7 @@ module.exports = {
       max_memory_restart: "500M", // Khởi động lại nếu sử dụng quá 500MB
       env: {
         NODE_ENV: "production",
-        PORT: 3001
+        PORT: 3002
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       merge_logs: true,
