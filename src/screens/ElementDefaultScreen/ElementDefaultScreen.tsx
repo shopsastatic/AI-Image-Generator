@@ -100,6 +100,34 @@ const parseClaudeResponse = (response: string) => {
   }
 };
 
+const getImageSizeForIndex = (index: number): { width: number, height: number } => {
+  const sizes = [
+    { width: 1024, height: 1024 }, // Square (index 0)
+    { width: 1024, height: 1792 }, // Portrait (index 1)
+    { width: 1792, height: 1024 }, // Landscape (index 2)
+  ];
+  
+  // Đảm bảo index nằm trong phạm vi hợp lệ
+  const safeIndex = Math.min(Math.max(0, index), sizes.length - 1);
+  return sizes[safeIndex];
+};
+
+const getImageSizeByType = (type: string): { width: number, height: number } => {
+  const sizeMap: Record<string, { width: number, height: number }> = {
+    'Square': { width: 1024, height: 1024 },
+    'Portrait': { width: 1024, height: 1792 },
+    'Landscape': { width: 1792, height: 1024 },
+    'auto': { width: 1024, height: 1024 }, // mặc định Square cho 'auto'
+  };
+  
+  return sizeMap[type] || sizeMap.Square;
+};
+
+const getSizeNameForIndex = (index: number): string => {
+  const sizeNames = ['Square', 'Portrait', 'Landscape'];
+  return sizeNames[index] || 'Square';
+};
+
 const parseIndividualPrompt = (text: string, index: number) => {
   console.log(`🔍 Parsing individual prompt ${index}...`);
 
