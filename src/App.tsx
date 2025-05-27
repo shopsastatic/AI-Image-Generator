@@ -84,12 +84,12 @@ const router = createBrowserRouter([
 ]);
 
 export const App = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
+  // useEffect(() => {
+  //   checkAuthStatus();
+  // }, []);
 
   const checkAuthStatus = async () => {
     try {
