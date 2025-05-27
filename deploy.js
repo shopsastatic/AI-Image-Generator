@@ -46,7 +46,7 @@ try {
       instances: "1",
       env: {
         NODE_ENV: "production",
-        PORT: 30012
+        PORT: 10013
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       merge_logs: true,
