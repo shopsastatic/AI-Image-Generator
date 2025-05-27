@@ -87,9 +87,9 @@ export const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  // useEffect(() => {
-  //   checkAuthStatus();
-  // }, []);
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
 
   const checkAuthStatus = async () => {
     try {
@@ -106,7 +106,7 @@ export const App = () => {
     } catch (error) {
       setIsAuthenticated(false);
     } finally {
-      setIsAuthLoading(false);
+      setIsAuthLoading(true);
     }
   };
 
