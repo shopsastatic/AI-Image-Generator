@@ -11,7 +11,7 @@ module.exports = {
       max_memory_restart: "500M",
       env: {
         NODE_ENV: "production",
-        PORT: 3002
+        PORT: 30010
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       merge_logs: true,
