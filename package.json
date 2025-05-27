@@ -5,10 +5,20 @@
   "source": "./index.html",
   "type": "module",
   "scripts": {
-    "dev:frontend": "vite",
-    "dev:server": "node server.js",
-    "build": "vite build",
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:server\""
+    "dev": "vite",
+    "build": "node build.js",
+    "preview": "vite preview",
+    "server": "node server.js",
+    "start": "node server.js",
+    "dev:all": "node proxy.js",
+    "deploy": "node deploy.js",
+    "pm2:start": "pm2 start ecosystem.config.json",
+    "pm2:stop": "pm2 stop ai-image-app",
+    "pm2:reload": "pm2 reload ai-image-app",
+    "pm2:restart": "pm2 restart ai-image-app",
+    "pm2:logs": "pm2 logs ai-image-app",
+    "pm2:status": "pm2 status",
+    "pm2:monitor": "pm2 monit"
   },
   "dependencies": {
     "axios": "^1.9.0",

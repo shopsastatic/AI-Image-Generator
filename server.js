@@ -11,11 +11,15 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, 'dist');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -693,6 +697,16 @@ app.get('/api/health', (req, res) => {
     auth_configured: !!authCredentials,
     uptime: process.uptime()
   });
+});
+
+app.use(express.static(distPath));
+
+// Tất cả các route không khớp với API được gửi về index.html
+app.get('*', (req, res) => {
+  // Chỉ xử lý các request không phải API
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(distPath, 'index.html'));
+  }
 });
 
 app.listen(port, () => {
