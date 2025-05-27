@@ -702,7 +702,7 @@ app.get('/api/health', (req, res) => {
 app.use(express.static(distPath));
 
 // Tất cả các route không khớp với API được gửi về index.html
-app.get('*', (req, res) => {
+app.get('/*', (req, res) => {
   // Chỉ xử lý các request không phải API
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(distPath, 'index.html'));
