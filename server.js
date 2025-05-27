@@ -11,6 +11,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -36,6 +38,9 @@ const AUTH_CONFIG = {
   COOKIE_NAME: 'ai_image_auth',
   COOKIE_MAX_AGE: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
 };
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Password hashing utilities
 const hashPassword = (password, salt) => {
@@ -692,6 +697,12 @@ app.get('/api/health', (req, res) => {
     auth_configured: !!authCredentials,
     uptime: process.uptime()
   });
+});
+
+app.use(express.static(path.join(__dirname, 'dist')));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(port, () => {
