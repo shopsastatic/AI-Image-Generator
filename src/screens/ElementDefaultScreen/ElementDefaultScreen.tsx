@@ -531,13 +531,16 @@ const USE_MOCK_CHATGPT = false;
 
 const generateImageWithChatGPT = async (
   prompt: string,
-  selectedSize: string = "Square"
+  selectedSize: string = "Square",
+  selectedQuality: string = "Low",
+  signal?: AbortSignal // Add signal parameter if needed
 ): Promise<string> => {
-  console.log(`\n=== OPENAI API DEBUG ===`);
+  console.log(`\n=== GPT-IMAGE-1 API DEBUG ===`);
   console.log(`📏 Prompt length being sent: ${prompt.length} characters`);
   console.log(`📐 Selected size: ${selectedSize}`);
+  console.log(`🎛️ Selected quality: ${selectedQuality}`);
   console.log(`📝 Prompt preview (first 500 chars):`, prompt.substring(0, 500));
-  console.log(`==========================\n`);
+  console.log(`===============================\n`);
 
   if (USE_MOCK_CHATGPT) {
     // Simulate API delay
@@ -558,13 +561,12 @@ const generateImageWithChatGPT = async (
     const randomImage =
       placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
 
-    // Convert mock image to base64 for testing
     try {
       const base64Image = await convertUrlToBase64(randomImage);
       return base64Image;
     } catch (error) {
       console.error("❌ Mock image conversion failed:", error);
-      return randomImage; // Return URL as fallback
+      return randomImage;
     }
   }
 
@@ -577,88 +579,83 @@ const generateImageWithChatGPT = async (
       body: JSON.stringify({
         prompt: prompt,
         selectedSize: selectedSize,
-        model: "gpt-image-1",
-        n: 1,
-        quality: "low",
-        convertToBase64: false,
+        quality: selectedQuality, // ✅ Send quality from parameter
+        model: "gpt-image-1", // ✅ Explicitly specify model
       }),
+      signal, // Add signal for abort functionality
     });
 
     const responseText = await response.text();
-    console.log(`📡 ChatGPT API response status: ${response.status}`);
+    console.log(`📡 GPT-Image-1 API response status: ${response.status}`);
 
     if (!response.ok) {
-      console.error(`❌ ChatGPT API Error ${response.status}:`, responseText);
-      throw new Error(
-        `ChatGPT API error: ${response.status} ${response.statusText}`
-      );
+      console.error(`❌ GPT-Image-1 API Error ${response.status}:`, responseText);
+      
+      try {
+        const errorData = JSON.parse(responseText);
+        console.error(`❌ Error details:`, errorData);
+        
+        // Handle specific OpenAI error types
+        if (errorData.details?.error?.code) {
+          throw new Error(
+            `GPT-Image-1 API error: ${errorData.details.error.code} - ${errorData.details.error.message}`
+          );
+        }
+        
+        throw new Error(
+          `GPT-Image-1 API error: ${response.status} - ${errorData.error || errorData.message || response.statusText}`
+        );
+      } catch (parseError) {
+        throw new Error(
+          `GPT-Image-1 API error: ${response.status} ${response.statusText} - ${responseText}`
+        );
+      }
     }
 
     const data = JSON.parse(responseText);
+    console.log(`📊 Parsed response data keys:`, Object.keys(data));
+    console.log(`📊 Usage info:`, data.usage);
+    
     const imageResult = data.data?.[0];
 
     if (!imageResult) {
-      throw new Error("No image data returned from API");
+      console.error("❌ No image data in response:", data);
+      throw new Error("No image data returned from GPT-Image-1 API");
     }
 
-    console.log(`✅ ChatGPT API Success`);
+    console.log(`✅ GPT-Image-1 API Success`);
     console.log(`🔍 Image result:`, {
       hasUrl: !!imageResult.url,
-      hasOriginalUrl: !!imageResult.original_url,
+      hasB64Json: !!imageResult.b64_json,
       converted: imageResult.converted,
       isBase64: imageResult.url?.startsWith("data:"),
-      conversionFailed: data.conversion_failed,
+      contentType: imageResult.contentType
     });
 
-    // Check if backend successfully converted to base64
-    if (
-      imageResult.converted &&
-      imageResult.url &&
-      imageResult.url.startsWith("data:")
-    ) {
-      console.log(
-        `✅ Backend converted to base64, size: ${Math.round(
-          imageResult.size / 1024
-        )}KB`
-      );
+    // ✅ gpt-image-1 returns base64 directly
+    if (imageResult.url && imageResult.url.startsWith("data:")) {
+      console.log(`✅ Got base64 data URL from gpt-image-1`);
+      console.log(`📏 Image size: ${Math.round(imageResult.size / 1024)}KB`);
       return imageResult.url;
     }
 
-    // Backend didn't convert or conversion failed - try frontend conversion
-    const imageUrl = imageResult.url || imageResult.original_url;
-    if (!imageUrl) {
-      throw new Error("No image URL found in response");
+    // Fallback: try to construct data URL from b64_json
+    if (imageResult.b64_json) {
+      const dataUrl = `data:image/png;base64,${imageResult.b64_json}`;
+      console.log(`✅ Constructed data URL from b64_json`);
+      return dataUrl;
     }
 
-    console.log(
-      `🔄 Backend conversion failed/skipped, trying frontend conversion...`
-    );
-    console.log(`🔗 Original URL: ${imageUrl.substring(0, 100)}...`);
+    // Should not reach here with gpt-image-1
+    console.error("❌ Unexpected response format from gpt-image-1:", imageResult);
+    throw new Error("Unexpected response format from gpt-image-1");
 
-    // Try to convert using our convertUrlToBase64 function
-    try {
-      const base64Image = await convertUrlToBase64(imageUrl);
-
-      if (base64Image.startsWith("data:")) {
-        console.log(`✅ Frontend conversion to base64 successful`);
-        return base64Image;
-      } else {
-        console.log(
-          `⚠️ Frontend conversion returned URL (probably failed), using as-is`
-        );
-        return base64Image; // Still return it, might be the original URL
-      }
-    } catch (conversionError) {
-      console.error("❌ Frontend base64 conversion failed:", conversionError);
-      console.log("🔄 Returning original URL as final fallback");
-      return imageUrl; // Return original URL as last resort
-    }
   } catch (error) {
-    console.error("❌ Error calling ChatGPT API:", error);
+    console.error("❌ Error calling GPT-Image-1 API:", error);
 
     // Return error placeholder as base64
     const errorPlaceholder =
-      "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4=";
+      "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0uMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Q2NmQwMCI+R1BUIEF1dGhOPC90ZXh0Pjx0ZXh0IHg9IjUwJSIgeT0iNjAlIiBmb250LWZhbWlseT0iQXJpYWwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Q2NmQwMCI+Q2xpY2sgdG8gcmV0cnk8L3RleHQ+PC9zdmc+";
 
     console.log("🔄 Returning error placeholder");
     return errorPlaceholder;
@@ -1245,7 +1242,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         }
 
         // Gọi OpenAI API với signal
-        return generateImageWithChatGPT(promptData.prompt, sizeType, signal)
+        return generateImageWithChatGPT(promptData.prompt, sizeType, selectedQuality, signal)
           .then((imageBase64) => {
             // Kiểm tra nếu đã bị hủy
             if (signal.aborted) {
@@ -1256,6 +1253,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
               `Image ${index + 1} (${sizeType}) completed:`, // ✅ Sửa imageSize thành sizeType
               imageBase64.startsWith("data:") ? "SUCCESS" : "FAILED"
             );
+
+            console.log("ImageURL: " + imageBase64)
 
             return {
               imageBase64: imageBase64,
@@ -1278,6 +1277,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
               throw error; // Re-throw để xử lý ở Promise.all
             }
 
+            console.log(error)
+
             // Xử lý lỗi khác
             return {
               imageBase64:
@@ -1296,6 +1297,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
       // Chờ tất cả ảnh hoàn thành hoặc bị hủy
       const sessionImages = await Promise.all(imagePromises);
+
+      console.log("Session images:", sessionImages);
 
       // Kiểm tra lại nếu đã bị hủy
       if (signal.aborted) {
@@ -1594,37 +1597,147 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const calculateOptimalGridSize = useCallback(() => {
-    if (!gridContainerRef.current) return;
+  if (!gridContainerRef.current) return;
 
+  const container = gridContainerRef.current;
+  const rect = container.getBoundingClientRect();
+  const containerWidth = rect.width;
+  const availableHeight = window.innerHeight - 300; // Trừ header và controls
+
+  console.log('📐 Container dimensions:', {
+    width: containerWidth,
+    height: availableHeight
+  });
+
+  let columnsCount, rowsCount, newGridCount;
+
+  // Responsive breakpoints
+  if (containerWidth < 480) {
+    // Mobile: 2 columns
+    columnsCount = 2;
+    rowsCount = Math.max(3, Math.floor(availableHeight / 200));
+  } else if (containerWidth < 768) {
+    // Tablet: 3 columns  
+    columnsCount = 3;
+    rowsCount = Math.max(3, Math.floor(availableHeight / 220));
+  } else if (containerWidth < 1024) {
+    // Small desktop: 4 columns
+    columnsCount = 4;
+    rowsCount = Math.max(3, Math.floor(availableHeight / 250));
+  } else if (containerWidth < 1440) {
+    // Medium desktop: 5 columns
+    columnsCount = 5;
+    rowsCount = Math.max(3, Math.floor(availableHeight / 280));
+  } else {
+    // Large desktop: 6+ columns
+    columnsCount = Math.floor(containerWidth / 250);
+    rowsCount = Math.max(3, Math.floor(availableHeight / 300));
+  }
+
+  newGridCount = Math.min(columnsCount * rowsCount, 50); // Max 50 items
+  newGridCount = Math.max(4, newGridCount); // Min 4 items
+
+  console.log('📊 Grid calculation:', {
+    columnsCount,
+    rowsCount, 
+    newGridCount,
+    expandedGrid
+  });
+
+  setBaseGridCount(newGridCount);
+  
+  if (!expandedGrid) {
+    setGridItemCount(newGridCount);
+  }
+}, [expandedGrid]);
+
+  useEffect(() => {
+    // Initial calculation
+    calculateOptimalGridSize();
+
+    // Debounced resize handler để tránh call quá nhiều
+    let resizeTimeout;
+    const handleResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        calculateOptimalGridSize();
+      }, 100); // Debounce 100ms
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, [calculateOptimalGridSize]);
+
+  const forceLayoutRecalc = useCallback(() => {
+  if (gridContainerRef.current) {
     const container = gridContainerRef.current;
-    const containerWidth = container.clientWidth;
-    const containerHeight = window.innerHeight - 200;
+    
+    // Trigger reflow
+    container.style.display = 'none';
+    container.offsetHeight; // Force reflow
+    container.style.display = '';
+    
+    // Recalculate grid
+    setTimeout(() => {
+      calculateOptimalGridSize();
+    }, 50);
+  }
+}, [calculateOptimalGridSize]);
 
-    if (containerWidth < 500) {
-      setBaseGridCount(4);
-    } else {
-      const divisor = Math.max(1, Math.floor(containerWidth / 300));
-      const itemWidth = containerWidth / divisor;
-
-      const itemsPerRow = Math.max(1, Math.floor(containerWidth / itemWidth));
-
-      const itemHeight = itemWidth;
-      const rowsVisible = Math.max(2, Math.ceil(containerHeight / itemHeight));
-
-      const optimalCount = itemsPerRow * rowsVisible;
-      setBaseGridCount(Math.max(4, Math.min(optimalCount, 50)));
+useEffect(() => {
+  let lastWidth = 0;
+  let lastHeight = 0;
+  
+  const checkLayoutShift = () => {
+    if (gridContainerRef.current) {
+      const rect = gridContainerRef.current.getBoundingClientRect();
+      const currentWidth = rect.width;
+      const currentHeight = rect.height;
+      
+      // If significant size change detected
+      if (Math.abs(currentWidth - lastWidth) > 10 || 
+          Math.abs(currentHeight - lastHeight) > 10) {
+        
+        console.log('🔄 Layout shift detected, recalculating...', {
+          oldSize: { width: lastWidth, height: lastHeight },
+          newSize: { width: currentWidth, height: currentHeight }
+        });
+        
+        forceLayoutRecalc();
+        
+        lastWidth = currentWidth;
+        lastHeight = currentHeight;
+      }
     }
+  };
 
+  const observer = new ResizeObserver(checkLayoutShift);
+  if (gridContainerRef.current) {
+    observer.observe(gridContainerRef.current);
+  }
+
+  return () => observer.disconnect();
+}, [forceLayoutRecalc]);
+
+  useEffect(() => {
     if (!expandedGrid) {
       setGridItemCount(baseGridCount);
     }
-  }, [expandedGrid]);
+  }, [baseGridCount, expandedGrid]);
 
+  // UseEffect để recalculate khi images thay đổi
   useEffect(() => {
-    calculateOptimalGridSize();
-    window.addEventListener("resize", calculateOptimalGridSize);
-    return () => window.removeEventListener("resize", calculateOptimalGridSize);
-  }, [calculateOptimalGridSize]);
+    // Delay một chút để đảm bảo DOM đã render
+    const timeoutId = setTimeout(() => {
+      calculateOptimalGridSize();
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedImages.length, calculateOptimalGridSize]);
 
   // Recalculate grid size when images change
   useEffect(() => {

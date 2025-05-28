@@ -415,100 +415,94 @@ app.post('/api/chatgpt', async (req, res) => {
 
     const sizeMapping = {
       'Square': '1024x1024',
-      // 'Portrait': '1024x1536', 
-      // 'Landscape': '1536x1024',
-      'Portrait': '1024x1792',
-      'Landscape': '1792x1024',
+      'Portrait': '1024x1536', 
+      'Landscape': '1536x1024',
       'auto': 'auto'
     };
 
+    const qualityMapping = {
+      'High': 'high',
+      'Medium': 'medium', 
+      'Low': 'low'
+    };
+
     const requestedSize = req.body.selectedSize || req.body.size || 'auto';
+    const requestedQuality = req.body.quality || 'Low';
     const openaiSize = sizeMapping[requestedSize] || 'auto';
-    const convertToBase64 = req.body.convertToBase64 !== false;
+    const openaiQuality = qualityMapping[requestedQuality] || 'low';
 
     console.log(`Size mapping: ${requestedSize} → ${openaiSize}`);
-    console.log(`Convert to base64: ${convertToBase64}`);
+    console.log(`Quality mapping: ${requestedQuality} → ${openaiQuality}`);
 
-    const response = await openai.images.generate({
-      model: "gpt-image-1",
+    // ✅ Correct parameters for gpt-image-1
+    const requestBody = {
+      model: "gpt-image-1", // ✅ Correct model name
       prompt: req.body.prompt,
       n: 1,
       size: openaiSize,
-      quality: 'low'
-    });
+      quality: openaiQuality, // ✅ Correct quality values: high, medium, low
+      output_format: "png", // ✅ gpt-image-1 specific parameter
+      background: "auto", // ✅ gpt-image-1 specific parameter
+    };
+
+    console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
+
+    const response = await openai.images.generate(requestBody);
 
     console.log('OpenAI API response status: SUCCESS');
-    const imageUrl = response.data[0]?.url;
-    console.log('Generated image URL:', imageUrl?.substring(0, 100) + '...');
+    console.log('Response keys:', Object.keys(response.data[0] || {}));
+    
+    // ✅ gpt-image-1 returns b64_json directly, not url
+    const imageData = response.data[0];
+    const base64Data = imageData?.b64_json;
+    
+    console.log('Base64 data available:', !!base64Data);
+    console.log('Base64 data length:', base64Data?.length || 0);
 
-    if (!imageUrl) {
+    if (!base64Data) {
+      console.error('No base64 data in response. Full response:', response.data);
       return res.status(500).json({
-        error: 'No image URL returned from OpenAI'
+        error: 'No image data returned from OpenAI',
+        debug: response.data
       });
     }
 
-    if (convertToBase64) {
-      console.log('Converting OpenAI image to base64 on backend...');
-      try {
-        const fetchOptions = {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Referer': 'https://platform.openai.com/',
-            'Origin': 'https://platform.openai.com',
-          },
-          timeout: 30000,
-          follow: 10,
-          compress: true,
-        };
+    // ✅ Convert base64 to data URL
+    const dataUrl = `data:image/png;base64,${base64Data}`;
+    
+    console.log(`✅ Successfully generated image with gpt-image-1`);
+    console.log(`📏 Base64 size: ${Math.round(base64Data.length / 1024)}KB`);
 
-        const imageResponse = await fetch(imageUrl, fetchOptions);
-
-        console.log(`Image fetch status: ${imageResponse.status}`);
-
-        if (imageResponse.ok) {
-          const buffer = await imageResponse.buffer();
-          const contentType = imageResponse.headers.get('content-type') || 'image/png';
-          const base64 = buffer.toString('base64');
-          const dataUrl = `data:${contentType};base64,${base64}`;
-
-          console.log(`Successfully converted OpenAI image to base64, size: ${Math.round(base64.length / 1024)}KB`);
-
-          return res.json({
-            data: [{
-              url: dataUrl,
-              original_url: imageUrl,
-              converted: true,
-              size: buffer.length,
-              contentType: contentType,
-            }],
-            original: response.data,
-          });
-        } else {
-          console.log(`Failed to fetch image for conversion: ${imageResponse.status} ${imageResponse.statusText}`);
-        }
-      } catch (conversionError) {
-        console.error('Base64 conversion failed:', conversionError.message);
-      }
-    }
-
-    console.log('Returning original URL (conversion failed or not requested)');
+    // Return in the expected format
     res.json({
-      data: response.data,
-      conversion_attempted: convertToBase64,
-      conversion_failed: convertToBase64,
+      data: [{
+        url: dataUrl, // ✅ Return as data URL for compatibility
+        b64_json: base64Data,
+        converted: true,
+        size: base64Data.length,
+        contentType: 'image/png',
+      }],
+      original: response.data,
+      usage: response.usage // ✅ gpt-image-1 includes usage info
     });
 
   } catch (error) {
-    console.error('OpenAI Error:', error.message);
+    console.error('OpenAI Error Details:', {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      type: error.type,
+      response: error.response?.data,
+      stack: error.stack
+    });
 
+    // More detailed error response
     res.status(error.status || 500).json({
-      error: error.message || 'OpenAI API Error'
+      error: error.message || 'OpenAI API Error',
+      details: error.response?.data || null,
+      status: error.status || 500,
+      code: error.code || null,
+      type: error.type || null
     });
   }
 });
