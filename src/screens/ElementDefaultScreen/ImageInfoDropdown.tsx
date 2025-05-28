@@ -138,7 +138,7 @@ const ImageInfoDropdown: React.FC<ImageInfoDropdownProps> = ({
           className={`dropdown-content ${isOpen ? 'open' : 'closed'}`}
           ref={contentRef}
           style={{
-            maxHeight: isOpen ? (contentRef.current ? `${contentRef.current.scrollHeight}px` : '1000px') : '0px',
+            maxHeight: isOpen ? (contentRef.current ? `${contentRef.current.scrollHeight + 60}px` : '1000px') : '0px',
           }}
         >
           {children}

@@ -13,37 +13,120 @@ import {
 const parseClaudeResponse = (response: string) => {
   try {
     console.log("🔍 Parsing Claude response...");
-    console.log("Raw response:", response.substring(0, 200) + "...");
+    console.log("Raw response length:", response.length);
+    console.log("Raw response preview:", response.substring(0, 500) + "...");
 
     try {
-      // Try JSON format first
-      const jsonMatch =
-        response.match(/```json\s*([\s\S]*?)\s*```/) ||
-        response.match(/\[\s*{\s*"prompt":/);
+      // ===== IMPROVED JSON PARSING =====
+      
+      // Method 1: Look for JSON array pattern
+      const jsonArrayMatch = response.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+      
+      if (jsonArrayMatch) {
+        console.log("✅ Found JSON array pattern");
+        const jsonText = jsonArrayMatch[0];
+        console.log("JSON text to parse:", jsonText.substring(0, 200) + "...");
+        
+        try {
+          const jsonData = JSON.parse(jsonText);
+          
+          if (Array.isArray(jsonData) && jsonData.length > 0) {
+            console.log(`✅ JSON parsing successful: ${jsonData.length} prompts found`);
+            
+            // Map JSON data and ensure all required fields exist
+            const prompts = jsonData.map((item, index) => {
+              console.log(`📋 Processing prompt ${index + 1}:`, {
+                hasPrompt: !!item.prompt,
+                hasImageName: !!item.imageName,
+                hasAdCreativeA: !!item.adCreativeA,
+                hasAdCreativeB: !!item.adCreativeB,
+                promptLength: item.prompt?.length || 0
+              });
+              
+              return {
+                prompt: item.prompt || `Generated prompt ${index + 1}`,
+                adCreativeA: item.adCreativeA || "",
+                adCreativeB: item.adCreativeB || "",
+                imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
+                targeting: item.targeting || "",
+              };
+            });
 
-      if (jsonMatch) {
-        let jsonText = jsonMatch[1] || response;
+            console.log(`🎯 Final result: ${prompts.length} prompts ready`);
+            
+            return {
+              prompts: prompts,
+              fullResponse: response,
+              jsonData: jsonData,
+            };
+          }
+        } catch (parseError) {
+          console.error("❌ JSON parse error:", parseError);
+          console.log("Failed JSON text:", jsonText);
+        }
+      }
 
-        jsonText = jsonText
-          .replace(/^[\s\S]*?\[/, "[")
-          .replace(/\][\s\S]*$/, "]");
+      // Method 2: Look for ```json code blocks
+      const codeBlockMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
+      
+      if (codeBlockMatch) {
+        console.log("✅ Found JSON code block");
+        const jsonText = codeBlockMatch[1].trim();
+        console.log("Code block JSON:", jsonText.substring(0, 200) + "...");
+        
+        try {
+          const jsonData = JSON.parse(jsonText);
+          
+          if (Array.isArray(jsonData) && jsonData.length > 0) {
+            console.log(`✅ Code block parsing successful: ${jsonData.length} prompts found`);
+            
+            const prompts = jsonData.map((item, index) => ({
+              prompt: item.prompt || `Generated prompt ${index + 1}`,
+              adCreativeA: item.adCreativeA || "",
+              adCreativeB: item.adCreativeB || "",
+              imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
+              targeting: item.targeting || "",
+            }));
 
-        const jsonData = JSON.parse(jsonText);
+            return {
+              prompts: prompts,
+              fullResponse: response,
+              jsonData: jsonData,
+            };
+          }
+        } catch (parseError) {
+          console.error("❌ Code block parse error:", parseError);
+        }
+      }
 
-        if (
-          Array.isArray(jsonData) &&
-          jsonData.length > 0 &&
-          jsonData[0].prompt
-        ) {
-          console.log(
-            "✅ JSON format detected, parsed:",
-            jsonData.length,
-            "prompts"
-          );
-
-          // Map JSON data and ensure imageName exists
-          const prompts = jsonData.map((item, index) => ({
-            prompt: item.prompt,
+      // Method 3: Manual object extraction for multiple objects
+      const objectMatches = [...response.matchAll(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g)];
+      
+      if (objectMatches.length >= 2) {
+        console.log(`✅ Found ${objectMatches.length} object patterns, attempting to parse each`);
+        
+        const parsedObjects = [];
+        
+        for (let i = 0; i < objectMatches.length; i++) {
+          try {
+            const objText = objectMatches[i][0];
+            console.log(`Parsing object ${i + 1}:`, objText.substring(0, 100) + "...");
+            
+            const obj = JSON.parse(objText);
+            if (obj.prompt || obj.imageName) {
+              parsedObjects.push(obj);
+              console.log(`✅ Object ${i + 1} parsed successfully`);
+            }
+          } catch (objError) {
+            console.log(`⚠️ Failed to parse object ${i + 1}:`, objError.message);
+          }
+        }
+        
+        if (parsedObjects.length > 0) {
+          console.log(`✅ Manual parsing successful: ${parsedObjects.length} objects found`);
+          
+          const prompts = parsedObjects.map((item, index) => ({
+            prompt: item.prompt || `Generated prompt ${index + 1}`,
             adCreativeA: item.adCreativeA || "",
             adCreativeB: item.adCreativeB || "",
             imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
@@ -53,43 +136,66 @@ const parseClaudeResponse = (response: string) => {
           return {
             prompts: prompts,
             fullResponse: response,
-            jsonData: jsonData,
+            jsonData: parsedObjects,
           };
         }
       }
 
-      throw new Error("JSON pattern not found, trying text parsing");
+      // If all JSON methods fail, try text parsing
+      throw new Error("No valid JSON found, trying text parsing");
+      
     } catch (jsonError) {
-      console.log("⚠️ JSON parsing failed, trying text parsing...");
+      console.log("⚠️ All JSON parsing methods failed, trying text parsing...");
+      console.log("JSON Error:", jsonError.message);
 
-      // Enhanced text parsing for Ad Creatives
+      // ===== ENHANCED TEXT PARSING =====
       const prompts = [];
 
-      // Split by common prompt separators
+      // Split by common prompt separators  
       const sections = response.split(
-        /(?:Prompt \d+|Ad Creative Prompt \d+|Image \d+|Version \d+)/i
+        /(?:Prompt \d+|Image \d+|Version \d+|\d+\.\s*|Object \d+)/i
       );
+
+      console.log(`Found ${sections.length} sections via text splitting`);
 
       if (sections.length > 1) {
         // Multiple prompts detected
         for (let i = 1; i < sections.length; i++) {
           const section = sections[i].trim();
-          if (section) {
+          if (section && section.length > 50) { // Only process substantial sections
+            console.log(`Processing text section ${i}:`, section.substring(0, 100) + "...");
             const promptData = parseIndividualPrompt(section, i);
             prompts.push(promptData);
           }
         }
       } else {
-        // Single prompt - try to extract Ad Creatives
-        const promptData = parseIndividualPrompt(response, 1);
-        prompts.push(promptData);
+        // Single section - try to extract multiple prompts
+        console.log("Single section detected, searching for multiple prompts within...");
+        
+        // Look for multiple "Create an image" patterns
+        const imagePrompts = [...response.matchAll(/Create an image[^.]*?(?=Create an image|$)/gis)];
+        
+        if (imagePrompts.length > 1) {
+          console.log(`Found ${imagePrompts.length} "Create an image" patterns`);
+          
+          imagePrompts.forEach((match, index) => {
+            const promptText = match[0].trim();
+            if (promptText.length > 50) {
+              console.log(`Processing image prompt ${index + 1}:`, promptText.substring(0, 100) + "...");
+              const promptData = parseIndividualPrompt(promptText, index + 1);
+              prompts.push(promptData);
+            }
+          });
+        } else {
+          // Fallback to single prompt parsing
+          console.log("Fallback to single prompt parsing");
+          const promptData = parseIndividualPrompt(response, 1);
+          prompts.push(promptData);
+        }
       }
 
-      console.log(
-        "✅ Text parsing completed:",
-        prompts.length,
-        "prompts found"
-      );
+      console.log(`✅ Text parsing completed: ${prompts.length} prompts found`);
+      
       return {
         prompts: prompts,
         fullResponse: response,
@@ -97,6 +203,8 @@ const parseClaudeResponse = (response: string) => {
     }
   } catch (error) {
     console.error("❌ Error parsing Claude response:", error);
+    console.log("Full response for debugging:", response);
+    
     return {
       prompts: [
         {
@@ -137,11 +245,6 @@ const getImageSizeByType = (
   };
 
   return sizeMap[type] || sizeMap.Square;
-};
-
-const getSizeNameForIndex = (index: number): string => {
-  const sizeNames = ["Square", "Portrait", "Landscape"];
-  return sizeNames[index] || "Square";
 };
 
 const parseIndividualPrompt = (text: string, index: number) => {
@@ -532,15 +635,13 @@ const USE_MOCK_CHATGPT = false;
 const generateImageWithChatGPT = async (
   prompt: string,
   selectedSize: string = "Square",
-  selectedQuality: string = "Low",
-  signal?: AbortSignal // Add signal parameter if needed
+  signal?: AbortSignal // ✅ Thêm signal parameter
 ): Promise<string> => {
-  console.log(`\n=== GPT-IMAGE-1 API DEBUG ===`);
+  console.log(`\n=== OPENAI API DEBUG ===`);
   console.log(`📏 Prompt length being sent: ${prompt.length} characters`);
   console.log(`📐 Selected size: ${selectedSize}`);
-  console.log(`🎛️ Selected quality: ${selectedQuality}`);
   console.log(`📝 Prompt preview (first 500 chars):`, prompt.substring(0, 500));
-  console.log(`===============================\n`);
+  console.log(`==========================\n`);
 
   if (USE_MOCK_CHATGPT) {
     // Simulate API delay
@@ -571,6 +672,12 @@ const generateImageWithChatGPT = async (
   }
 
   try {
+    // ✅ Kiểm tra signal trước khi gọi API
+    if (signal?.aborted) {
+      console.log("🛑 Request đã bị hủy trước khi gọi ChatGPT API");
+      throw new DOMException("Aborted", "AbortError");
+    }
+
     const response = await fetch(API_ENDPOINTS.CHATGPT, {
       method: "POST",
       headers: {
@@ -579,83 +686,101 @@ const generateImageWithChatGPT = async (
       body: JSON.stringify({
         prompt: prompt,
         selectedSize: selectedSize,
-        quality: selectedQuality, // ✅ Send quality from parameter
-        model: "gpt-image-1", // ✅ Explicitly specify model
+        model: "gpt-image-1",
+        n: 1,
+        quality: "low",
+        convertToBase64: false,
       }),
-      signal, // Add signal for abort functionality
+      signal, // ✅ Truyền signal vào fetch
     });
 
+    // ✅ Kiểm tra signal sau khi gọi API
+    if (signal?.aborted) {
+      console.log("🛑 Request đã bị hủy sau khi gọi ChatGPT API");
+      throw new DOMException("Aborted", "AbortError");
+    }
+
     const responseText = await response.text();
-    console.log(`📡 GPT-Image-1 API response status: ${response.status}`);
+    console.log(`📡 ChatGPT API response status: ${response.status}`);
 
     if (!response.ok) {
-      console.error(`❌ GPT-Image-1 API Error ${response.status}:`, responseText);
-      
-      try {
-        const errorData = JSON.parse(responseText);
-        console.error(`❌ Error details:`, errorData);
-        
-        // Handle specific OpenAI error types
-        if (errorData.details?.error?.code) {
-          throw new Error(
-            `GPT-Image-1 API error: ${errorData.details.error.code} - ${errorData.details.error.message}`
-          );
-        }
-        
-        throw new Error(
-          `GPT-Image-1 API error: ${response.status} - ${errorData.error || errorData.message || response.statusText}`
-        );
-      } catch (parseError) {
-        throw new Error(
-          `GPT-Image-1 API error: ${response.status} ${response.statusText} - ${responseText}`
-        );
-      }
+      console.error(`❌ ChatGPT API Error ${response.status}:`, responseText);
+      throw new Error(
+        `ChatGPT API error: ${response.status} ${response.statusText}`
+      );
     }
 
     const data = JSON.parse(responseText);
-    console.log(`📊 Parsed response data keys:`, Object.keys(data));
-    console.log(`📊 Usage info:`, data.usage);
-    
     const imageResult = data.data?.[0];
 
     if (!imageResult) {
-      console.error("❌ No image data in response:", data);
-      throw new Error("No image data returned from GPT-Image-1 API");
+      throw new Error("No image data returned from API");
     }
 
-    console.log(`✅ GPT-Image-1 API Success`);
+    console.log(`✅ ChatGPT API Success`);
     console.log(`🔍 Image result:`, {
       hasUrl: !!imageResult.url,
-      hasB64Json: !!imageResult.b64_json,
+      hasOriginalUrl: !!imageResult.original_url,
       converted: imageResult.converted,
       isBase64: imageResult.url?.startsWith("data:"),
-      contentType: imageResult.contentType
+      conversionFailed: data.conversion_failed,
     });
 
-    // ✅ gpt-image-1 returns base64 directly
-    if (imageResult.url && imageResult.url.startsWith("data:")) {
-      console.log(`✅ Got base64 data URL from gpt-image-1`);
-      console.log(`📏 Image size: ${Math.round(imageResult.size / 1024)}KB`);
+    // Check if backend successfully converted to base64
+    if (
+      imageResult.converted &&
+      imageResult.url &&
+      imageResult.url.startsWith("data:")
+    ) {
+      console.log(
+        `✅ Backend converted to base64, size: ${Math.round(
+          imageResult.size / 1024
+        )}KB`
+      );
       return imageResult.url;
     }
 
-    // Fallback: try to construct data URL from b64_json
-    if (imageResult.b64_json) {
-      const dataUrl = `data:image/png;base64,${imageResult.b64_json}`;
-      console.log(`✅ Constructed data URL from b64_json`);
-      return dataUrl;
+    // Backend didn't convert or conversion failed - try frontend conversion
+    const imageUrl = imageResult.url || imageResult.original_url;
+    if (!imageUrl) {
+      throw new Error("No image URL found in response");
     }
 
-    // Should not reach here with gpt-image-1
-    console.error("❌ Unexpected response format from gpt-image-1:", imageResult);
-    throw new Error("Unexpected response format from gpt-image-1");
+    console.log(
+      `🔄 Backend conversion failed/skipped, trying frontend conversion...`
+    );
+    console.log(`🔗 Original URL: ${imageUrl.substring(0, 100)}...`);
 
+    // Try to convert using our convertUrlToBase64 function
+    try {
+      const base64Image = await convertUrlToBase64(imageUrl);
+
+      if (base64Image.startsWith("data:")) {
+        console.log(`✅ Frontend conversion to base64 successful`);
+        return base64Image;
+      } else {
+        console.log(
+          `⚠️ Frontend conversion returned URL (probably failed), using as-is`
+        );
+        return base64Image;
+      }
+    } catch (conversionError) {
+      console.error("❌ Frontend base64 conversion failed:", conversionError);
+      console.log("🔄 Returning original URL as final fallback");
+      return imageUrl;
+    }
   } catch (error) {
-    console.error("❌ Error calling GPT-Image-1 API:", error);
+    // ✅ Xử lý AbortError riêng
+    if (error.name === "AbortError") {
+      console.log("🛑 ChatGPT API call bị hủy");
+      throw error; // Re-throw để xử lý ở Promise.all
+    }
+
+    console.error("❌ Error calling ChatGPT API:", error);
 
     // Return error placeholder as base64
     const errorPlaceholder =
-      "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0uMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Q2NmQwMCI+R1BUIEF1dGhOPC90ZXh0Pjx0ZXh0IHg9IjUwJSIgeT0iNjAlIiBmb250LWZhbWlseT0iQXJpYWwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2Q2NmQwMCI+Q2xpY2sgdG8gcmV0cnk8L3RleHQ+PC9zdmc+";
+      "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4=";
 
     console.log("🔄 Returning error placeholder");
     return errorPlaceholder;
@@ -979,6 +1104,39 @@ export const ElementDefaultScreen = (): JSX.Element => {
     "Chocolate Bar",
   ];
 
+  const getSizeNameForIndex = (index: number): string => {
+    // Tạo mảng size theo đúng distribution mà user đã chọn
+    const sizesArray: string[] = [];
+
+    // Thêm các Square vào mảng
+    for (let i = 0; i < imageSizes.Square; i++) {
+      sizesArray.push("Square");
+    }
+
+    // Thêm các Portrait vào mảng
+    for (let i = 0; i < imageSizes.Portrait; i++) {
+      sizesArray.push("Portrait");
+    }
+
+    // Thêm các Landscape vào mảng
+    for (let i = 0; i < imageSizes.Landscape; i++) {
+      sizesArray.push("Landscape");
+    }
+
+    // Nếu chưa đủ số lượng, thêm "auto" cho những cái còn lại
+    const totalAssigned = sizesArray.length;
+    const remaining = numberOfImages - totalAssigned;
+    for (let i = 0; i < remaining; i++) {
+      sizesArray.push("Square"); // Default to Square for "auto"
+    }
+
+    console.log("📐 Size mapping for images:", sizesArray);
+    console.log(`📍 Index ${index} -> ${sizesArray[index] || "Square"}`);
+
+    // Trả về size tương ứng với index, hoặc Square làm default
+    return sizesArray[index] || "Square";
+  };
+
   const getTotalSelectedImages = (): number => {
     return imageSizes.Square + imageSizes.Portrait + imageSizes.Landscape;
   };
@@ -992,7 +1150,17 @@ export const ElementDefaultScreen = (): JSX.Element => {
     const totalSelected = getTotalSelectedImages();
     const totalNeeded = numberOfImages;
 
+    console.log("🔍 Generate image sizes string:", {
+      totalSelected,
+      totalNeeded,
+      imageSizes: imageSizes,
+      Square: imageSizes.Square,
+      Portrait: imageSizes.Portrait,
+      Landscape: imageSizes.Landscape,
+    });
+
     if (totalSelected === 0) {
+      console.log("🔄 No sizes selected, using auto");
       return "auto";
     }
 
@@ -1013,7 +1181,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
       sizesArray.push("auto");
     }
 
-    return sizesArray.join(", ");
+    const result = sizesArray.join(", ");
+    console.log("📋 Generated sizes string:", result);
+    console.log("📊 Sizes array:", sizesArray);
+
+    return result;
   };
 
   useEffect(() => {
@@ -1233,16 +1405,25 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
       // Tạo array các promises với signal
       const imagePromises = parsedResponse.prompts.map((promptData, index) => {
-        const originalPrompt = promptData.prompt;
         const sizeType = getSizeNameForIndex(index);
+
+        console.log(
+          `🎯 Creating image ${index + 1}/${parsedResponse.prompts.length}:`,
+          {
+            index,
+            sizeType,
+            promptLength: promptData.prompt?.length || 0,
+            aborted: signal.aborted,
+          }
+        );
 
         // Kiểm tra nếu đã bị hủy
         if (signal.aborted) {
           return Promise.reject(new DOMException("Aborted", "AbortError"));
         }
 
-        // Gọi OpenAI API với signal
-        return generateImageWithChatGPT(promptData.prompt, sizeType, selectedQuality, signal)
+        // ✅ Gọi với signal parameter
+        return generateImageWithChatGPT(promptData.prompt, sizeType, signal)
           .then((imageBase64) => {
             // Kiểm tra nếu đã bị hủy
             if (signal.aborted) {
@@ -1250,18 +1431,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
             }
 
             console.log(
-              `Image ${index + 1} (${sizeType}) completed:`, // ✅ Sửa imageSize thành sizeType
+              `✅ Image ${index + 1} (${sizeType}) completed:`,
               imageBase64.startsWith("data:") ? "SUCCESS" : "FAILED"
             );
-
-            console.log("ImageURL: " + imageBase64)
 
             return {
               imageBase64: imageBase64,
               prompt: promptData.prompt,
               claudeResponse: claudeResponseText,
               timestamp: new Date().toISOString(),
-              size: sizeType, // ✅ Sửa imageSize thành sizeType
+              size: sizeType,
               quality: selectedQuality,
               AdCreativeA: promptData.adCreativeA,
               AdCreativeB: promptData.adCreativeB,
@@ -1274,10 +1453,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
           })
           .catch((error) => {
             if (error.name === "AbortError") {
+              console.log(`🛑 Image ${index + 1} generation cancelled`);
               throw error; // Re-throw để xử lý ở Promise.all
             }
 
-            console.log(error)
+            console.error(`❌ Image ${index + 1} generation failed:`, error);
 
             // Xử lý lỗi khác
             return {
@@ -1286,7 +1466,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
               prompt: promptData.prompt,
               claudeResponse: claudeResponseText,
               timestamp: new Date().toISOString(),
-              size: sizeType, // ✅ Sửa imageSize thành sizeType
+              size: sizeType,
               quality: selectedQuality,
               AdCreativeA: promptData.adCreativeA,
               AdCreativeB: promptData.adCreativeB,
@@ -1297,8 +1477,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
       // Chờ tất cả ảnh hoàn thành hoặc bị hủy
       const sessionImages = await Promise.all(imagePromises);
-
-      console.log("Session images:", sessionImages);
 
       // Kiểm tra lại nếu đã bị hủy
       if (signal.aborted) {
@@ -1597,59 +1775,59 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const calculateOptimalGridSize = useCallback(() => {
-  if (!gridContainerRef.current) return;
+    if (!gridContainerRef.current) return;
 
-  const container = gridContainerRef.current;
-  const rect = container.getBoundingClientRect();
-  const containerWidth = rect.width;
-  const availableHeight = window.innerHeight - 300; // Trừ header và controls
+    const container = gridContainerRef.current;
+    const rect = container.getBoundingClientRect();
+    const containerWidth = rect.width;
+    const availableHeight = window.innerHeight - 300; // Trừ header và controls
 
-  console.log('📐 Container dimensions:', {
-    width: containerWidth,
-    height: availableHeight
-  });
+    console.log("📐 Container dimensions:", {
+      width: containerWidth,
+      height: availableHeight,
+    });
 
-  let columnsCount, rowsCount, newGridCount;
+    let columnsCount, rowsCount, newGridCount;
 
-  // Responsive breakpoints
-  if (containerWidth < 480) {
-    // Mobile: 2 columns
-    columnsCount = 2;
-    rowsCount = Math.max(3, Math.floor(availableHeight / 200));
-  } else if (containerWidth < 768) {
-    // Tablet: 3 columns  
-    columnsCount = 3;
-    rowsCount = Math.max(3, Math.floor(availableHeight / 220));
-  } else if (containerWidth < 1024) {
-    // Small desktop: 4 columns
-    columnsCount = 4;
-    rowsCount = Math.max(3, Math.floor(availableHeight / 250));
-  } else if (containerWidth < 1440) {
-    // Medium desktop: 5 columns
-    columnsCount = 5;
-    rowsCount = Math.max(3, Math.floor(availableHeight / 280));
-  } else {
-    // Large desktop: 6+ columns
-    columnsCount = Math.floor(containerWidth / 250);
-    rowsCount = Math.max(3, Math.floor(availableHeight / 300));
-  }
+    // Responsive breakpoints
+    if (containerWidth < 480) {
+      // Mobile: 2 columns
+      columnsCount = 2;
+      rowsCount = Math.max(3, Math.floor(availableHeight / 200));
+    } else if (containerWidth < 768) {
+      // Tablet: 3 columns
+      columnsCount = 3;
+      rowsCount = Math.max(3, Math.floor(availableHeight / 220));
+    } else if (containerWidth < 1024) {
+      // Small desktop: 4 columns
+      columnsCount = 4;
+      rowsCount = Math.max(3, Math.floor(availableHeight / 250));
+    } else if (containerWidth < 1440) {
+      // Medium desktop: 5 columns
+      columnsCount = 5;
+      rowsCount = Math.max(3, Math.floor(availableHeight / 280));
+    } else {
+      // Large desktop: 6+ columns
+      columnsCount = Math.floor(containerWidth / 250);
+      rowsCount = Math.max(3, Math.floor(availableHeight / 300));
+    }
 
-  newGridCount = Math.min(columnsCount * rowsCount, 50); // Max 50 items
-  newGridCount = Math.max(4, newGridCount); // Min 4 items
+    newGridCount = Math.min(columnsCount * rowsCount, 50); // Max 50 items
+    newGridCount = Math.max(4, newGridCount); // Min 4 items
 
-  console.log('📊 Grid calculation:', {
-    columnsCount,
-    rowsCount, 
-    newGridCount,
-    expandedGrid
-  });
+    console.log("📊 Grid calculation:", {
+      columnsCount,
+      rowsCount,
+      newGridCount,
+      expandedGrid,
+    });
 
-  setBaseGridCount(newGridCount);
-  
-  if (!expandedGrid) {
-    setGridItemCount(newGridCount);
-  }
-}, [expandedGrid]);
+    setBaseGridCount(newGridCount);
+
+    if (!expandedGrid) {
+      setGridItemCount(newGridCount);
+    }
+  }, [expandedGrid]);
 
   useEffect(() => {
     // Initial calculation
@@ -1673,55 +1851,20 @@ export const ElementDefaultScreen = (): JSX.Element => {
   }, [calculateOptimalGridSize]);
 
   const forceLayoutRecalc = useCallback(() => {
-  if (gridContainerRef.current) {
-    const container = gridContainerRef.current;
-    
-    // Trigger reflow
-    container.style.display = 'none';
-    container.offsetHeight; // Force reflow
-    container.style.display = '';
-    
-    // Recalculate grid
-    setTimeout(() => {
-      calculateOptimalGridSize();
-    }, 50);
-  }
-}, [calculateOptimalGridSize]);
-
-useEffect(() => {
-  let lastWidth = 0;
-  let lastHeight = 0;
-  
-  const checkLayoutShift = () => {
     if (gridContainerRef.current) {
-      const rect = gridContainerRef.current.getBoundingClientRect();
-      const currentWidth = rect.width;
-      const currentHeight = rect.height;
-      
-      // If significant size change detected
-      if (Math.abs(currentWidth - lastWidth) > 10 || 
-          Math.abs(currentHeight - lastHeight) > 10) {
-        
-        console.log('🔄 Layout shift detected, recalculating...', {
-          oldSize: { width: lastWidth, height: lastHeight },
-          newSize: { width: currentWidth, height: currentHeight }
-        });
-        
-        forceLayoutRecalc();
-        
-        lastWidth = currentWidth;
-        lastHeight = currentHeight;
-      }
+      const container = gridContainerRef.current;
+
+      // Trigger reflow
+      container.style.display = "none";
+      container.offsetHeight; // Force reflow
+      container.style.display = "";
+
+      // Recalculate grid
+      setTimeout(() => {
+        calculateOptimalGridSize();
+      }, 50);
     }
-  };
-
-  const observer = new ResizeObserver(checkLayoutShift);
-  if (gridContainerRef.current) {
-    observer.observe(gridContainerRef.current);
-  }
-
-  return () => observer.disconnect();
-}, [forceLayoutRecalc]);
+  }, [calculateOptimalGridSize]);
 
   useEffect(() => {
     if (!expandedGrid) {
@@ -3027,9 +3170,9 @@ useEffect(() => {
                             (s) => s.sessionId === currentSessionId
                           );
                           if (session) {
-                            return `${currentSessionImageIndex + 1}`;
+                            return `${currentSessionImageIndex + 1}.`;
                           } else {
-                            return "1";
+                            return "1.";
                           }
                         })()}
 

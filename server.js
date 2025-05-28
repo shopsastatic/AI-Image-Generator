@@ -413,6 +413,7 @@ app.post('/api/chatgpt', async (req, res) => {
   try {
     console.log('Using OpenAI API key:', process.env.OPENAI_API_KEY ? 'API key is set' : 'API key is missing');
 
+    // 🔧 Input handling - giữ nguyên như file gốc
     const sizeMapping = {
       'Square': '1024x1024',
       'Portrait': '1024x1536', 
@@ -420,42 +421,40 @@ app.post('/api/chatgpt', async (req, res) => {
       'auto': 'auto'
     };
 
-    const qualityMapping = {
-      'High': 'high',
-      'Medium': 'medium', 
-      'Low': 'low'
-    };
-
     const requestedSize = req.body.selectedSize || req.body.size || 'auto';
-    const requestedQuality = req.body.quality || 'Low';
     const openaiSize = sizeMapping[requestedSize] || 'auto';
-    const openaiQuality = qualityMapping[requestedQuality] || 'low';
+    const convertToBase64 = req.body.convertToBase64 !== false; // ✅ Giữ nguyên từ file gốc
 
     console.log(`Size mapping: ${requestedSize} → ${openaiSize}`);
-    console.log(`Quality mapping: ${requestedQuality} → ${openaiQuality}`);
+    console.log(`Convert to base64: ${convertToBase64}`);
 
-    // ✅ Correct parameters for gpt-image-1
+    // 🔧 Request body - cập nhật để tương thích với gpt-image-1
     const requestBody = {
-      model: "gpt-image-1", // ✅ Correct model name
+      model: "gpt-image-1",
       prompt: req.body.prompt,
       n: 1,
       size: openaiSize,
-      quality: openaiQuality, // ✅ Correct quality values: high, medium, low
-      output_format: "png", // ✅ gpt-image-1 specific parameter
-      background: "auto", // ✅ gpt-image-1 specific parameter
+      quality: 'low', // ✅ Hardcoded như file gốc
+      output_format: "png",
+      background: "auto",
     };
 
-    console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
+    console.log('📤 Request to OpenAI:', JSON.stringify({
+      model: requestBody.model,
+      size: requestBody.size,
+      quality: requestBody.quality,
+      promptLength: requestBody.prompt.length
+    }, null, 2));
 
     const response = await openai.images.generate(requestBody);
 
     console.log('OpenAI API response status: SUCCESS');
-    console.log('Response keys:', Object.keys(response.data[0] || {}));
-    
-    // ✅ gpt-image-1 returns b64_json directly, not url
+    console.log('Response structure:', Object.keys(response.data[0] || {}));
+
+    // 🎯 Output handling - xử lý b64_json như code mới
     const imageData = response.data[0];
-    const base64Data = imageData?.b64_json;
-    
+    const base64Data = imageData?.b64_json; // ✅ Xử lý như code mới
+
     console.log('Base64 data available:', !!base64Data);
     console.log('Base64 data length:', base64Data?.length || 0);
 
@@ -467,23 +466,40 @@ app.post('/api/chatgpt', async (req, res) => {
       });
     }
 
-    // ✅ Convert base64 to data URL
+    // ✅ Convert base64 to data URL - như code mới
     const dataUrl = `data:image/png;base64,${base64Data}`;
     
     console.log(`✅ Successfully generated image with gpt-image-1`);
     console.log(`📏 Base64 size: ${Math.round(base64Data.length / 1024)}KB`);
 
-    // Return in the expected format
+    // 🔄 Response format - kết hợp cả hai phong cách
+    if (convertToBase64) {
+      // Trả về format tương thích với code cũ nhưng dữ liệu từ b64_json
+      return res.json({
+        data: [{
+          url: dataUrl, // ✅ Data URL từ base64
+          original_url: null, // Không có URL gốc với gpt-image-1
+          converted: true,
+          size: base64Data.length,
+          contentType: 'image/png',
+        }],
+        original: response.data,
+        usage: response.usage // ✅ Thông tin usage từ gpt-image-1
+      });
+    }
+
+    // Fallback - trả về base64 trực tiếp
+    console.log('Returning base64 data directly');
     res.json({
       data: [{
-        url: dataUrl, // ✅ Return as data URL for compatibility
+        url: dataUrl,
         b64_json: base64Data,
         converted: true,
         size: base64Data.length,
         contentType: 'image/png',
       }],
       original: response.data,
-      usage: response.usage // ✅ gpt-image-1 includes usage info
+      usage: response.usage
     });
 
   } catch (error) {
@@ -493,10 +509,9 @@ app.post('/api/chatgpt', async (req, res) => {
       code: error.code,
       type: error.type,
       response: error.response?.data,
-      stack: error.stack
     });
 
-    // More detailed error response
+    // ✅ Error handling chi tiết như code mới
     res.status(error.status || 500).json({
       error: error.message || 'OpenAI API Error',
       details: error.response?.data || null,

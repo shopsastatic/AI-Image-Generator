@@ -1579,7 +1579,7 @@ button {
 
 .session-possition {
   font-weight: 600;
-  font-size: 40px;
+  font-size: 32px;
   display: flex;
   align-items: center;
   gap: 20px;
@@ -2776,13 +2776,13 @@ button {
   color: #374151;
 }
 
-.html-content strong {
+.html-content strong, .html-content b {
   font-weight: 600;
 }
 
-.html-content br {
+/* .html-content br {
   display: none;
-}
+} */
 
 .html-content p {
   margin: 0 0 12px 0;

@@ -481,11 +481,10 @@ Editorial Disguise: [specific_method]
 **Headlines:** [Curiosity-driven headline]
 
 **Primary Text:**
-```
+
 [Story hook opening]
 [Social proof or credibility element]
 [Soft CTA with curiosity gap]
-```
 
 **Descriptions:** [Benefit reinforcement]
 
@@ -496,11 +495,10 @@ Editorial Disguise: [specific_method]
 **Headlines:** [Benefit-focused headline]
 
 **Primary Text:**
-```
+
 [Problem agitation opening]
 [Solution tease with benefit]
 [Urgency or scarcity element]
-```
 
 **Descriptions:** [Urgency/curiosity element]
 
