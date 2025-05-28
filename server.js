@@ -150,22 +150,57 @@ app.use((req, res, next) => {
 });
 
 // Load and cache instructions
-let cachedInstructions = null;
-let instructionsHash = null;
+let instructionsCache = new Map();
+let instructionsHashes = new Map();
 
-const loadInstructions = () => {
+const loadInstructions = (category = 'google_prompt') => {
   try {
-    if (!cachedInstructions) {
-      const instructionsPath = path.join(process.cwd(), 'static', 'instructions.txt');
-      cachedInstructions = fs.readFileSync(instructionsPath, 'utf8');
-      instructionsHash = Buffer.from(cachedInstructions).toString('base64').slice(0, 16);
-      console.log('📋 Instructions loaded and cached');
-      console.log('📏 Instructions length:', cachedInstructions.length, 'characters');
+    // Kiểm tra cache trước
+    if (instructionsCache.has(category)) {
+      console.log(`📋 Using cached instructions for: ${category}`);
+      return instructionsCache.get(category);
     }
-    return cachedInstructions;
+
+    // Mapping category to filename
+    const fileMapping = {
+      'google_prompt': 'instructions_google_prompt.txt',
+      'facebook_prompt': 'instructions_facebook_prompt.txt',
+      // Fallback cho legacy
+      'default': 'instructions.txt'
+    };
+
+    const filename = fileMapping[category] || fileMapping['google_prompt'];
+    const instructionsPath = path.join(process.cwd(), 'static', filename);
+
+    console.log(`📂 Loading instructions from: ${filename}`);
+
+    // Đọc file
+    const instructions = fs.readFileSync(instructionsPath, 'utf8');
+    
+    // Cache instructions
+    instructionsCache.set(category, instructions);
+    
+    // Tạo hash cho file
+    const hash = Buffer.from(instructions).toString('base64').slice(0, 16);
+    instructionsHashes.set(category, hash);
+
+    console.log(`✅ Instructions loaded for ${category}:`, {
+      filename,
+      length: instructions.length,
+      hash
+    });
+
+    return instructions;
   } catch (error) {
-    console.error('❌ Error loading instructions:', error);
-    throw new Error('Failed to load instructions');
+    console.error(`❌ Error loading instructions for ${category}:`, error);
+    
+    // Fallback: thử load default instructions
+    if (category !== 'default') {
+      console.log('🔄 Fallback to default instructions...');
+      return loadInstructions('default');
+    }
+    
+    throw new Error(`Failed to load instructions for category: ${category}`);
   }
 };
 
@@ -199,13 +234,23 @@ app.post('/api/claude-cached', async (req, res) => {
   console.log('Received request for Claude API with caching');
 
   try {
-    const { model, max_tokens, user_prompt, enable_caching = true } = req.body;
+    const { 
+      model, 
+      max_tokens, 
+      user_prompt, 
+      enable_caching = true,
+      category = 'google_prompt', // ✅ THÊM DEFAULT
+      subcategory = '' // ✅ THÊM DEFAULT
+    } = req.body;
 
     if (!process.env.CLAUDE_API_KEY) {
       throw new Error('Claude API key not configured');
     }
 
-    const instructions = loadInstructions();
+    console.log(`📂 Using category: ${category}, subcategory: ${subcategory}`);
+
+    // ✅ LOAD INSTRUCTIONS THEO CATEGORY
+    const instructions = loadInstructions(category);
 
     const requestBody = {
       model: model || "claude-sonnet-4-20250514",
@@ -230,15 +275,16 @@ app.post('/api/claude-cached', async (req, res) => {
           }
         }
       ];
-      console.log('📋 Using cached system instructions');
+      console.log(`📋 Using cached system instructions for: ${category}`);
     } else {
       requestBody.system = instructions;
-      console.log('📋 Using non-cached system instructions');
+      console.log(`📋 Using non-cached system instructions for: ${category}`);
     }
 
     console.log('🚀 Making cached API call to Claude...');
     console.log('📏 System prompt length:', instructions.length, 'chars');
     console.log('📏 User prompt length:', user_prompt.length, 'chars');
+    console.log('📂 Category:', category);
 
     const response = await axios.post('https://api.anthropic.com/v1/messages', requestBody, {
       headers: {
@@ -258,14 +304,15 @@ app.post('/api/claude-cached', async (req, res) => {
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
         cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
-        cache_read_input_tokens: usage.cache_read_input_tokens || 0
+        cache_read_input_tokens: usage.cache_read_input_tokens || 0,
+        category: category
       });
 
       if (usage.cache_creation_input_tokens) {
-        console.log('🆕 Cache created:', usage.cache_creation_input_tokens, 'tokens');
+        console.log(`🆕 Cache created for ${category}:`, usage.cache_creation_input_tokens, 'tokens');
       }
       if (usage.cache_read_input_tokens) {
-        console.log('💰 Cache hit! Saved:', usage.cache_read_input_tokens, 'tokens');
+        console.log(`💰 Cache hit for ${category}! Saved:`, usage.cache_read_input_tokens, 'tokens');
       }
     }
 
@@ -280,28 +327,71 @@ app.post('/api/claude-cached', async (req, res) => {
 
 // Endpoint to get caching statistics
 app.get('/api/cache-stats', (req, res) => {
-  res.json({
-    instructions_loaded: !!cachedInstructions,
-    instructions_length: cachedInstructions?.length || 0,
-    instructions_hash: instructionsHash,
+  const stats = {
     caching_enabled: true,
-    min_cache_size: 1024
-  });
+    min_cache_size: 1024,
+    cached_categories: []
+  };
+
+  // Thống kê từng category
+  for (const [category, instructions] of instructionsCache.entries()) {
+    stats.cached_categories.push({
+      category,
+      length: instructions.length,
+      hash: instructionsHashes.get(category)
+    });
+  }
+
+  res.json(stats);
 });
+
 
 // Endpoint to refresh instructions cache
 app.post('/api/refresh-cache', (req, res) => {
   try {
-    cachedInstructions = null;
-    instructionsHash = null;
-    const instructions = loadInstructions();
+    const { category } = req.body;
 
-    res.json({
-      success: true,
-      message: 'Instructions cache refreshed',
-      length: instructions.length,
-      hash: instructionsHash
-    });
+    if (category) {
+      // Refresh specific category
+      instructionsCache.delete(category);
+      instructionsHashes.delete(category);
+      const instructions = loadInstructions(category);
+
+      res.json({
+        success: true,
+        message: `Instructions cache refreshed for category: ${category}`,
+        category,
+        length: instructions.length,
+        hash: instructionsHashes.get(category)
+      });
+    } else {
+      // Refresh all cache
+      instructionsCache.clear();
+      instructionsHashes.clear();
+
+      // Load all known categories
+      const categories = ['google_prompt', 'facebook_prompt'];
+      const refreshed = [];
+
+      for (const cat of categories) {
+        try {
+          const instructions = loadInstructions(cat);
+          refreshed.push({
+            category: cat,
+            length: instructions.length,
+            hash: instructionsHashes.get(cat)
+          });
+        } catch (error) {
+          console.warn(`⚠️ Failed to refresh ${cat}:`, error.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'All instructions cache refreshed',
+        refreshed
+      });
+    }
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -577,7 +667,7 @@ app.get('/api/proxy-image-direct', async (req, res) => {
 });
 
 // Initialize instructions on startup
-loadInstructions();
+// loadInstructions();
 
 app.post('/api/auth/login', async (req, res) => {
   try {

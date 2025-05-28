@@ -18,21 +18,23 @@ const parseClaudeResponse = (response: string) => {
 
     try {
       // ===== IMPROVED JSON PARSING =====
-      
+
       // Method 1: Look for JSON array pattern
       const jsonArrayMatch = response.match(/\[\s*\{[\s\S]*?\}\s*\]/);
-      
+
       if (jsonArrayMatch) {
         console.log("✅ Found JSON array pattern");
         const jsonText = jsonArrayMatch[0];
         console.log("JSON text to parse:", jsonText.substring(0, 200) + "...");
-        
+
         try {
           const jsonData = JSON.parse(jsonText);
-          
+
           if (Array.isArray(jsonData) && jsonData.length > 0) {
-            console.log(`✅ JSON parsing successful: ${jsonData.length} prompts found`);
-            
+            console.log(
+              `✅ JSON parsing successful: ${jsonData.length} prompts found`
+            );
+
             // Map JSON data and ensure all required fields exist
             const prompts = jsonData.map((item, index) => {
               console.log(`📋 Processing prompt ${index + 1}:`, {
@@ -40,20 +42,21 @@ const parseClaudeResponse = (response: string) => {
                 hasImageName: !!item.imageName,
                 hasAdCreativeA: !!item.adCreativeA,
                 hasAdCreativeB: !!item.adCreativeB,
-                promptLength: item.prompt?.length || 0
+                promptLength: item.prompt?.length || 0,
               });
-              
+
               return {
                 prompt: item.prompt || `Generated prompt ${index + 1}`,
                 adCreativeA: item.adCreativeA || "",
                 adCreativeB: item.adCreativeB || "",
-                imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
+                imageName:
+                  item.imageName || `ai-image-${index + 1}-${Date.now()}`,
                 targeting: item.targeting || "",
               };
             });
 
             console.log(`🎯 Final result: ${prompts.length} prompts ready`);
-            
+
             return {
               prompts: prompts,
               fullResponse: response,
@@ -68,23 +71,26 @@ const parseClaudeResponse = (response: string) => {
 
       // Method 2: Look for ```json code blocks
       const codeBlockMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
-      
+
       if (codeBlockMatch) {
         console.log("✅ Found JSON code block");
         const jsonText = codeBlockMatch[1].trim();
         console.log("Code block JSON:", jsonText.substring(0, 200) + "...");
-        
+
         try {
           const jsonData = JSON.parse(jsonText);
-          
+
           if (Array.isArray(jsonData) && jsonData.length > 0) {
-            console.log(`✅ Code block parsing successful: ${jsonData.length} prompts found`);
-            
+            console.log(
+              `✅ Code block parsing successful: ${jsonData.length} prompts found`
+            );
+
             const prompts = jsonData.map((item, index) => ({
               prompt: item.prompt || `Generated prompt ${index + 1}`,
               adCreativeA: item.adCreativeA || "",
               adCreativeB: item.adCreativeB || "",
-              imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
+              imageName:
+                item.imageName || `ai-image-${index + 1}-${Date.now()}`,
               targeting: item.targeting || "",
             }));
 
@@ -100,31 +106,43 @@ const parseClaudeResponse = (response: string) => {
       }
 
       // Method 3: Manual object extraction for multiple objects
-      const objectMatches = [...response.matchAll(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g)];
-      
+      const objectMatches = [
+        ...response.matchAll(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g),
+      ];
+
       if (objectMatches.length >= 2) {
-        console.log(`✅ Found ${objectMatches.length} object patterns, attempting to parse each`);
-        
+        console.log(
+          `✅ Found ${objectMatches.length} object patterns, attempting to parse each`
+        );
+
         const parsedObjects = [];
-        
+
         for (let i = 0; i < objectMatches.length; i++) {
           try {
             const objText = objectMatches[i][0];
-            console.log(`Parsing object ${i + 1}:`, objText.substring(0, 100) + "...");
-            
+            console.log(
+              `Parsing object ${i + 1}:`,
+              objText.substring(0, 100) + "..."
+            );
+
             const obj = JSON.parse(objText);
             if (obj.prompt || obj.imageName) {
               parsedObjects.push(obj);
               console.log(`✅ Object ${i + 1} parsed successfully`);
             }
           } catch (objError) {
-            console.log(`⚠️ Failed to parse object ${i + 1}:`, objError.message);
+            console.log(
+              `⚠️ Failed to parse object ${i + 1}:`,
+              objError.message
+            );
           }
         }
-        
+
         if (parsedObjects.length > 0) {
-          console.log(`✅ Manual parsing successful: ${parsedObjects.length} objects found`);
-          
+          console.log(
+            `✅ Manual parsing successful: ${parsedObjects.length} objects found`
+          );
+
           const prompts = parsedObjects.map((item, index) => ({
             prompt: item.prompt || `Generated prompt ${index + 1}`,
             adCreativeA: item.adCreativeA || "",
@@ -143,7 +161,6 @@ const parseClaudeResponse = (response: string) => {
 
       // If all JSON methods fail, try text parsing
       throw new Error("No valid JSON found, trying text parsing");
-      
     } catch (jsonError) {
       console.log("⚠️ All JSON parsing methods failed, trying text parsing...");
       console.log("JSON Error:", jsonError.message);
@@ -151,7 +168,7 @@ const parseClaudeResponse = (response: string) => {
       // ===== ENHANCED TEXT PARSING =====
       const prompts = [];
 
-      // Split by common prompt separators  
+      // Split by common prompt separators
       const sections = response.split(
         /(?:Prompt \d+|Image \d+|Version \d+|\d+\.\s*|Object \d+)/i
       );
@@ -162,26 +179,39 @@ const parseClaudeResponse = (response: string) => {
         // Multiple prompts detected
         for (let i = 1; i < sections.length; i++) {
           const section = sections[i].trim();
-          if (section && section.length > 50) { // Only process substantial sections
-            console.log(`Processing text section ${i}:`, section.substring(0, 100) + "...");
+          if (section && section.length > 50) {
+            // Only process substantial sections
+            console.log(
+              `Processing text section ${i}:`,
+              section.substring(0, 100) + "..."
+            );
             const promptData = parseIndividualPrompt(section, i);
             prompts.push(promptData);
           }
         }
       } else {
         // Single section - try to extract multiple prompts
-        console.log("Single section detected, searching for multiple prompts within...");
-        
+        console.log(
+          "Single section detected, searching for multiple prompts within..."
+        );
+
         // Look for multiple "Create an image" patterns
-        const imagePrompts = [...response.matchAll(/Create an image[^.]*?(?=Create an image|$)/gis)];
-        
+        const imagePrompts = [
+          ...response.matchAll(/Create an image[^.]*?(?=Create an image|$)/gis),
+        ];
+
         if (imagePrompts.length > 1) {
-          console.log(`Found ${imagePrompts.length} "Create an image" patterns`);
-          
+          console.log(
+            `Found ${imagePrompts.length} "Create an image" patterns`
+          );
+
           imagePrompts.forEach((match, index) => {
             const promptText = match[0].trim();
             if (promptText.length > 50) {
-              console.log(`Processing image prompt ${index + 1}:`, promptText.substring(0, 100) + "...");
+              console.log(
+                `Processing image prompt ${index + 1}:`,
+                promptText.substring(0, 100) + "..."
+              );
               const promptData = parseIndividualPrompt(promptText, index + 1);
               prompts.push(promptData);
             }
@@ -195,7 +225,7 @@ const parseClaudeResponse = (response: string) => {
       }
 
       console.log(`✅ Text parsing completed: ${prompts.length} prompts found`);
-      
+
       return {
         prompts: prompts,
         fullResponse: response,
@@ -204,7 +234,7 @@ const parseClaudeResponse = (response: string) => {
   } catch (error) {
     console.error("❌ Error parsing Claude response:", error);
     console.log("Full response for debugging:", response);
-    
+
     return {
       prompts: [
         {
@@ -969,6 +999,14 @@ export const ElementDefaultScreen = (): JSX.Element => {
     Portrait: 0,
     Landscape: 0,
   });
+
+  const [selectedCategory, setSelectedCategory] = useState<{
+    category: string;
+    subcategory: string;
+  }>({
+    category: 'google_prompt',
+    subcategory: ''
+  });
   const [numberOfImages, setNumberOfImages] = useState<number>(1);
   const [selectedQuality, setSelectedQuality] = useState<string>("Low");
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -1021,6 +1059,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
       imageIndex?: number;
     }>
   >([]);
+
+  const handleCategoryChange = (category: string, subcategory: string) => {
+    console.log('📂 Category changed:', { category, subcategory });
+    setSelectedCategory({ category, subcategory });
+  };
 
   // State for the currently viewed image (for gallery mode)
   const [currentViewImageIndex, setCurrentViewImageIndex] = useState<
@@ -1369,8 +1412,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
             user_prompt: userPrompt,
             enable_caching: true,
             session_id: sessionId,
+            category: selectedCategory.category,
+            subcategory: selectedCategory.subcategory,
           }),
-          signal, // Truyền signal
+          signal,
         });
 
         // Kiểm tra lại nếu đã bị hủy
@@ -1444,6 +1489,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
               quality: selectedQuality,
               AdCreativeA: promptData.adCreativeA,
               AdCreativeB: promptData.adCreativeB,
+              targeting: promptData.targeting,
+              imageName: promptData.imageName,
               isSuccess:
                 imageBase64.startsWith("data:") &&
                 !imageBase64.includes(
@@ -1470,6 +1517,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
               quality: selectedQuality,
               AdCreativeA: promptData.adCreativeA,
               AdCreativeB: promptData.adCreativeB,
+              targeting: promptData.targeting,
+              imageName: promptData.imageName,
               isSuccess: false,
             };
           });
@@ -1607,6 +1656,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
           claudeResponse: claudeResponseText,
           AdCreativeA: convertedImages[0].AdCreativeA,
           AdCreativeB: convertedImages[0].AdCreativeB,
+          targeting: convertedImages[0].targeting,
+          imageName: convertedImages[0].imageName,
         };
 
         setSelectedImages((prevImages) => [
@@ -1780,47 +1831,27 @@ export const ElementDefaultScreen = (): JSX.Element => {
     const container = gridContainerRef.current;
     const rect = container.getBoundingClientRect();
     const containerWidth = rect.width;
-    const availableHeight = window.innerHeight - 300; // Trừ header và controls
+    const containerHeight = rect.height;
 
-    console.log("📐 Container dimensions:", {
-      width: containerWidth,
-      height: availableHeight,
+    console.log("📐 Container size:", {
+      containerWidth,
+      containerHeight,
     });
 
-    let columnsCount, rowsCount, newGridCount;
+    // Kích thước tối thiểu cho grid item (bao gồm cả gap)
+    const minItemSize = 200; // Base size cho 1 item
+    const gap = 16; // Gap từ CSS
 
-    // Responsive breakpoints
-    if (containerWidth < 480) {
-      // Mobile: 2 columns
-      columnsCount = 2;
-      rowsCount = Math.max(3, Math.floor(availableHeight / 200));
-    } else if (containerWidth < 768) {
-      // Tablet: 3 columns
-      columnsCount = 3;
-      rowsCount = Math.max(3, Math.floor(availableHeight / 220));
-    } else if (containerWidth < 1024) {
-      // Small desktop: 4 columns
-      columnsCount = 4;
-      rowsCount = Math.max(3, Math.floor(availableHeight / 250));
-    } else if (containerWidth < 1440) {
-      // Medium desktop: 5 columns
-      columnsCount = 5;
-      rowsCount = Math.max(3, Math.floor(availableHeight / 280));
-    } else {
-      // Large desktop: 6+ columns
-      columnsCount = Math.floor(containerWidth / 250);
-      rowsCount = Math.max(3, Math.floor(availableHeight / 300));
-    }
+    // Tính số cột (đơn giản)
+    const columnsCount = Math.max(2, Math.floor(containerWidth / minItemSize));
 
-    newGridCount = Math.min(columnsCount * rowsCount, 50); // Max 50 items
-    newGridCount = Math.max(4, newGridCount); // Min 4 items
+    // Tính số hàng dựa trên container height (bảo toàn để không bị cắt)
+    const maxRowsBasedOnHeight = Math.max(2, Math.floor(containerHeight / minItemSize));
+    
+    // Giới hạn số hàng để không quá nhiều items
+    const rowsCount = Math.min(maxRowsBasedOnHeight, Math.ceil(48 / columnsCount)); // Max 48 items
 
-    console.log("📊 Grid calculation:", {
-      columnsCount,
-      rowsCount,
-      newGridCount,
-      expandedGrid,
-    });
+    const newGridCount = columnsCount * rowsCount;
 
     setBaseGridCount(newGridCount);
 
@@ -1850,22 +1881,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
     };
   }, [calculateOptimalGridSize]);
 
-  const forceLayoutRecalc = useCallback(() => {
-    if (gridContainerRef.current) {
-      const container = gridContainerRef.current;
-
-      // Trigger reflow
-      container.style.display = "none";
-      container.offsetHeight; // Force reflow
-      container.style.display = "";
-
-      // Recalculate grid
-      setTimeout(() => {
-        calculateOptimalGridSize();
-      }, 50);
-    }
-  }, [calculateOptimalGridSize]);
-
   useEffect(() => {
     if (!expandedGrid) {
       setGridItemCount(baseGridCount);
@@ -1892,13 +1907,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
   // Handle history item click - store the complete session data
   const handleHistoryItemClick = (item: any) => {
     if (item.list && item.list.length > 0) {
-      // Kiểm tra session đã tồn tại
+      // Check if session already exists
       const sessionIndex = selectedSessions.findIndex(
         (s) => s.sessionId === item.id
       );
 
       if (sessionIndex === -1) {
-        // Thêm session mới
+        // Add new session
         setSelectedSessions((prevSessions) => [
           {
             sessionId: item.id,
@@ -1910,7 +1925,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
           ...prevSessions,
         ]);
 
-        // Thêm ảnh đầu tiên vào grid
+        // Add first image to grid
         const firstImage = item.list[0];
         setSelectedImages((prevImages) => {
           const newImageObj = {
@@ -1923,19 +1938,20 @@ export const ElementDefaultScreen = (): JSX.Element => {
             imageIndex: 0,
           };
 
-          // Thêm vào đầu, KHÔNG cắt theo gridItemCount
           const updatedImages = [newImageObj, ...prevImages];
 
-          // Tự động mở rộng grid nếu cần
-          if (updatedImages.length > gridItemCount) {
+          // Auto-expand grid if needed
+          if (updatedImages.length > baseGridCount) {
+            console.log(
+              "📈 Auto-expanding grid for new images:",
+              updatedImages.length
+            );
             setExpandedGrid(true);
             setGridItemCount(updatedImages.length);
           }
 
           return updatedImages;
         });
-      } else {
-        console.warn(`Session ${item.id} đã tồn tại trong selectedSessions`);
       }
     }
   };
@@ -2440,7 +2456,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
               <div className="horizontal-border-2">
                 <div className="heading-images-2">Images</div>
 
-                <div className="flex-10">
+                <div className="flex gap-10">
                   {selectedImages.length > 0 && (
                     <button className="button-5" onClick={clearAllImages}>
                       <div className="overlap-group-3">
@@ -2875,7 +2891,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       ></textarea>
                     </div>
 
-                    <div className="flex-10 justify-between prompt-actions">
+                    <div className="flex gap-10 justify-between prompt-actions">
                       <div className="flex">
                         <div
                           className="button-menu-2"
@@ -2915,6 +2931,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           setNumberOfImages={setNumberOfImages}
                           imageSizes={imageSizes}
                           setImageSizes={setImageSizes}
+                          onCategoryChange={handleCategoryChange}
                         />
 
                         <div className="button-6" onClick={handleUploadClick}>
@@ -2986,7 +3003,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
             <div className="background-6">
               <div className="text-wrapper-10">A</div>
             </div>
-            <div className="flex-10">
+            <div className="flex gap-10">
               <div className="container-9">
                 <div className="container-10">
                   <div className="text-wrapper-9">AI IMAGE</div>
@@ -3176,7 +3193,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           }
                         })()}
 
-                      <div className="flex-10">
+                      <div className="flex gap-10">
                         {currentSessionId &&
                           selectedSessions.find(
                             (s) => s.sessionId === currentSessionId
@@ -3447,6 +3464,84 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                 __html:
                                   adCreativeText ||
                                   "No Ad Creative B available",
+                              }}
+                            />
+                          );
+                        })()}
+                      </ImageInfoDropdown>
+
+                      <ImageInfoDropdown
+                        title="Targeting"
+                        copyContent={(() => {
+                          let targetingText = "";
+
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (
+                              session &&
+                              session.list[currentSessionImageIndex] &&
+                              session.list[currentSessionImageIndex].targeting // ✅ SỬA: xóa .AdCreativeB
+                            ) {
+                              targetingText =
+                                session.list[currentSessionImageIndex]
+                                  .targeting;
+                            }
+                          } else if (
+                            selectedImages[currentViewImageIndex]?.targeting
+                          ) {
+                            targetingText =
+                              selectedImages[currentViewImageIndex].targeting;
+                          }
+
+                          return targetingText || "No Targeting available";
+                        })()}
+                      >
+                        {(() => {
+                          let targetingText = "";
+
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (
+                              session &&
+                              session.list[currentSessionImageIndex] &&
+                              session.list[currentSessionImageIndex].targeting
+                            ) {
+                              targetingText =
+                                session.list[currentSessionImageIndex]
+                                  .targeting;
+                            }
+                          } else if (
+                            selectedImages[currentViewImageIndex]?.targeting
+                          ) {
+                            targetingText =
+                              selectedImages[currentViewImageIndex].targeting;
+                          }
+
+                          // ✅ THÊM DEBUG LOGGING
+                          console.log("🎯 Targeting debug:", {
+                            currentSessionId,
+                            currentSessionImageIndex,
+                            targetingText,
+                            sessionExists: !!selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            ),
+                            imageExists: currentSessionId
+                              ? !!selectedSessions.find(
+                                  (s) => s.sessionId === currentSessionId
+                                )?.list[currentSessionImageIndex]
+                              : false,
+                          });
+
+                          return (
+                            <div
+                              className="prompt-text html-content"
+                              dangerouslySetInnerHTML={{
+                                __html:
+                                  targetingText || "No Targeting available",
                               }}
                             />
                           );

@@ -9,7 +9,6 @@ import {
   Shuffle,
   RotateCw,
 } from "lucide-react";
-import "./ImageSizeSelector.css";
 
 interface ImageSizeSelectorProps {
   numberOfImages: number;
@@ -26,6 +25,17 @@ interface ImageSizeSelectorProps {
       Landscape: number;
     }>
   >;
+  // Optional category selection props
+  onCategoryChange?: (category: string, subcategory: string) => void;
+}
+
+interface CategoryOption {
+  value: string;
+  label: string;
+}
+
+interface ChildOptions {
+  [key: string]: CategoryOption[];
 }
 
 const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
@@ -33,13 +43,15 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   setNumberOfImages,
   imageSizes,
   setImageSizes,
+  onCategoryChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(true);
+  const [parentCategory, setParentCategory] = useState('design');
+  const [childOption, setChildOption] = useState('modern');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
-  const thumbRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartValue, setDragStartValue] = useState(0);
@@ -49,6 +61,26 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     { key: "Portrait", name: "Portrait", icon: Smartphone },
     { key: "Landscape", name: "Landscape", icon: Monitor },
   ];
+
+  const categoryOptions: CategoryOption[] = [
+    { value: 'google_prompt', label: 'Google' },
+    { value: 'facebook_prompt', label: 'Facebook' },
+  ];
+
+  const childOptions: ChildOptions = {
+    google_prompt: [
+      // { value: 'modern', label: 'Modern' },
+      // { value: 'classic', label: 'Classic' },
+      // { value: 'minimal', label: 'Minimal' },
+      // { value: 'artistic', label: 'Artistic' }
+    ],
+    facebook_prompt: [
+      // { value: 'tech', label: 'Technology' },
+      // { value: 'fashion', label: 'Fashion' },
+      // { value: 'food', label: 'Food & Beverage' },
+      // { value: 'real-estate', label: 'Real Estate' }
+    ]
+  };
 
   const generateRandomDistribution = (total: number) => {
     if (total <= 0) return { Square: 0, Portrait: 0, Landscape: 0 };
@@ -143,6 +175,29 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     }
   };
 
+  const handleParentCategoryChange = (newCategory: string) => {
+    setParentCategory(newCategory);
+    const availableOptions = childOptions[newCategory] || [];
+    if (availableOptions.length > 0) {
+      setChildOption(availableOptions[0].value);
+      if (onCategoryChange) {
+        onCategoryChange(newCategory, availableOptions[0].value);
+      }
+    } else {
+      setChildOption('');
+      if (onCategoryChange) {
+        onCategoryChange(newCategory, '');
+      }
+    }
+  };
+
+  const handleChildOptionChange = (newChildOption: string) => {
+    setChildOption(newChildOption);
+    if (onCategoryChange) {
+      onCategoryChange(parentCategory, newChildOption);
+    }
+  };
+
   const calculateValueFromPosition = (clientX: number) => {
     if (!sliderRef.current) return numberOfImages;
 
@@ -159,15 +214,13 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const rect = sliderRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    // Always start dragging from current mouse position
     setDragStartX(e.clientX);
     setDragStartValue(numberOfImages);
     setIsDragging(true);
 
-    // If clicking on track (not near thumb), jump to that position first
     const clickX = e.clientX;
     const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 9;
-    const thumbWidth = 20; // Increase hit area for better UX
+    const thumbWidth = 20;
 
     if (Math.abs(clickX - thumbPosition) > thumbWidth) {
       const newValue = calculateValueFromPosition(clickX);
@@ -183,7 +236,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
       const rect = sliderRef.current.getBoundingClientRect();
       const deltaX = e.clientX - dragStartX;
       const deltaPercentage = deltaX / rect.width;
-      const deltaValue = deltaPercentage * 9; // 9 is the range (10 - 1)
+      const deltaValue = deltaPercentage * 9;
 
       const newValue = Math.max(
         1,
@@ -228,184 +281,203 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const sliderPercentage = ((numberOfImages - 1) / 9) * 100;
 
   return (
-    <div className="image-size-selector-container" ref={dropdownRef}>
-      {/* Trigger Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`trigger-button ${isOpen ? "open" : ""}`}
-      >
-        <Image className="trigger-icon" />
-        <div className="trigger-content">
-          <span className="trigger-text">
+    <div className="p-4">
+      <div className="relative inline-block" ref={dropdownRef}>
+        {/* Compact Trigger Button */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={`inline-flex items-center space-x-2 bg-white rounded-sm px-3 py-2 text-sm border ${
+            isOpen ? 'border-2 border-gray-700' : 'border-gray-300'
+          }`}
+        >
+          <Image className="w-4 h-4 text-gray-700" />
+          <span className="text-sm font-medium text-gray-700">
             {isAutoMode
               ? `Auto • ${numberOfImages}`
               : `${getCurrentTotal()}/${numberOfImages}`}
           </span>
-        </div>
-      </button>
+        </button>
 
-      {/* Dropdown */}
-      {isOpen && (
-        <div className="image-selector-dropdown">
-          {/* Header */}
-          <div className="selector-header">
-            <div className="header-row">
-              <span className="header-title">Image Settings</span>
-              <button
-                onClick={toggleAutoMode}
-                className={`auto-toggle ${isAutoMode ? "active" : ""}`}
-              >
-                <Shuffle className="auto-icon" />
-                <span>Auto</span>
-              </button>
-            </div>
-
-            {/* Total Images Slider */}
-            <div className="slider-section">
-              <div className="slider-header">
-                <span className="slider-label">Total Images</span>
-                <span className="slider-value">{numberOfImages}</span>
-              </div>
-              <div className="slider-container">
-                <div
-                  ref={sliderRef}
-                  className="slider-track"
-                  onMouseDown={handleMouseDown}
-                  style={{ cursor: isDragging ? "grabbing" : "pointer" }}
-                >
-                  <div
-                    className="slider-progress"
-                    style={{ width: `${sliderPercentage}%` }}
-                  />
-                  <div
-                    ref={thumbRef}
-                    className="slider-thumb"
-                    style={{
-                      left: `${
-                        sliderPercentage === 0
-                          ? 2
-                          : sliderPercentage === 100
-                          ? 98
-                          : 2 + sliderPercentage * 0.96
-                      }%`,
-                      transform: `translateX(-50%) translateY(-50%)`,
-                      cursor: isDragging ? "grabbing" : "grab",
-                      scale: isDragging ? "1.1" : "1",
-                    }}
-                  />
+        {/* Enhanced Dropdown */}
+        {isOpen && (
+          <div className="absolute bottom-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-xl z-50 w-80 overflow-hidden">
+            
+            {/* Header Row: Title + Auto + Images */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 border-b border-gray-200">
+              <span className="text-sm font-medium text-gray-700">Settings</span>
+              
+              <div className="flex items-center space-x-3">
+                {/* Images Slider */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-600">Images</span>
+                  <div className="w-16 relative">
+                    <div 
+                      ref={sliderRef}
+                      className="h-1.5 bg-gray-200 rounded-full cursor-pointer"
+                      onMouseDown={handleMouseDown}
+                      style={{ cursor: isDragging ? "grabbing" : "pointer" }}
+                    >
+                      <div 
+                        className="absolute top-0 left-0 h-1.5 rounded-full bg-gray-700"
+                        style={{ width: `${sliderPercentage + 6}%` }}
+                      />
+                      <div 
+                        className="absolute top-1/2 transform w-3 h-3 bg-white border border-gray-700 rounded-full cursor-grab"
+                        style={{ 
+                          left: `calc(${sliderPercentage}%)`,
+                          cursor: isDragging ? "grabbing" : "grab",
+                          transform: `translateY(-50%) ${isDragging ? 'scale(1.1)' : 'scale(1)'}`
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-gray-700 min-w-[16px]">{numberOfImages}</span>
                 </div>
-                {/* Range markers */}
-                <div className="slider-markers">
-                  <span className="marker-start">1</span>
-                  <span className="marker-end">10</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Status bar for manual mode */}
-          {!isAutoMode && (
-            <div className="status-bar">
-              <span
-                className={
-                  getCurrentTotal() === numberOfImages
-                    ? "complete"
-                    : "remaining"
-                }
-              >
-                {getCurrentTotal() === numberOfImages
-                  ? "All images assigned"
-                  : `${numberOfImages - getCurrentTotal()} images remaining`}
-              </span>
-            </div>
-          )}
-
-          {/* Format Controls */}
-          <div className="formats-section">
-            {formats.map((format) => {
-              const IconComponent = format.icon;
-              const quantity =
-                imageSizes[format.key as keyof typeof imageSizes];
-              const canIncrease =
-                !isAutoMode && getCurrentTotal() < numberOfImages;
-              const canDecrease = !isAutoMode && quantity > 0;
-
-              return (
-                <div
-                  key={format.key}
-                  className={`format-row ${
-                    isAutoMode ? "auto-mode" : "manual-mode"
+                {/* Auto Button */}
+                <button
+                  onClick={toggleAutoMode}
+                  className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    isAutoMode 
+                      ? 'bg-gray-200 text-gray-700' 
+                      : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  {/* Format Info */}
-                  <div className="format-info">
-                    <div className="format-icon">
-                      <IconComponent className="format-icon-svg" />
-                    </div>
-                    <span
-                      className={`format-name ${
-                        isAutoMode ? "auto-mode" : "manual-mode"
+                  <Shuffle className="w-3 h-3" />
+                  <span>Auto</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Category Selection Row */}
+            <div className="flex items-center space-x-2 p-3 border-b border-gray-200 bg-gray-25">
+              <select
+                value={parentCategory}
+                onChange={(e) => handleParentCategoryChange(e.target.value)}
+                className="flex-1 px-2 py-1.5 text-xs bg-white border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500"
+              >
+                {categoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={childOption}
+                onChange={(e) => handleChildOptionChange(e.target.value)}
+                disabled={!childOptions[parentCategory] || childOptions[parentCategory].length === 0}
+                className={`flex-1 px-2 py-1.5 text-xs bg-white border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 ${
+                  !childOptions[parentCategory] || childOptions[parentCategory].length === 0 
+                    ? 'opacity-50 cursor-not-allowed bg-gray-50' 
+                    : ''
+                }`}
+              >
+                {!childOptions[parentCategory] || childOptions[parentCategory].length === 0 ? (
+                  <option value="">No options</option>
+                ) : (
+                  childOptions[parentCategory].map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            {/* Status & Format Controls */}
+            <div className="p-3">
+              {/* Status for manual mode */}
+              {!isAutoMode && (
+                <div className="mb-3 text-center">
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    getCurrentTotal() === numberOfImages 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {getCurrentTotal() === numberOfImages 
+                      ? '✓ Complete' 
+                      : `${numberOfImages - getCurrentTotal()} images remaining`}
+                  </span>
+                </div>
+              )}
+
+              {/* Format List */}
+              <div className="space-y-2">
+                {formats.map((format) => {
+                  const IconComponent = format.icon;
+                  const quantity = imageSizes[format.key as keyof typeof imageSizes];
+                  const canIncrease = !isAutoMode && getCurrentTotal() < numberOfImages;
+                  const canDecrease = !isAutoMode && quantity > 0;
+                  
+                  return (
+                    <div
+                      key={format.key}
+                      className={`flex items-center justify-between px-3 py-2 border rounded-lg transition-colors ${
+                        isAutoMode 
+                          ? 'bg-gray-50 border-gray-200' 
+                          : 'border-gray-200 hover:border-gray-300'
                       }`}
                     >
-                      {format.name}
-                    </span>
-                  </div>
+                      <div className="flex items-center space-x-3">
+                        <div className="w-6 h-6 rounded flex items-center justify-center border border-gray-300 bg-white">
+                          <IconComponent className="w-3.5 h-3.5 text-gray-600" />
+                        </div>
+                        <span 
+                          className={`text-sm font-medium ${
+                            isAutoMode ? 'text-gray-400' : 'text-gray-700'
+                          }`}
+                        >
+                          {format.name}
+                        </span>
+                      </div>
 
-                  {/* Display quantity in auto mode */}
-                  {isAutoMode && (
-                    <div className="quantity-display auto-quantity">
-                      {quantity}
+                      {isAutoMode ? (
+                        <></>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => updateQuantity(format.key as keyof typeof imageSizes, -1)}
+                            disabled={!canDecrease}
+                            className="w-6 h-6 rounded border border-gray-400 flex items-center justify-center text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          
+                          <div className="w-6 text-center text-sm font-bold text-gray-700">
+                            {quantity}
+                          </div>
+                          
+                          <button
+                            onClick={() => updateQuantity(format.key as keyof typeof imageSizes, 1)}
+                            disabled={!canIncrease}
+                            className="w-6 h-6 rounded border border-gray-400 flex items-center justify-center text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  );
+                })}
+              </div>
 
-                  {/* Quantity Controls - Only show in manual mode */}
-                  {!isAutoMode && (
-                    <div className="quantity-controls">
-                      <button
-                        onClick={() =>
-                          updateQuantity(
-                            format.key as keyof typeof imageSizes,
-                            -1
-                          )
-                        }
-                        disabled={!canDecrease}
-                        className="quantity-btn"
-                      >
-                        <Minus className="quantity-icon" />
-                      </button>
-
-                      <div className="quantity-display">{quantity}</div>
-
-                      <button
-                        onClick={() =>
-                          updateQuantity(
-                            format.key as keyof typeof imageSizes,
-                            1
-                          )
-                        }
-                        disabled={!canIncrease}
-                        className="quantity-btn"
-                      >
-                        <Plus className="quantity-icon" />
-                      </button>
-                    </div>
-                  )}
+              {/* Reset Button */}
+              {!isAutoMode && (
+                <div className="mt-3 text-center">
+                  <button
+                    onClick={resetQuantities}
+                    className="inline-flex items-center space-x-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    <RotateCw className="w-3 h-3" />
+                    <span>Reset All</span>
+                  </button>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Footer - Only show Reset in Manual mode */}
-          {!isAutoMode && (
-            <div className="selector-footer">
-              <button onClick={resetQuantities} className="reset-btn">
-                <RotateCw className="reset-icon" />
-                <span>Reset</span>
-              </button>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

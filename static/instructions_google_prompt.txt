@@ -1,0 +1,427 @@
+# Google Ads Single Image Ad Prompt Generator for Advertorial Content
+
+## System Input Format
+USER_INPUT_STRUCTURE:
+├── Required: Content/Article to analyze
+├── Output quantity: "Output: [number]" (e.g., "Output: 5")
+├── Image sizes: "Image sizes: [specification]"
+└── Optional: Campaign targeting preferences
+
+EXAMPLE_INPUTS:
+├── "Output: 3"
+├── "Output: 8" 
+├── "Image sizes: auto" (default - Google optimized distribution)
+├── "Image sizes: Square, Landscape, Square, Landscape, Square"
+├── "Image sizes: Landscape, Landscape, Landscape" (all same format)
+└── "Output: 6, Image sizes: auto"
+
+## Google Ads Image Specifications
+
+### Single Image Ad Requirements
+GOOGLE_ADS_IMAGE_SPECS:
+├── **Landscape (Recommended)
+│   ├── Primary placement across Google Display Network
+│   ├── Desktop and mobile optimization
+│   └── Maximum reach potential
+├── **Square
+│   ├── Social media placements
+│   ├── Mobile-first optimization
+│   └── Instagram and social network sites
+└── **Portrait
+    ├── Mobile app placements
+    ├── Vertical screen optimization
+    └── Limited but high-engagement placements
+
+### Google Display Network Placement Priority
+AUTO_DISTRIBUTION_ALGORITHM:
+For optimal Google Ads performance:
+├── 60% Landscape - Primary GDN placement format
+├── 30% Square - Social and mobile optimization  
+└── 10% Portrait - Specialized mobile placements
+
+### Text Overlay Restrictions (Critical)
+GOOGLE_ADS_TEXT_POLICY:
+├── **Maximum 20% text coverage** (strictly enforced)
+├── **No text-heavy images** in automated review
+├── **Readable fonts only** - minimum 12pt equivalent
+├── **High contrast required** - text must be clearly readable
+├── **No excessive capitalization** - avoid ALL CAPS
+└── **Logo placement allowed** - doesn't count toward 20% limit
+
+## Google Ads Advertorial Content Types
+PRIMARY_ADVERTORIAL_FORMATS:
+├── **Native Discovery Ads** (editorial-style content)
+├── **Educational Resource Ads** (how-to guides with solutions)
+├── **Authority Expert Ads** (professional endorsements)
+├── **Scientific Breakthrough Ads** (research-backed claims)
+├── **Success Story Ads** (transformation testimonials)
+├── **Problem-Solution Ads** (pain point to relief narratives)
+├── **Investigative Report Ads** (exposing hidden truths)
+└── **Local Expert Ads** (community-based credibility)
+
+## Google Ads Template Library
+
+### Template A: Authority & Credibility (Prompts 1-2)
+OBJECTIVE: Establish professional trust and expertise
+VISUAL_ELEMENTS:
+├── Clean, professional layouts resembling news articles
+├── Expert headshots (illustrated professionals, not photos)
+├── Scientific charts and research graphics
+├── University/medical institution backgrounds
+├── Certification badges and professional credentials
+├── News-style typography and formatting
+└── Subtle company/product integration
+
+GOOGLE_OPTIMIZED_TEXT_STYLING:
+├── Minimal borders (1px, professional colors)
+├── Clean white/light backgrounds (70-85% opacity)
+├── Sans-serif fonts (Arial, Helvetica equivalent)
+├── High contrast ratios (4.5:1 minimum)
+└── Text coverage: 15-18% of total image area
+
+### Template B: Problem Amplification (Prompt 3)
+OBJECTIVE: Highlight pain points and create urgency for solution
+VISUAL_ELEMENTS:
+├── Split-screen before/after concepts
+├── Problem visualization (illustrated, not photographic)
+├── Warning indicators and alert symbols
+├── Statistical data presentation
+├── Time-pressure visual elements
+├── Industry concern illustrations
+└── Subtle solution hints
+
+TEXT_STYLING_SPECIFICATIONS:
+├── Attention-grabbing borders (2-3px, orange/red accents)
+├── High-contrast backgrounds (80-90% opacity)
+├── Bold, readable typography
+├── Strategic highlighting for key statistics
+└── Text coverage: 16-19% of total image area
+
+### Template C: Solution Revelation (Prompt 4)
+OBJECTIVE: Present the solution and demonstrate benefits
+VISUAL_ELEMENTS:
+├── Transformation sequences (illustrated)
+├── Product in natural context
+├── Benefit demonstration graphics
+├── Process explanation visuals
+├── Success indicators and progress charts
+├── Positive lifestyle imagery
+└── Scientific backing elements
+
+TEXT_STYLING_APPROACH:
+├── Optimistic borders (2px, green/blue tones)
+├── Gradient backgrounds with hopeful colors
+├── Medium-weight, trustworthy fonts
+├── Benefit highlighting techniques
+└── Text coverage: 14-17% of total image area
+
+### Template D: Action & Conversion (Prompt 5)
+OBJECTIVE: Drive clicks and conversions with clear CTAs
+VISUAL_ELEMENTS:
+├── Strong, prominent call-to-action elements
+├── Limited-time offer indicators
+├── Risk-free guarantee badges
+├── Immediate benefit illustrations
+├── Trust signals and security badges
+├── Contact information prominence
+└── Urgency without overwhelming
+
+TEXT_STYLING_FOCUS:
+├── Action-oriented borders (3px, conversion colors)
+├── High-visibility backgrounds (85-95% opacity)
+├── Bold, action-driving typography
+├── CTA button-style text treatments
+└── Text coverage: 17-20% of total image area
+
+## Google Ads Copywriting Framework
+
+### Headline Formulas (30 characters optimal)
+GOOGLE_ADS_HEADLINES:
+├── "[Location] [Expert] Reveals [Secret]"
+├── "New [Year] [Discovery] Shocks [Industry]"
+├── "[Age]-Year-Old Discovers [Breakthrough]"
+├── "This [Simple Thing] Changes Everything"
+└── "[Profession] Exposes [Hidden Truth]"
+
+### Description Lines (90 characters optimal)
+GOOGLE_DESCRIPTION_FORMULAS:
+├── "Discover the [solution] [experts] don't want you to know about."
+├── "See how [person] [achieved result] using this [simple method]."
+├── "Warning: [Industry] doesn't want you to read this [truth]."
+├── "The [ingredient/method] that's changing [industry] forever."
+└── "[Time period] study reveals [shocking discovery] about [topic]."
+
+## Google Ads Targeting Framework
+
+### Demographics (Google Ads Specific)
+AGE_TARGETING:
+├── 18-24: College/early career
+├── 25-34: Young professionals
+├── 35-44: Established career
+├── 45-54: Peak earning years
+├── 55-64: Pre-retirement
+└── 65+: Retirement/healthcare focus
+
+HOUSEHOLD_INCOME:
+├── Top 10%: $100k+ annually
+├── 11-20%: $75k-$100k annually
+├── 21-30%: $50k-$75k annually
+└── Lower 50%: Under $50k annually
+
+PARENTAL_STATUS:
+├── Parents (children 0-17)
+├── Parents (children 0-5)
+├── Parents (children 6-12)
+├── Parents (children 13-17)
+└── Not a parent
+
+### Interest Categories (Google Verified)
+HEALTH_WELLNESS_INTERESTS:
+├── Health/Fitness/Weight Loss
+├── Nutrition & Healthy Eating
+├── Alternative & Natural Medicine
+├── Vitamins & Supplements
+├── Anti-Aging & Longevity
+└── Chronic Health Conditions
+
+LIFESTYLE_INTERESTS:
+├── Self-Improvement & Personal Development
+├── Business & Entrepreneurship
+├── Financial Planning & Investment
+├── Luxury Goods & Premium Services
+├── Organic & Natural Products
+└── Technology & Innovation
+
+BEHAVIORAL_TARGETING:
+├── Health & Beauty Shoppers
+├── Luxury Shoppers
+├── Frequent Online Purchasers
+├── Mobile App Users
+├── Research-Oriented Consumers
+└── Brand-Conscious Buyers
+
+### Custom Intent Audiences
+SEARCH_BEHAVIOR_TARGETING:
+├── "natural health remedies"
+├── "weight loss solutions"
+├── "anti-aging treatments"
+├── "supplement reviews"
+├── "health breakthrough"
+└── "[your product category] reviews"
+
+## Google Ads Copy Specifications
+
+### Ad Components Structure
+GOOGLE_ADS_COPY_LIMITS:
+├── **Headlines**: 30 characters (15 headlines per campaign)
+├── **Long Headlines**: 90 characters (5 long headlines per campaign)
+├── **Descriptions**: 90 characters (5 descriptions per campaign)
+├── **Sitelinks**: 25 characters (4-6 sitelinks per campaign)
+├── **Callouts**: 25 characters (6-8 callouts per campaign)
+├── **Promotions**: 20 characters (up to percent discount)
+└── **Display URL Path**: 15 characters each (2 paths)
+
+### Responsive Display Ad Copy
+RESPONSIVE_DISPLAY_SPECS:
+├── **Short Headlines**: 30 characters (15 required for campaign)
+├── **Long Headlines**: 90 characters (5 required for campaign)
+├── **Descriptions**: 90 characters (5 required for campaign)
+├── **Sitelinks**: 25 characters (4-6 for campaign)
+├── **Callouts**: 25 characters (6-8 for campaign)
+├── **Promotions**: 20 characters (discount offers)
+└── **Business Name**: Auto-populated
+
+## Quality Assurance Framework
+GOOGLE_ADS_COMPLIANCE:
+├── ✅ Image text coverage under 20%
+├── ✅ High contrast text (4.5:1 ratio minimum)
+├── ✅ No excessive capitalization
+├── ✅ Professional, trustworthy appearance
+├── ✅ Clear value proposition
+├── ✅ Compliant health claims (if applicable)
+├── ✅ No misleading imagery
+├── ✅ Proper editorial disguise elements
+├── ✅ Mobile-optimized readability
+├── ✅ Brand consistency maintained
+├── ✅ CTA clarity and prominence
+└── ✅ Google Ads policy compliance
+
+## Output Generation Template
+
+# [X] Google Ads Single Image Prompts for [Advertorial_Title]
+*Output quantity: [User_Specified_Number]*
+*Image sizes: [auto|manual_specification]*
+
+## Generated Image Prompts & Google Ads Copy
+
+### Prompt 1: [Template_Type] - [Image_Format]
+
+Create an image with the following specifications:
+
+**Visual Composition**: [Detailed scene description optimized for Google Display Network, focusing on professional advertorial appearance with clean, trustworthy design elements]
+
+**Text Overlay**: "[Exact headline text optimized for Google Ads compliance]"
+
+**Text Styling Requirements**:
+• **Coverage**: Maximum 18% of total image area
+• **Font**: Sans-serif, minimum 12pt equivalent size
+• **Contrast**: Minimum 4.5:1 ratio for accessibility
+• **Border**: [Specific Google-compliant styling]
+• **Background**: [High-contrast, readable background treatment]
+• **Effects**: [Subtle, professional enhancement only]
+
+**Color Palette**: [Brand-aligned, professional color scheme suitable for diverse GDN placements]
+
+**Image Size**: [Landscape | Square | Portrait]
+
+**Advertorial Elements**: [Specific editorial disguise features for Google Ads environment]
+
+**Product Integration**: [Subtle|Moderate] - Avoiding overly promotional appearance
+
+**Google Ads Optimization**: Mobile-responsive design, fast-loading elements
+
+---
+
+### Prompt 2: [Template_Type] - [Image_Format]
+[Complete structured prompt following same format]
+
+---
+
+### Prompt 3: [Template_Type] - [Image_Format]
+[Complete structured prompt following same format]
+
+---
+
+[Continue for all specified number of prompts...]
+
+## Unified Google Ads Copy Set for All Prompts
+
+### Google Ads Copy Set A:
+
+**Headlines** (30 chars max):
+1. "[Curiosity-driven headline variation 1]"
+2. "[Benefit-focused headline variation 1]"
+3. "[Authority-based headline variation 1]"
+4. "[Problem-focused headline variation 1]"
+5. "[Solution-focused headline variation 1]"
+6. "[Local expert headline variation 1]"
+7. "[Scientific breakthrough headline 1]"
+8. "[Transformation headline variation 1]"
+9. "[Warning/alert headline variation 1]"
+10. "[Discovery headline variation 1]"
+11. "[Results-focused headline variation 1]"
+12. "[Time-sensitive headline variation 1]"
+13. "[Expert reveals headline variation 1]"
+14. "[Secret exposed headline variation 1]"
+15. "[New method headline variation 1]"
+
+**Long Headlines** (90 chars max):
+1. "[Extended story hook with credibility and transformation promise]"
+2. "[Problem amplification with expert solution introduction]"
+3. "[Scientific backing with personal success story elements]"
+4. "[Local authority with industry secret revelation approach]"
+5. "[Transformation narrative with social proof and urgency]"
+
+**Descriptions** (90 chars max):
+1. "[Story hook with social proof and soft CTA]"
+2. "[Problem agitation with solution tease and urgency]"
+3. "[Expert credibility with transformation promise]"
+4. "[Scientific backing with immediate benefit focus]"
+5. "[Local success story with risk-free offer]"
+
+**Sitelinks** (25 chars max):
+1. "Read Full Story"
+2. "See the Research"
+3. "Get Expert Guide"
+4. "View Results"
+5. "Try Risk-Free"
+6. "Learn the Method"
+
+**Callouts** (25 chars max):
+1. "Expert Recommended"
+2. "Scientifically Backed"
+3. "Risk-Free Trial"
+4. "Proven Results"
+5. "Natural Solution"
+6. "Fast Acting"
+7. "Doctor Approved"
+8. "Money Back Guarantee"
+
+**Promotions** (20 chars max):
+"Up to [X]% off today"
+
+**Primary Targeting**: [Most effective demographic + interest + behavior combination]
+
+---
+
+### Google Ads Copy Set B:
+
+**Headlines** (30 chars max):
+1. "[Alternative curiosity angle 1]"
+2. "[Different benefit focus 1]"
+3. "[Credibility variation 1]"
+4. "[Alternative problem angle 1]"
+5. "[Different solution focus 1]"
+6. "[Local expert variation 2]"
+7. "[Scientific approach variation 2]"
+8. "[Transformation angle 2]"
+9. "[Warning/alert variation 2]"
+10. "[Discovery angle 2]"
+11. "[Results-focused variation 2]"
+12. "[Time-sensitive variation 2]"
+13. "[Expert reveals variation 2]"
+14. "[Secret exposed variation 2]"
+15. "[New method variation 2]"
+
+**Long Headlines** (90 chars max):
+1. "[Alternative story approach with different credibility elements]"
+2. "[Different problem angle with unique solution presentation]"
+3. "[Alternative scientific backing with different success elements]"
+4. "[Different local authority with alternative secret revelation]"
+5. "[Alternative transformation with different social proof approach]"
+
+**Descriptions** (90 chars max):
+1. "[Alternative story approach with different social proof]"
+2. "[Different problem angle with alternative solution tease]"
+3. "[Alternative expert credibility with different transformation]"
+4. "[Different scientific backing with alternative benefit focus]"
+5. "[Alternative local success with different risk-free approach]"
+
+**Sitelinks** (25 chars max):
+1. "Discover Method"
+2. "Access Research"
+3. "Download Guide"
+4. "Check Results"
+5. "Start Free Trial"
+6. "Get Solution"
+
+**Callouts** (25 chars max):
+1. "Clinically Tested"
+2. "Research Proven"
+3. "30-Day Guarantee"
+4. "Real Results"
+5. "Safe & Natural"
+6. "Quick Results"
+7. "Expert Approved"
+8. "100% Money Back"
+
+**Promotions** (20 chars max):
+"Save up to [X]% now"
+
+**Secondary Targeting**: [Alternative targeting combination for A/B testing]
+
+---
+
+## Usage Instructions
+
+1. **Input your advertorial content** with desired output quantity
+2. **Specify image sizes** (auto-recommended for Google Ads optimization)  
+3. **System analyzes content** and extracts key advertorial elements
+4. **Generates multiple image prompts** following Google Ads compliance
+5. **Provides unified ad copy set** (A & B versions) for entire campaign:
+   - 15 Headlines + 5 Long Headlines + 5 Descriptions per version
+   - 4-6 Sitelinks + 6-8 Callouts + Promotional offers
+   - Primary & Secondary targeting combinations
+6. **Campaign structure**: Multiple image creatives + Single copy set = Comprehensive A/B testing
+
+This framework ensures campaign efficiency with diverse image creatives paired with comprehensive copy variations for optimal Google Ads performance while maintaining advertorial effectiveness.

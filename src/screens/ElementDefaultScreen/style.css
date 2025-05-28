@@ -1,3 +1,4 @@
+@import "tailwindcss";
 /* ===== BASE STYLES ===== */
 :root {
   --primary-color: #10a37f;
@@ -33,7 +34,6 @@
   --subheader-height: 56px;
   --transition-standard: all 0.3s ease;
 }
-
 html {
   overflow-x: hidden;
   box-sizing: border-box;
