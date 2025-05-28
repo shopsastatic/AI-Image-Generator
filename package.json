@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.7",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.9.0",
     "body-parser": "^2.2.0",
     "concurrently": "^9.1.2",
@@ -25,7 +26,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.8.1",
-    "tailwindcss": "^4.1.7"
+    "tailwindcss": "^4.1.7",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@storybook/addon-essentials": "^8.4.6",

@@ -1,11 +1,8 @@
-// ===== SERVER SIDE UPDATES (server.js) =====
-
 import express from 'express';
 import axios from 'axios';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import OpenAI from 'openai';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
@@ -13,15 +10,22 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { fileURLToPath } from 'url';
 
+// Load environment variables FIRST
 dotenv.config();
+
+// Now import and create JobManager AFTER env vars are loaded
+import { createJobManager } from './JobManager.js';
+
+console.log('🔍 Environment variables loaded:');
+console.log('OPENAI_API_KEY_1:', process.env.OPENAI_API_KEY_1 ? 'SET' : 'NOT SET');
+console.log('OPENAI_API_KEY_2:', process.env.OPENAI_API_KEY_2 ? 'SET' : 'NOT SET');
+console.log('CLAUDE_API_KEY:', process.env.CLAUDE_API_KEY ? 'SET' : 'NOT SET');
+
+// Create JobManager instance after environment variables are loaded
+const jobManager = createJobManager();
 
 const app = express();
 const port = process.env.PORT || 3001;
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: "https://api.laozhang.ai/v1/"
-});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,12 +44,11 @@ app.use(bodyParser.json());
 
 const AUTH_CONFIG = {
   JWT_SECRET: process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex'),
-  JWT_EXPIRES_IN: '7d', // 7 days
+  JWT_EXPIRES_IN: '7d',
   COOKIE_NAME: 'ai_image_auth',
-  COOKIE_MAX_AGE: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+  COOKIE_MAX_AGE: 7 * 24 * 60 * 60 * 1000,
 };
 
-// Password hashing utilities
 const hashPassword = (password, salt) => {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
 };
@@ -55,33 +58,10 @@ const verifyPassword = (inputPassword, storedHash, salt) => {
   return crypto.timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(inputHash, 'hex'));
 };
 
-// Generate a random salt for password hashing
 const generateSalt = () => {
   return crypto.randomBytes(32).toString('hex');
 };
 
-// Create hashed credentials on first run (you can remove this after setup)
-const createHashedCredentials = () => {
-  const plainPassword = process.env.LOGIN_PASSWORD;
-  if (!plainPassword) {
-    console.log('⚠️ LOGIN_PASSWORD not set in .env file');
-    return null;
-  }
-
-  const salt = generateSalt();
-  const hashedPassword = hashPassword(plainPassword, salt);
-
-  console.log('🔐 Generated credentials:');
-  console.log('Salt:', salt);
-  console.log('Hash:', hashedPassword);
-  console.log('Add these to your .env file:');
-  console.log(`LOGIN_PASSWORD_SALT=${salt}`);
-  console.log(`LOGIN_PASSWORD_HASH=${hashedPassword}`);
-
-  return { salt, hashedPassword };
-};
-
-// Initialize auth credentials
 let authCredentials = null;
 if (process.env.LOGIN_PASSWORD_HASH && process.env.LOGIN_PASSWORD_SALT) {
   authCredentials = {
@@ -89,22 +69,16 @@ if (process.env.LOGIN_PASSWORD_HASH && process.env.LOGIN_PASSWORD_SALT) {
     hashedPassword: process.env.LOGIN_PASSWORD_HASH,
     email: process.env.LOGIN_EMAIL || 'admin@aiimage.com'
   };
-  console.log('✅ Authentication credentials loaded');
 } else if (process.env.LOGIN_PASSWORD) {
-  console.log('🔄 First time setup - generating hashed credentials...');
-  const generated = createHashedCredentials();
-  if (generated) {
-    authCredentials = {
-      salt: generated.salt,
-      hashedPassword: generated.hashedPassword,
-      email: process.env.LOGIN_EMAIL || 'admin@aiimage.com'
-    };
-  }
-} else {
-  console.log('⚠️ No authentication credentials configured');
+  const salt = generateSalt();
+  const hashedPassword = hashPassword(process.env.LOGIN_PASSWORD, salt);
+  authCredentials = {
+    salt: salt,
+    hashedPassword: hashedPassword,
+    email: process.env.LOGIN_EMAIL || 'admin@aiimage.com'  
+  };
 }
 
-// JWT utilities
 const generateToken = (payload) => {
   return jwt.sign(payload, AUTH_CONFIG.JWT_SECRET, {
     expiresIn: AUTH_CONFIG.JWT_EXPIRES_IN
@@ -119,7 +93,17 @@ const verifyToken = (token) => {
   }
 };
 
-// Middleware to check authentication
+app.use((req, res, next) => {
+  req.cookies = {};
+  if (req.headers.cookie) {
+    req.headers.cookie.split(';').forEach(cookie => {
+      const [name, value] = cookie.trim().split('=');
+      req.cookies[name] = decodeURIComponent(value || '');
+    });
+  }
+  next();
+});
+
 const requireAuth = (req, res, next) => {
   const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
 
@@ -137,278 +121,252 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
-// Add cookie parser middleware (add this after other middleware)
-app.use((req, res, next) => {
-  // Simple cookie parser
-  req.cookies = {};
-  if (req.headers.cookie) {
-    req.headers.cookie.split(';').forEach(cookie => {
-      const [name, value] = cookie.trim().split('=');
-      req.cookies[name] = decodeURIComponent(value || '');
-    });
-  }
-  next();
-});
-
-// Load and cache instructions
-let instructionsCache = new Map();
-let instructionsHashes = new Map();
-
-const loadInstructions = (category = 'google_prompt') => {
+app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
   try {
-    // Kiểm tra cache trước
-    if (instructionsCache.has(category)) {
-      console.log(`📋 Using cached instructions for: ${category}`);
-      return instructionsCache.get(category);
-    }
-
-    // Mapping category to filename
-    const fileMapping = {
-      'google_prompt': 'instructions_google_prompt.txt',
-      'facebook_prompt': 'instructions_facebook_prompt.txt',
-      // Fallback cho legacy
-      'default': 'instructions.txt'
-    };
-
-    const filename = fileMapping[category] || fileMapping['google_prompt'];
-    const instructionsPath = path.join(process.cwd(), 'static', filename);
-
-    console.log(`📂 Loading instructions from: ${filename}`);
-
-    // Đọc file
-    const instructions = fs.readFileSync(instructionsPath, 'utf8');
-    
-    // Cache instructions
-    instructionsCache.set(category, instructions);
-    
-    // Tạo hash cho file
-    const hash = Buffer.from(instructions).toString('base64').slice(0, 16);
-    instructionsHashes.set(category, hash);
-
-    console.log(`✅ Instructions loaded for ${category}:`, {
-      filename,
-      length: instructions.length,
-      hash
-    });
-
-    return instructions;
-  } catch (error) {
-    console.error(`❌ Error loading instructions for ${category}:`, error);
-    
-    // Fallback: thử load default instructions
-    if (category !== 'default') {
-      console.log('🔄 Fallback to default instructions...');
-      return loadInstructions('default');
-    }
-    
-    throw new Error(`Failed to load instructions for category: ${category}`);
-  }
-};
-
-// Original Claude endpoint (keep for backward compatibility)
-app.post('/api/claude', async (req, res) => {
-  console.log('Received request for Claude API (non-cached)');
-
-  try {
-    console.log('Using API key:', process.env.CLAUDE_API_KEY ? 'API key is set' : 'API key is missing');
-
-    const response = await axios.post('https://api.anthropic.com/v1/messages', req.body, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01'
-      }
-    });
-
-    console.log('Claude API response status:', response.status);
-    res.json(response.data);
-  } catch (error) {
-    console.error('Claude API Error:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({
-      error: error.response?.data || error.message
-    });
-  }
-});
-
-// New cached Claude endpoint
-app.post('/api/claude-cached', async (req, res) => {
-  console.log('Received request for Claude API with caching');
-
-  try {
-    const { 
-      model, 
-      max_tokens, 
-      user_prompt, 
-      enable_caching = true,
-      category = 'google_prompt', // ✅ THÊM DEFAULT
-      subcategory = '' // ✅ THÊM DEFAULT
+    const {
+      sessionId,
+      userPrompt,
+      numberOfImages,
+      imageSizesString,
+      selectedQuality = 'low',
+      selectedCategory
     } = req.body;
 
-    if (!process.env.CLAUDE_API_KEY) {
-      throw new Error('Claude API key not configured');
-    }
-    
-
-    console.log(`📂 Using category: ${category}, subcategory: ${subcategory}`);
-
-    console.log(`\n📋 Loading instructions for category: "${category}"`);
-    const instructions = loadInstructions(category);
-    
-    // ✅ VERIFY instructions được load
-    const instructionsPreview = instructions.substring(0, 150).replace(/\n/g, '\\n');
-    console.log(`✅ Instructions loaded successfully:`);
-    console.log(`   📏 Length: ${instructions.length} chars`);
-    console.log(`   📝 Preview: "${instructionsPreview}..."`);
-
-    const requestBody = {
-      model: model || "claude-sonnet-4-20250514",
-      max_tokens: max_tokens || 8000,
-      messages: [
-        {
-          role: "user",
-          content: user_prompt
-        }
-      ]
-    };
-
-    // Add caching for system instructions if enabled and instructions are long enough
-    if (enable_caching && instructions.length > 1024) {
-      requestBody.system = [
-        {
-          type: "text",
-          text: instructions,
-          cache_control: {
-            type: "ephemeral",
-            ttl: "1h"
-          }
-        }
-      ];
-      console.log(`📋 Using cached system instructions for: ${category}`);
-    } else {
-      requestBody.system = instructions;
-      console.log(`📋 Using non-cached system instructions for: ${category}`);
+    if (!sessionId || !userPrompt || !numberOfImages) {
+      return res.status(400).json({
+        error: 'Missing required fields: sessionId, userPrompt, numberOfImages'
+      });
     }
 
-    console.log('🚀 Making cached API call to Claude...');
-    console.log('📏 System prompt length:', instructions.length, 'chars');
-    console.log('📏 User prompt length:', user_prompt.length, 'chars');
-    console.log('📂 Category:', category);
+    const jobId = await jobManager.createJob(
+      sessionId,
+      userPrompt,
+      numberOfImages,
+      imageSizesString || 'auto',
+      selectedQuality,
+      selectedCategory || { category: 'google_prompt', subcategory: '' }
+    );
 
-    const response = await axios.post('https://api.anthropic.com/v1/messages', requestBody, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'extended-cache-ttl-2025-04-11'
-      }
+    res.json({
+      success: true,
+      jobId: jobId,
+      totalImages: numberOfImages,
+      estimatedTime: numberOfImages * 15,
+      message: 'Job submitted successfully'
     });
 
-    console.log('✅ Claude API response status:', response.status);
-
-    // Log caching information
-    const usage = response.data.usage;
-    if (usage) {
-      console.log('📊 Token usage:', {
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
-        cache_read_input_tokens: usage.cache_read_input_tokens || 0,
-        category: category
-      });
-
-      if (usage.cache_creation_input_tokens) {
-        console.log(`🆕 Cache created for ${category}:`, usage.cache_creation_input_tokens, 'tokens');
-      }
-      if (usage.cache_read_input_tokens) {
-        console.log(`💰 Cache hit for ${category}! Saved:`, usage.cache_read_input_tokens, 'tokens');
-      }
-    }
-
-    res.json(response.data);
   } catch (error) {
-    console.error('❌ Claude Cached API Error:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({
-      error: error.response?.data || error.message
+    console.error('Job submission failed:', error);
+    res.status(500).json({
+      error: 'Failed to submit job',
+      message: error.message
     });
   }
 });
 
-// Endpoint to get caching statistics
-app.get('/api/cache-stats', (req, res) => {
-  const stats = {
-    caching_enabled: true,
-    min_cache_size: 1024,
-    cached_categories: []
-  };
-
-  // Thống kê từng category
-  for (const [category, instructions] of instructionsCache.entries()) {
-    stats.cached_categories.push({
-      category,
-      length: instructions.length,
-      hash: instructionsHashes.get(category)
-    });
-  }
-
-  res.json(stats);
-});
-
-
-// Endpoint to refresh instructions cache
-app.post('/api/refresh-cache', (req, res) => {
+app.get('/api/image-generation/status/:jobId', requireAuth, (req, res) => {
   try {
-    const { category } = req.body;
+    const { jobId } = req.params;
+    const status = jobManager.getJobStatus(jobId);
 
-    if (category) {
-      // Refresh specific category
-      instructionsCache.delete(category);
-      instructionsHashes.delete(category);
-      const instructions = loadInstructions(category);
-
-      res.json({
-        success: true,
-        message: `Instructions cache refreshed for category: ${category}`,
-        category,
-        length: instructions.length,
-        hash: instructionsHashes.get(category)
-      });
-    } else {
-      // Refresh all cache
-      instructionsCache.clear();
-      instructionsHashes.clear();
-
-      // Load all known categories
-      const categories = ['google_prompt', 'facebook_prompt'];
-      const refreshed = [];
-
-      for (const cat of categories) {
-        try {
-          const instructions = loadInstructions(cat);
-          refreshed.push({
-            category: cat,
-            length: instructions.length,
-            hash: instructionsHashes.get(cat)
-          });
-        } catch (error) {
-          console.warn(`⚠️ Failed to refresh ${cat}:`, error.message);
-        }
-      }
-
-      res.json({
-        success: true,
-        message: 'All instructions cache refreshed',
-        refreshed
+    if (!status) {
+      return res.status(404).json({
+        error: 'Job not found'
       });
     }
+
+    res.json({
+      success: true,
+      jobId: jobId,
+      ...status,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Status check failed:', error);
+    res.status(500).json({
+      error: 'Failed to check job status',
+      message: error.message
+    });
+  }
+});
+
+app.post('/api/image-generation/cancel/:jobId', requireAuth, (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const cancelled = jobManager.cancelJob(jobId);
+
+    if (!cancelled) {
+      return res.status(400).json({
+        error: 'Job cannot be cancelled (not found or already completed)'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Job cancelled successfully'
+    });
+
+  } catch (error) {
+    console.error('Job cancellation failed:', error);
+    res.status(500).json({
+      error: 'Failed to cancel job',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/image-generation/results/:jobId', requireAuth, (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = jobManager.getJob(jobId);
+
+    if (!job) {
+      return res.status(404).json({
+        error: 'Job not found'
+      });
+    }
+
+    if (job.status !== 'completed') {
+      return res.status(400).json({
+        error: 'Job not completed yet',
+        status: job.status
+      });
+    }
+
+    res.json({
+      success: true,
+      jobId: jobId,
+      sessionId: job.sessionId,
+      results: job.results,
+      progress: job.progress,
+      originalPrompt: job.userPrompt,
+      completedAt: job.updatedAt
+    });
+
+  } catch (error) {
+    console.error('Failed to get results:', error);
+    res.status(500).json({
+      error: 'Failed to get job results',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/system/stats', requireAuth, (req, res) => {
+  try {
+    const stats = jobManager.getStats();
+    
+    res.json({
+      success: true,
+      ...stats,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
   } catch (error) {
     res.status(500).json({
-      success: false,
-      error: error.message
+      error: 'Failed to get system stats',
+      message: error.message
     });
   }
 });
 
-// Image proxy endpoints (keep existing)
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!authCredentials) {
+      return res.status(500).json({
+        error: 'Authentication not configured on server'
+      });
+    }
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: 'Email and password are required'
+      });
+    }
+
+    const isEmailValid = email.toLowerCase().trim() === authCredentials.email.toLowerCase().trim();
+    const isPasswordValid = verifyPassword(password, authCredentials.hashedPassword, authCredentials.salt);
+
+    if (!isEmailValid || !isPasswordValid) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return res.status(401).json({
+        error: 'Invalid email or password'
+      });
+    }
+
+    const tokenPayload = {
+      email: authCredentials.email,
+      loginTime: Date.now(),
+      userAgent: req.headers['user-agent'] || 'unknown'
+    };
+
+    const token = generateToken(tokenPayload);
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: AUTH_CONFIG.COOKIE_MAX_AGE,
+      path: '/'
+    };
+
+    res.cookie(AUTH_CONFIG.COOKIE_NAME, token, cookieOptions);
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      user: {
+        email: authCredentials.email,
+        loginTime: tokenPayload.loginTime
+      }
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      error: 'Internal server error'
+    });
+  }
+});
+
+app.get('/api/auth/verify', (req, res) => {
+  const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
+
+  if (!token) {
+    return res.status(401).json({
+      error: 'No authentication token found'
+    });
+  }
+
+  const decoded = verifyToken(token);
+  if (!decoded) {
+    res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
+    return res.status(401).json({
+      error: 'Invalid or expired token'
+    });
+  }
+
+  res.json({
+    success: true,
+    user: {
+      email: decoded.email,
+      loginTime: decoded.loginTime
+    }
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
+
+  res.json({
+    success: true,
+    message: 'Logged out successfully'
+  });
+});
+
 app.post('/api/proxy-image', async (req, res) => {
   try {
     const { imageUrl } = req.body;
@@ -420,8 +378,6 @@ app.post('/api/proxy-image', async (req, res) => {
         success: false
       });
     }
-
-    console.log('Proxying image:', imageUrl.substring(0, 100) + '...');
 
     const fetchOptions = {
       method: 'GET',
@@ -441,17 +397,12 @@ app.post('/api/proxy-image', async (req, res) => {
     if (imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net')) {
       fetchOptions.headers['Referer'] = 'https://platform.openai.com/';
       fetchOptions.headers['Origin'] = 'https://platform.openai.com';
-      console.log('Detected OpenAI URL, using special headers');
     }
 
     const response = await fetch(imageUrl, fetchOptions);
 
-    console.log(`Fetch response status: ${response.status} ${response.statusText}`);
-
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      console.error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-
       return res.status(500).json({
         error: `Failed to fetch image: ${response.status} ${response.statusText}`,
         message: errorText,
@@ -463,10 +414,7 @@ app.post('/api/proxy-image', async (req, res) => {
     const buffer = await response.buffer();
     const contentType = response.headers.get('content-type') || 'image/jpeg';
 
-    console.log(`Buffer created, size: ${buffer.length} bytes, type: ${contentType}`);
-
     if (buffer.length === 0) {
-      console.error('Empty buffer received');
       return res.status(500).json({
         error: 'Empty image data received',
         success: false,
@@ -476,8 +424,6 @@ app.post('/api/proxy-image', async (req, res) => {
 
     const base64 = buffer.toString('base64');
     const dataUrl = `data:${contentType};base64,${base64}`;
-
-    console.log(`Successfully converted image to base64, size: ${Math.round(base64.length / 1024)}KB`);
 
     res.json({
       success: true,
@@ -504,176 +450,6 @@ app.post('/api/proxy-image', async (req, res) => {
   }
 });
 
-// ChatGPT endpoint (keep existing)
-app.post('/api/chatgpt', async (req, res) => {
-  console.log('Received request for ChatGPT API');
-
-  try {
-    console.log('Using OpenAI API key:', process.env.OPENAI_API_KEY ? 'API key is set' : 'API key is missing');
-
-    // Input handling - giữ nguyên
-    const sizeMapping = {
-      'Square': '1024x1024',
-      'Portrait': '1024x1536', 
-      'Landscape': '1536x1024',
-      'auto': 'auto'
-    };
-
-    const requestedSize = req.body.selectedSize || req.body.size || 'auto';
-    const openaiSize = sizeMapping[requestedSize] || 'auto';
-    const convertToBase64 = req.body.convertToBase64 !== false;
-
-    console.log(`Size mapping: ${requestedSize} → ${openaiSize}`);
-    console.log(`Convert to base64: ${convertToBase64}`);
-
-    // Request body
-    const requestBody = {
-      model: "gpt-4o-image",
-      prompt: req.body.prompt,
-      n: 1,
-      size: openaiSize,
-      quality: 'low',
-      output_format: "png",
-      background: "auto",
-    };
-
-    console.log('📤 Request to OpenAI:', JSON.stringify({
-      model: requestBody.model,
-      size: requestBody.size,
-      quality: requestBody.quality,
-      promptLength: requestBody.prompt.length
-    }, null, 2));
-
-    const response = await openai.images.generate(requestBody);
-
-    console.log('OpenAI API response status: SUCCESS');
-    console.log('Response structure:', Object.keys(response.data[0] || {}));
-
-    const imageData = response.data[0];
-    
-    // ✅ XỬ LÝ CẢ BASE64 VÀ URL
-    let finalImageUrl = null;
-    let isBase64 = false;
-
-    if (imageData?.b64_json) {
-      // Trường hợp trả về base64
-      console.log('✅ Received base64 data from OpenAI');
-      finalImageUrl = `data:image/png;base64,${imageData.b64_json}`;
-      isBase64 = true;
-    } else if (imageData?.url) {
-      // Trường hợp trả về URL
-      console.log('📎 Received URL from OpenAI:', imageData.url);
-      finalImageUrl = imageData.url;
-      isBase64 = false;
-    } else {
-      console.error('❌ No image data in response. Full response:', response.data);
-      return res.status(500).json({
-        error: 'No image data returned from OpenAI',
-        debug: response.data
-      });
-    }
-
-    console.log(`✅ Successfully got image from OpenAI (${isBase64 ? 'base64' : 'URL'})`);
-
-    // ✅ NÉU LÀ URL VÀ CẦN CONVERT, THỬ CONVERT TRÊN SERVER
-    if (!isBase64 && convertToBase64) {
-      console.log('🔄 Attempting to convert URL to base64 on server...');
-      
-      try {
-        // ✅ SỬA: Gọi trực tiếp hàm proxy thay vì fetch
-        console.log('🔄 Converting URL via internal proxy:', finalImageUrl);
-        
-        // Simulate the proxy-image request internally
-        const fetchOptions = {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-          },
-          timeout: 15000,
-          follow: 10,
-          compress: true,
-        };
-
-        const imageResponse = await fetch(finalImageUrl, fetchOptions);
-
-        if (imageResponse.ok) {
-          const buffer = await imageResponse.buffer();
-          const contentType = imageResponse.headers.get('content-type') || 'image/png';
-          
-          if (buffer.length > 0) {
-            const base64 = buffer.toString('base64');
-            const dataUrl = `data:${contentType};base64,${base64}`;
-            
-            console.log('✅ Server-side conversion successful');
-            console.log(`📏 Converted image size: ${Math.round(buffer.length / 1024)}KB`);
-            
-            finalImageUrl = dataUrl;
-            isBase64 = true;
-          } else {
-            console.log('⚠️ Empty buffer received, keeping URL');
-          }
-        } else {
-          console.log('⚠️ Failed to fetch image:', imageResponse.status, imageResponse.statusText);
-        }
-      } catch (conversionError) {
-        console.log('⚠️ Server-side conversion error:', conversionError.message);
-        // Không throw error, giữ URL gốc để frontend có thể thử convert
-      }
-    }
-
-    // Response format
-    if (convertToBase64) {
-      return res.json({
-        data: [{
-          url: finalImageUrl,
-          original_url: imageData?.url || null,
-          converted: isBase64,
-          size: isBase64 ? finalImageUrl.length : null,
-          contentType: 'image/png',
-        }],
-        original: response.data,
-        usage: response.usage
-      });
-    }
-
-    // Fallback response
-    res.json({
-      data: [{
-        url: finalImageUrl,
-        b64_json: isBase64 ? finalImageUrl.split(',')[1] : null,
-        converted: isBase64,
-        size: isBase64 ? finalImageUrl.length : null,
-        contentType: 'image/png',
-      }],
-      original: response.data,
-      usage: response.usage
-    });
-
-  } catch (error) {
-    console.error('OpenAI Error Details:', {
-      message: error.message,
-      status: error.status,
-      code: error.code,
-      type: error.type,
-      response: error.response?.data,
-    });
-
-    res.status(error.status || 500).json({
-      error: error.message || 'OpenAI API Error',
-      details: error.response?.data || null,
-      status: error.status || 500,
-      code: error.code || null,
-      type: error.type || null
-    });
-  }
-});
-
-// Direct image proxy (keep existing)
 app.get('/api/proxy-image-direct', async (req, res) => {
   try {
     const { url } = req.query;
@@ -681,8 +457,6 @@ app.get('/api/proxy-image-direct', async (req, res) => {
     if (!url) {
       return res.status(400).json({ error: 'URL parameter is required' });
     }
-
-    console.log('Direct proxying image:', url.substring(0, 100) + '...');
 
     const fetchOptions = {
       method: 'GET',
@@ -727,137 +501,19 @@ app.get('/api/proxy-image-direct', async (req, res) => {
   }
 });
 
-// Initialize instructions on startup
-// loadInstructions();
-
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    console.log('🔐 Login attempt for email:', email);
-
-    // Check if auth is configured
-    if (!authCredentials) {
-      console.error('❌ Authentication not configured');
-      return res.status(500).json({
-        error: 'Authentication not configured on server'
-      });
-    }
-
-    // Validate input
-    if (!email || !password) {
-      return res.status(400).json({
-        error: 'Email and password are required'
-      });
-    }
-
-    // Check email (case insensitive)
-    const isEmailValid = email.toLowerCase().trim() === authCredentials.email.toLowerCase().trim();
-
-    // Verify password using timing-safe comparison
-    const isPasswordValid = verifyPassword(password, authCredentials.hashedPassword, authCredentials.salt);
-
-    if (!isEmailValid || !isPasswordValid) {
-      console.log('❌ Invalid credentials for:', email);
-      // Add delay to prevent timing attacks
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return res.status(401).json({
-        error: 'Invalid email or password'
-      });
-    }
-
-    // Generate JWT token
-    const tokenPayload = {
-      email: authCredentials.email,
-      loginTime: Date.now(),
-      userAgent: req.headers['user-agent'] || 'unknown'
-    };
-
-    const token = generateToken(tokenPayload);
-
-    // Set secure HTTP-only cookie
-    const cookieOptions = {
-      httpOnly: true,    // Prevent XSS
-      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-      sameSite: 'strict', // CSRF protection
-      maxAge: AUTH_CONFIG.COOKIE_MAX_AGE,
-      path: '/'
-    };
-
-    // Set cookie
-    res.cookie(AUTH_CONFIG.COOKIE_NAME, token, cookieOptions);
-
-    console.log('✅ Login successful for:', email);
-
-    res.json({
-      success: true,
-      message: 'Login successful',
-      user: {
-        email: authCredentials.email,
-        loginTime: tokenPayload.loginTime
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Login error:', error);
-    res.status(500).json({
-      error: 'Internal server error'
-    });
-  }
-});
-
-// Verify authentication endpoint
-app.get('/api/auth/verify', (req, res) => {
-  const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
-
-  if (!token) {
-    return res.status(401).json({
-      error: 'No authentication token found'
-    });
-  }
-
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
-    return res.status(401).json({
-      error: 'Invalid or expired token'
-    });
-  }
-
-  console.log('✅ Authentication verified for:', decoded.email);
-
-  res.json({
-    success: true,
-    user: {
-      email: decoded.email,
-      loginTime: decoded.loginTime
-    }
-  });
-});
-
-// Logout endpoint
-app.post('/api/auth/logout', (req, res) => {
-  res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
-  console.log('🔓 User logged out');
-
-  res.json({
-    success: true,
-    message: 'Logged out successfully'
-  });
-});
-
-// Protect existing API endpoints (add this BEFORE existing endpoints)
-app.use('/api/claude', requireAuth);
-app.use('/api/claude-cached', requireAuth);
-app.use('/api/chatgpt', requireAuth);
-
-// Health check endpoint (unprotected)
 app.get('/api/health', (req, res) => {
+  const systemStats = jobManager.getStats();
+  
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     auth_configured: !!authCredentials,
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    job_system: {
+      active_jobs: systemStats.jobs.processing + systemStats.jobs.pending,
+      api_mode: systemStats.api.mode,
+      available_keys: systemStats.api.availableKeys
+    }
   });
 });
 
@@ -868,17 +524,17 @@ app.get('/*', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Proxy server running at http://localhost:${port}`);
-  console.log(`🌐 CORS enabled for React development servers`);
-  console.log(`📝 Available endpoints:`);
-  console.log(`   GET  /api/test`);
-  console.log(`   POST /api/claude (original, non-cached)`);
-  console.log(`   POST /api/claude-cached (with prompt caching)`);
-  console.log(`   GET  /api/cache-stats`);
-  console.log(`   POST /api/refresh-cache`);
-  console.log(`   POST /api/chatgpt (with base64 conversion)`);
-  console.log(`   POST /api/proxy-image (convert URL to base64)`);
-  console.log(`   GET  /api/proxy-image-direct?url=... (direct image proxy)`);
-  console.log(`🎨 OpenAI DALL-E 3 ready with size mapping`);
-  console.log(`💾 Prompt caching enabled for cost optimization`);
+  console.log(`🚀 Server running at http://localhost:${port}`);
+  console.log(`🔄 Polling-based image generation system active`);
+  
+  const initialStats = jobManager.getStats();
+  console.log(`🤖 API Mode: ${initialStats.api.mode}`);
+  console.log(`🔑 Available Keys: ${initialStats.api.availableKeys}/${initialStats.api.totalKeys}`);
+  
+  console.log(`📡 Polling Endpoints:`);
+  console.log(`   POST /api/image-generation/submit`);
+  console.log(`   GET  /api/image-generation/status/:jobId`);
+  console.log(`   POST /api/image-generation/cancel/:jobId`);
+  console.log(`   GET  /api/image-generation/results/:jobId`);
+  console.log(`   GET  /api/system/stats`);
 });
