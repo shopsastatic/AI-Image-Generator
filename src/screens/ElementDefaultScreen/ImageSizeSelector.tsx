@@ -281,14 +281,12 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const sliderPercentage = ((numberOfImages - 1) / 9) * 100;
 
   return (
-    <div className="p-4">
+    <div>
       <div className="relative inline-block" ref={dropdownRef}>
         {/* Compact Trigger Button */}
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`inline-flex items-center space-x-2 bg-white rounded-sm px-3 py-2 text-sm border ${
-            isOpen ? 'border-2 border-gray-700' : 'border-gray-300'
-          }`}
+          className={`inline-flex items-center space-x-2 bg-white rounded-sm px-3 py-2 text-sm`}
         >
           <Image className="w-4 h-4 text-gray-700" />
           <span className="text-sm font-medium text-gray-700">
@@ -300,7 +298,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
 
         {/* Enhanced Dropdown */}
         {isOpen && (
-          <div className="absolute bottom-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-xl z-50 w-80 overflow-hidden">
+          <div className="absolute bottom-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-xl z-50 w-80 overflow-hidden mb-2">
             
             {/* Header Row: Title + Auto + Images */}
             <div className="flex items-center justify-between p-3 bg-gray-50 border-b border-gray-200">

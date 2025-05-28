@@ -2894,7 +2894,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     <div className="flex gap-10 justify-between prompt-actions">
                       <div className="flex">
                         <div
-                          className="button-menu-2"
+                          className="button-menu-2 !hidden"
                           ref={suggestionButtonRef}
                           onClick={toggleSuggestions}
                         >
