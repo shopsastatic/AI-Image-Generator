@@ -20,7 +20,6 @@ const port = process.env.PORT || 3001;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  baseURL: "https://api.laozhang.ai/v1/"
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -511,7 +510,7 @@ app.post('/api/chatgpt', async (req, res) => {
   try {
     console.log('Using OpenAI API key:', process.env.OPENAI_API_KEY ? 'API key is set' : 'API key is missing');
 
-    // Input handling - giữ nguyên
+    // 🔧 Input handling - giữ nguyên như file gốc
     const sizeMapping = {
       'Square': '1024x1024',
       'Portrait': '1024x1536', 
@@ -521,18 +520,18 @@ app.post('/api/chatgpt', async (req, res) => {
 
     const requestedSize = req.body.selectedSize || req.body.size || 'auto';
     const openaiSize = sizeMapping[requestedSize] || 'auto';
-    const convertToBase64 = req.body.convertToBase64 !== false;
+    const convertToBase64 = req.body.convertToBase64 !== false; // ✅ Giữ nguyên từ file gốc
 
     console.log(`Size mapping: ${requestedSize} → ${openaiSize}`);
     console.log(`Convert to base64: ${convertToBase64}`);
 
-    // Request body
+    // 🔧 Request body - cập nhật để tương thích với gpt-image-1
     const requestBody = {
-      model: "gpt-4o-image",
+      model: "gpt-image-1",
       prompt: req.body.prompt,
       n: 1,
       size: openaiSize,
-      quality: 'low',
+      quality: 'low', // ✅ Hardcoded như file gốc
       output_format: "png",
       background: "auto",
     };
@@ -549,105 +548,51 @@ app.post('/api/chatgpt', async (req, res) => {
     console.log('OpenAI API response status: SUCCESS');
     console.log('Response structure:', Object.keys(response.data[0] || {}));
 
+    // 🎯 Output handling - xử lý b64_json như code mới
     const imageData = response.data[0];
-    
-    // ✅ XỬ LÝ CẢ BASE64 VÀ URL
-    let finalImageUrl = null;
-    let isBase64 = false;
+    const base64Data = imageData?.b64_json; // ✅ Xử lý như code mới
 
-    if (imageData?.b64_json) {
-      // Trường hợp trả về base64
-      console.log('✅ Received base64 data from OpenAI');
-      finalImageUrl = `data:image/png;base64,${imageData.b64_json}`;
-      isBase64 = true;
-    } else if (imageData?.url) {
-      // Trường hợp trả về URL
-      console.log('📎 Received URL from OpenAI:', imageData.url);
-      finalImageUrl = imageData.url;
-      isBase64 = false;
-    } else {
-      console.error('❌ No image data in response. Full response:', response.data);
+    console.log('Base64 data available:', !!base64Data);
+    console.log('Base64 data length:', base64Data?.length || 0);
+
+    if (!base64Data) {
+      console.error('No base64 data in response. Full response:', response.data);
       return res.status(500).json({
         error: 'No image data returned from OpenAI',
         debug: response.data
       });
     }
 
-    console.log(`✅ Successfully got image from OpenAI (${isBase64 ? 'base64' : 'URL'})`);
+    // ✅ Convert base64 to data URL - như code mới
+    const dataUrl = `data:image/png;base64,${base64Data}`;
+    
+    console.log(`✅ Successfully generated image with gpt-image-1`);
+    console.log(`📏 Base64 size: ${Math.round(base64Data.length / 1024)}KB`);
 
-    // ✅ NÉU LÀ URL VÀ CẦN CONVERT, THỬ CONVERT TRÊN SERVER
-    if (!isBase64 && convertToBase64) {
-      console.log('🔄 Attempting to convert URL to base64 on server...');
-      
-      try {
-        // ✅ SỬA: Gọi trực tiếp hàm proxy thay vì fetch
-        console.log('🔄 Converting URL via internal proxy:', finalImageUrl);
-        
-        // Simulate the proxy-image request internally
-        const fetchOptions = {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-          },
-          timeout: 15000,
-          follow: 10,
-          compress: true,
-        };
-
-        const imageResponse = await fetch(finalImageUrl, fetchOptions);
-
-        if (imageResponse.ok) {
-          const buffer = await imageResponse.buffer();
-          const contentType = imageResponse.headers.get('content-type') || 'image/png';
-          
-          if (buffer.length > 0) {
-            const base64 = buffer.toString('base64');
-            const dataUrl = `data:${contentType};base64,${base64}`;
-            
-            console.log('✅ Server-side conversion successful');
-            console.log(`📏 Converted image size: ${Math.round(buffer.length / 1024)}KB`);
-            
-            finalImageUrl = dataUrl;
-            isBase64 = true;
-          } else {
-            console.log('⚠️ Empty buffer received, keeping URL');
-          }
-        } else {
-          console.log('⚠️ Failed to fetch image:', imageResponse.status, imageResponse.statusText);
-        }
-      } catch (conversionError) {
-        console.log('⚠️ Server-side conversion error:', conversionError.message);
-        // Không throw error, giữ URL gốc để frontend có thể thử convert
-      }
-    }
-
-    // Response format
+    // 🔄 Response format - kết hợp cả hai phong cách
     if (convertToBase64) {
+      // Trả về format tương thích với code cũ nhưng dữ liệu từ b64_json
       return res.json({
         data: [{
-          url: finalImageUrl,
-          original_url: imageData?.url || null,
-          converted: isBase64,
-          size: isBase64 ? finalImageUrl.length : null,
+          url: dataUrl, // ✅ Data URL từ base64
+          original_url: null, // Không có URL gốc với gpt-image-1
+          converted: true,
+          size: base64Data.length,
           contentType: 'image/png',
         }],
         original: response.data,
-        usage: response.usage
+        usage: response.usage // ✅ Thông tin usage từ gpt-image-1
       });
     }
 
-    // Fallback response
+    // Fallback - trả về base64 trực tiếp
+    console.log('Returning base64 data directly');
     res.json({
       data: [{
-        url: finalImageUrl,
-        b64_json: isBase64 ? finalImageUrl.split(',')[1] : null,
-        converted: isBase64,
-        size: isBase64 ? finalImageUrl.length : null,
+        url: dataUrl,
+        b64_json: base64Data,
+        converted: true,
+        size: base64Data.length,
         contentType: 'image/png',
       }],
       original: response.data,
@@ -663,6 +608,7 @@ app.post('/api/chatgpt', async (req, res) => {
       response: error.response?.data,
     });
 
+    // ✅ Error handling chi tiết như code mới
     res.status(error.status || 500).json({
       error: error.message || 'OpenAI API Error',
       details: error.response?.data || null,

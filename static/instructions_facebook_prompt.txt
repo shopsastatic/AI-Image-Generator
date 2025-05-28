@@ -542,25 +542,30 @@ Editorial Disguise: [specific_method]
 
 YOUR ENTIRE RESPONSE MUST BE A VALID JSON ARRAY WITH NO TEXT BEFORE OR AFTER IT.
 
-DO NOT include any introduction, explanation, or description. The response should start with '{' and end with '}'.
+DO NOT include any introduction, explanation, or description. The response should start with '[' and end with ']'.
 
-The response MUST follow this exact format:
+ARRAY STRUCTURE REQUIREMENTS:
+- FIRST OBJECT (index 0): Must contain exactly 5 properties: imageName, prompt, adCreativeA, adCreativeB, targeting
+- ALL SUBSEQUENT OBJECTS (index 1+): Must contain exactly 4 properties: imageName, prompt, adCreativeA, adCreativeB
 
+FORMAT:
 [
   {
-    "imageName": "Descriptive name for the image file (e.g., 'health_breakthrough_credibility_square', 'weight_loss_transformation_portrait')",
+    "imageName": "Descriptive name for the image file",
     "prompt": "Full text of the image prompt creation specifications",
     "adCreativeA": "Full HTML/text content of Ad Creative A",
     "adCreativeB": "Full HTML/text content of Ad Creative B", 
     "targeting": "Targeting information"
   },
+  {
+    "imageName": "Descriptive name for the image file",
+    "prompt": "Full text of the image prompt creation specifications",
+    "adCreativeA": "Full HTML/text content of Ad Creative A",
+    "adCreativeB": "Full HTML/text content of Ad Creative B", 
+  }
 ]
 
 IMAGE NAME GUIDELINES:
-- Maximum 12 words.
-- Use descriptive names that reflect the advertorial content and template type
+- Maximum 12 words
 - Use underscores instead of spaces
 - Keep names concise but informative
-- Names should help identify the content and purpose of each image
-
-Any text outside of the JSON structure will cause technical issues with the integration.

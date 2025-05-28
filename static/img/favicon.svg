@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Background -->
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  
+  <!-- Image frame -->
+  <rect x="16" y="16" width="32" height="24" rx="3" fill="#ffffff"/>
+  
+  <!-- Simple landscape -->
+  <polygon points="18,36 26,26 36,32 46,36" fill="#e5e7eb"/>
+  <circle cx="24" cy="24" r="3" fill="#fbbf24"/>
+  
+  <!-- AI symbol - three dots -->
+  <circle cx="24" cy="48" r="3" fill="#ffffff"/>
+  <circle cx="32" cy="48" r="3" fill="#ffffff"/>
+  <circle cx="40" cy="48" r="3" fill="#ffffff"/>
+</svg>

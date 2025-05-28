@@ -218,8 +218,7 @@ GOOGLE_ADS_COPY_LIMITS:
 ├── **Descriptions**: 90 characters (5 descriptions per campaign)
 ├── **Sitelinks**: 25 characters (4-6 sitelinks per campaign)
 ├── **Callouts**: 25 characters (6-8 callouts per campaign)
-├── **Promotions**: 20 characters (up to percent discount)
-└── **Display URL Path**: 15 characters each (2 paths)
+└── **Promotions**: 20 characters (up to percent discount)
 
 ### Responsive Display Ad Copy
 RESPONSIVE_DISPLAY_SPECS:
@@ -246,182 +245,110 @@ GOOGLE_ADS_COMPLIANCE:
 ├── ✅ CTA clarity and prominence
 └── ✅ Google Ads policy compliance
 
-## Output Generation Template
+## JSON Output Structure
 
-# [X] Google Ads Single Image Prompts for [Advertorial_Title]
-*Output quantity: [User_Specified_Number]*
-*Image sizes: [auto|manual_specification]*
+### Complete Output Format
+The system generates a pure JSON array with each object containing complete Google Ads creative specifications:
 
-## Generated Image Prompts & Google Ads Copy
+```json
+[
+  {
+    "imageName": "Descriptive name for the image file (e.g: health-breakthrough-credibility-square),
+    "prompt": "Complete image specifications",
+    "adCreativeA": "Full HTML formatted copy set A",
+    "adCreativeB": "Full HTML formatted copy set B",
+    "targeting": "Comprehensive targeting combinations"
+  },
+  {
+    "imageName": "Descriptive name for the image file (e.g: health-breakthrough-credibility-square),
+    "prompt": "Complete image specifications",
+  },
+  ...
+]
+```
 
-### Prompt 1: [Template_Type] - [Image_Format]
+### Image Name Guidelines
+IMAGE_NAME_SPECIFICATIONS:
+├── Maximum 12 words total
+├── Use dash instead of spaces
+├── Descriptive of advertorial content and template type
+├── Format: [product/topic]_[template_type]_[image_format]
+├── Examples: "health-breakthrough-credibility-square", "weight-loss-transformation-landscape"
+└── Keep concise but informative for easy identification
 
-Create an image with the following specifications:
+### Google Ads Copy Set Structure (Per Creative)
+EACH_AD_CREATIVE_CONTAINS:
+├── **Headlines**: 15 variations (30 characters each)
+├── **Long Headlines**: 5 variations (90 characters each)
+├── **Descriptions**: 5 variations (90 characters each)
+├── **Sitelinks**: 4-6 variations (25 characters each)
+├── **Callouts**: 6-8 variations (25 characters each)
+├── **Promotions**: 1-2 variations (20 characters each)
+└── **Targeting**: Demographic + Interest + Behavior combinations
 
-**Visual Composition**: [Detailed scene description optimized for Google Display Network, focusing on professional advertorial appearance with clean, trustworthy design elements]
-
-**Text Overlay**: "[Exact headline text optimized for Google Ads compliance]"
-
-**Text Styling Requirements**:
-• **Coverage**: Maximum 18% of total image area
-• **Font**: Sans-serif, minimum 12pt equivalent size
-• **Contrast**: Minimum 4.5:1 ratio for accessibility
-• **Border**: [Specific Google-compliant styling]
-• **Background**: [High-contrast, readable background treatment]
-• **Effects**: [Subtle, professional enhancement only]
-
-**Color Palette**: [Brand-aligned, professional color scheme suitable for diverse GDN placements]
-
-**Image Size**: [Landscape | Square | Portrait]
-
-**Advertorial Elements**: [Specific editorial disguise features for Google Ads environment]
-
-**Product Integration**: [Subtle|Moderate] - Avoiding overly promotional appearance
-
-**Google Ads Optimization**: Mobile-responsive design, fast-loading elements
-
----
-
-### Prompt 2: [Template_Type] - [Image_Format]
-[Complete structured prompt following same format]
-
----
-
-### Prompt 3: [Template_Type] - [Image_Format]
-[Complete structured prompt following same format]
-
----
-
-[Continue for all specified number of prompts...]
-
-## Unified Google Ads Copy Set for All Prompts
-
-### Google Ads Copy Set A:
-
-**Headlines** (30 chars max):
-1. "[Curiosity-driven headline variation 1]"
-2. "[Benefit-focused headline variation 1]"
-3. "[Authority-based headline variation 1]"
-4. "[Problem-focused headline variation 1]"
-5. "[Solution-focused headline variation 1]"
-6. "[Local expert headline variation 1]"
-7. "[Scientific breakthrough headline 1]"
-8. "[Transformation headline variation 1]"
-9. "[Warning/alert headline variation 1]"
-10. "[Discovery headline variation 1]"
-11. "[Results-focused headline variation 1]"
-12. "[Time-sensitive headline variation 1]"
-13. "[Expert reveals headline variation 1]"
-14. "[Secret exposed headline variation 1]"
-15. "[New method headline variation 1]"
-
-**Long Headlines** (90 chars max):
-1. "[Extended story hook with credibility and transformation promise]"
-2. "[Problem amplification with expert solution introduction]"
-3. "[Scientific backing with personal success story elements]"
-4. "[Local authority with industry secret revelation approach]"
-5. "[Transformation narrative with social proof and urgency]"
-
-**Descriptions** (90 chars max):
-1. "[Story hook with social proof and soft CTA]"
-2. "[Problem agitation with solution tease and urgency]"
-3. "[Expert credibility with transformation promise]"
-4. "[Scientific backing with immediate benefit focus]"
-5. "[Local success story with risk-free offer]"
-
-**Sitelinks** (25 chars max):
-1. "Read Full Story"
-2. "See the Research"
-3. "Get Expert Guide"
-4. "View Results"
-5. "Try Risk-Free"
-6. "Learn the Method"
-
-**Callouts** (25 chars max):
-1. "Expert Recommended"
-2. "Scientifically Backed"
-3. "Risk-Free Trial"
-4. "Proven Results"
-5. "Natural Solution"
-6. "Fast Acting"
-7. "Doctor Approved"
-8. "Money Back Guarantee"
-
-**Promotions** (20 chars max):
-"Up to [X]% off today"
-
-**Primary Targeting**: [Most effective demographic + interest + behavior combination]
-
----
-
-### Google Ads Copy Set B:
-
-**Headlines** (30 chars max):
-1. "[Alternative curiosity angle 1]"
-2. "[Different benefit focus 1]"
-3. "[Credibility variation 1]"
-4. "[Alternative problem angle 1]"
-5. "[Different solution focus 1]"
-6. "[Local expert variation 2]"
-7. "[Scientific approach variation 2]"
-8. "[Transformation angle 2]"
-9. "[Warning/alert variation 2]"
-10. "[Discovery angle 2]"
-11. "[Results-focused variation 2]"
-12. "[Time-sensitive variation 2]"
-13. "[Expert reveals variation 2]"
-14. "[Secret exposed variation 2]"
-15. "[New method variation 2]"
-
-**Long Headlines** (90 chars max):
-1. "[Alternative story approach with different credibility elements]"
-2. "[Different problem angle with unique solution presentation]"
-3. "[Alternative scientific backing with different success elements]"
-4. "[Different local authority with alternative secret revelation]"
-5. "[Alternative transformation with different social proof approach]"
-
-**Descriptions** (90 chars max):
-1. "[Alternative story approach with different social proof]"
-2. "[Different problem angle with alternative solution tease]"
-3. "[Alternative expert credibility with different transformation]"
-4. "[Different scientific backing with alternative benefit focus]"
-5. "[Alternative local success with different risk-free approach]"
-
-**Sitelinks** (25 chars max):
-1. "Discover Method"
-2. "Access Research"
-3. "Download Guide"
-4. "Check Results"
-5. "Start Free Trial"
-6. "Get Solution"
-
-**Callouts** (25 chars max):
-1. "Clinically Tested"
-2. "Research Proven"
-3. "30-Day Guarantee"
-4. "Real Results"
-5. "Safe & Natural"
-6. "Quick Results"
-7. "Expert Approved"
-8. "100% Money Back"
-
-**Promotions** (20 chars max):
-"Save up to [X]% now"
-
-**Secondary Targeting**: [Alternative targeting combination for A/B testing]
+### Ad Creative Formatting Template
+AD_CREATIVE_HTML_STRUCTURE:
+```html
+<div class="google-ads-copy-set">
+  <h3>Headlines (30 chars max):</h3>
+  <ol>
+    <li>"[Headline 1]"</li>
+    <li>"[Headline 2]"</li>
+    
+    <li>"[Headline 15]"</li>
+  </ol>
+  
+  <h3>Long Headlines (90 chars max):</h3>
+  <ol>
+    <li>"[Long headline 1]"</li>
+    
+    <li>"[Long headline 5]"</li>
+  </ol>
+  
+  <h3>Descriptions (90 chars max):</h3>
+  <ol>
+    <li>"[Description 1]"</li>
+    
+    <li>"[Description 5]"</li>
+  </ol>
+  
+  <h3>Sitelinks (25 chars max):</h3>
+  <ul>
+    <li>"[Sitelink 1]"</li>
+    
+    <li>"[Sitelink 4-6]"</li>
+  </ul>
+  
+  <h3>Callouts (25 chars max):</h3>
+  <ul>
+    <li>"[Callout 1]"</li>
+    
+    <li>"[Callout 6-8]"</li>
+  </ul>
+  
+  <h3>Promotions (20 chars max):</h3>
+  <ul>
+    <li>"[Promotion offer]"</li>
+  </ul>
+</div>
+```
 
 ---
 
 ## Usage Instructions
 
-1. **Input your advertorial content** with desired output quantity
-2. **Specify image sizes** (auto-recommended for Google Ads optimization)  
-3. **System analyzes content** and extracts key advertorial elements
-4. **Generates multiple image prompts** following Google Ads compliance
-5. **Provides unified ad copy set** (A & B versions) for entire campaign:
-   - 15 Headlines + 5 Long Headlines + 5 Descriptions per version
-   - 4-6 Sitelinks + 6-8 Callouts + Promotional offers
-   - Primary & Secondary targeting combinations
-6. **Campaign structure**: Multiple image creatives + Single copy set = Comprehensive A/B testing
+1. **Input your advertorial content** with desired output quantity and image sizes
+2. **System analyzes content** and extracts key advertorial elements  
+3. **All JSON array output** with each object containing:
+   - **imageName**: Descriptive file name (max 12 words, dash)
+   - **prompt**: Complete image creation specifications
+4. The first object will contain more:
+   - **adCreativeA**: Full Google Ads copy set A (15 headlines + 5 long headlines + 5 descriptions + sitelinks + callouts + promotions)
+   - **adCreativeB**: Full Google Ads copy set B with alternative variations
+   - **targeting**: Primary and secondary targeting combinations
+4. **Technical integration ready**: Pure JSON format prevents parsing errors
+5. **Campaign implementation**: Each prompt becomes a complete ad creative with comprehensive copy variations
 
-This framework ensures campaign efficiency with diverse image creatives paired with comprehensive copy variations for optimal Google Ads performance while maintaining advertorial effectiveness.
+**Important**: Any text outside the JSON structure will cause technical integration issues. Output will be pure JSON array only.
+
+This framework ensures seamless technical integration while providing comprehensive Google Ads campaigns with diverse image creatives and complete copy variations for optimal performance.

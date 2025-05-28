@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import "./default.css";
 import "./style.css";
 import HistorySidebar from "./HistorySideBar";
 import ImageInfoDropdown from "./ImageInfoDropdown";
@@ -10,9 +11,10 @@ import {
   ImageCompressor,
 } from "./storageUtils";
 
-const parseClaudeResponse = (response: string) => {
+const parseClaudeResponse = (response: string, category: string = 'google_prompt') => {
   try {
     console.log("🔍 Parsing Claude response...");
+    console.log("📂 Category:", category);
     console.log("Raw response length:", response.length);
     console.log("Raw response preview:", response.substring(0, 500) + "...");
 
@@ -35,32 +37,48 @@ const parseClaudeResponse = (response: string) => {
               `✅ JSON parsing successful: ${jsonData.length} prompts found`
             );
 
-            // Map JSON data and ensure all required fields exist
+            // ✅ SHARED DATA LOGIC - Extract shared data from first object
+            const firstObject = jsonData[0];
+            const sharedData = extractSharedData(firstObject, category);
+            
+            console.log("📋 Shared data extracted:", {
+              category,
+              hasAdCreativeA: !!sharedData.adCreativeA,
+              hasAdCreativeB: !!sharedData.adCreativeB,
+              hasTargeting: !!sharedData.targeting
+            });
+
+            // Map JSON data and ensure all required fields exist with shared data
             const prompts = jsonData.map((item, index) => {
               console.log(`📋 Processing prompt ${index + 1}:`, {
                 hasPrompt: !!item.prompt,
                 hasImageName: !!item.imageName,
                 hasAdCreativeA: !!item.adCreativeA,
                 hasAdCreativeB: !!item.adCreativeB,
+                hasTargeting: !!item.targeting,
                 promptLength: item.prompt?.length || 0,
               });
 
+              // ✅ Apply shared data logic based on category
+              const processedItem = applySharedDataLogic(item, sharedData, category, index);
+
               return {
-                prompt: item.prompt || `Generated prompt ${index + 1}`,
-                adCreativeA: item.adCreativeA || "",
-                adCreativeB: item.adCreativeB || "",
-                imageName:
-                  item.imageName || `ai-image-${index + 1}-${Date.now()}`,
-                targeting: item.targeting || "",
+                prompt: processedItem.prompt || `Generated prompt ${index + 1}`,
+                adCreativeA: processedItem.adCreativeA || "",
+                adCreativeB: processedItem.adCreativeB || "",
+                imageName: processedItem.imageName || `ai-image-${index + 1}-${Date.now()}`,
+                targeting: processedItem.targeting || "",
               };
             });
 
-            console.log(`🎯 Final result: ${prompts.length} prompts ready`);
+            console.log(`🎯 Final result: ${prompts.length} prompts ready with shared data`);
 
             return {
               prompts: prompts,
               fullResponse: response,
               jsonData: jsonData,
+              category: category,
+              sharedData: sharedData
             };
           }
         } catch (parseError) {
@@ -85,19 +103,28 @@ const parseClaudeResponse = (response: string) => {
               `✅ Code block parsing successful: ${jsonData.length} prompts found`
             );
 
-            const prompts = jsonData.map((item, index) => ({
-              prompt: item.prompt || `Generated prompt ${index + 1}`,
-              adCreativeA: item.adCreativeA || "",
-              adCreativeB: item.adCreativeB || "",
-              imageName:
-                item.imageName || `ai-image-${index + 1}-${Date.now()}`,
-              targeting: item.targeting || "",
-            }));
+            // ✅ SHARED DATA LOGIC for code block
+            const firstObject = jsonData[0];
+            const sharedData = extractSharedData(firstObject, category);
+
+            const prompts = jsonData.map((item, index) => {
+              const processedItem = applySharedDataLogic(item, sharedData, category, index);
+              
+              return {
+                prompt: processedItem.prompt || `Generated prompt ${index + 1}`,
+                adCreativeA: processedItem.adCreativeA || "",
+                adCreativeB: processedItem.adCreativeB || "",
+                imageName: processedItem.imageName || `ai-image-${index + 1}-${Date.now()}`,
+                targeting: processedItem.targeting || "",
+              };
+            });
 
             return {
               prompts: prompts,
               fullResponse: response,
               jsonData: jsonData,
+              category: category,
+              sharedData: sharedData
             };
           }
         } catch (parseError) {
@@ -143,18 +170,28 @@ const parseClaudeResponse = (response: string) => {
             `✅ Manual parsing successful: ${parsedObjects.length} objects found`
           );
 
-          const prompts = parsedObjects.map((item, index) => ({
-            prompt: item.prompt || `Generated prompt ${index + 1}`,
-            adCreativeA: item.adCreativeA || "",
-            adCreativeB: item.adCreativeB || "",
-            imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
-            targeting: item.targeting || "",
-          }));
+          // ✅ SHARED DATA LOGIC for manual parsing
+          const firstObject = parsedObjects[0];
+          const sharedData = extractSharedData(firstObject, category);
+
+          const prompts = parsedObjects.map((item, index) => {
+            const processedItem = applySharedDataLogic(item, sharedData, category, index);
+            
+            return {
+              prompt: processedItem.prompt || `Generated prompt ${index + 1}`,
+              adCreativeA: processedItem.adCreativeA || "",
+              adCreativeB: processedItem.adCreativeB || "",
+              imageName: processedItem.imageName || `ai-image-${index + 1}-${Date.now()}`,
+              targeting: processedItem.targeting || "",
+            };
+          });
 
           return {
             prompts: prompts,
             fullResponse: response,
             jsonData: parsedObjects,
+            category: category,
+            sharedData: sharedData
           };
         }
       }
@@ -165,10 +202,8 @@ const parseClaudeResponse = (response: string) => {
       console.log("⚠️ All JSON parsing methods failed, trying text parsing...");
       console.log("JSON Error:", jsonError.message);
 
-      // ===== ENHANCED TEXT PARSING =====
+      // ===== ENHANCED TEXT PARSING ===== (Keep existing logic)
       const prompts = [];
-
-      // Split by common prompt separators
       const sections = response.split(
         /(?:Prompt \d+|Image \d+|Version \d+|\d+\.\s*|Object \d+)/i
       );
@@ -176,11 +211,9 @@ const parseClaudeResponse = (response: string) => {
       console.log(`Found ${sections.length} sections via text splitting`);
 
       if (sections.length > 1) {
-        // Multiple prompts detected
         for (let i = 1; i < sections.length; i++) {
           const section = sections[i].trim();
           if (section && section.length > 50) {
-            // Only process substantial sections
             console.log(
               `Processing text section ${i}:`,
               section.substring(0, 100) + "..."
@@ -190,12 +223,10 @@ const parseClaudeResponse = (response: string) => {
           }
         }
       } else {
-        // Single section - try to extract multiple prompts
         console.log(
           "Single section detected, searching for multiple prompts within..."
         );
 
-        // Look for multiple "Create an image" patterns
         const imagePrompts = [
           ...response.matchAll(/Create an image[^.]*?(?=Create an image|$)/gis),
         ];
@@ -217,7 +248,6 @@ const parseClaudeResponse = (response: string) => {
             }
           });
         } else {
-          // Fallback to single prompt parsing
           console.log("Fallback to single prompt parsing");
           const promptData = parseIndividualPrompt(response, 1);
           prompts.push(promptData);
@@ -229,6 +259,7 @@ const parseClaudeResponse = (response: string) => {
       return {
         prompts: prompts,
         fullResponse: response,
+        category: category
       };
     }
   } catch (error) {
@@ -246,8 +277,75 @@ const parseClaudeResponse = (response: string) => {
         },
       ],
       fullResponse: response,
+      category: category
     };
   }
+};
+
+const extractSharedData = (firstObject: any, category: string) => {
+  const sharedData = {
+    adCreativeA: "",
+    adCreativeB: "",
+    targeting: ""
+  };
+
+  if (category === 'facebook_prompt') {
+    // Facebook: Only share targeting
+    sharedData.targeting = firstObject.targeting || "";
+    console.log("📂 Facebook mode: Extracting targeting only");
+  } else if (category === 'google_prompt') {
+    // Google: Share adCreativeA, adCreativeB, and targeting
+    sharedData.adCreativeA = firstObject.adCreativeA || "";
+    sharedData.adCreativeB = firstObject.adCreativeB || "";
+    sharedData.targeting = firstObject.targeting || "";
+    console.log("📂 Google mode: Extracting adCreativeA, adCreativeB, and targeting");
+  }
+
+  console.log("📋 Extracted shared data:", {
+    adCreativeA_length: sharedData.adCreativeA.length,
+    adCreativeB_length: sharedData.adCreativeB.length,
+    targeting_length: sharedData.targeting.length
+  });
+
+  return sharedData;
+};
+
+// ✅ NEW HELPER FUNCTION: Apply shared data logic to each item
+const applySharedDataLogic = (item: any, sharedData: any, category: string, index: number) => {
+  const processedItem = { ...item };
+
+  if (index === 0) {
+    // First object: Keep original data
+    console.log(`📋 Object ${index + 1}: Using original data (first object)`);
+    return processedItem;
+  }
+
+  if (category === 'facebook_prompt') {
+    // Facebook: Objects 2+ have their own adCreativeA & adCreativeB, only share targeting
+    // Keep existing adCreativeA and adCreativeB if they exist
+    if (!processedItem.adCreativeA && sharedData.adCreativeA) {
+      processedItem.adCreativeA = sharedData.adCreativeA;
+    }
+    if (!processedItem.adCreativeB && sharedData.adCreativeB) {
+      processedItem.adCreativeB = sharedData.adCreativeB;
+    }
+    // Always share targeting
+    processedItem.targeting = sharedData.targeting;
+    console.log(`📋 Object ${index + 1}: Applied shared targeting only (Facebook mode)`, {
+      hasOwnAdCreativeA: !!item.adCreativeA,
+      hasOwnAdCreativeB: !!item.adCreativeB,
+      usingSharedTargeting: true
+    });
+  } else if (category === 'google_prompt') {
+    // Google: Objects 2+ only have imageName & prompt, need to share all ad creatives
+    // Always share adCreativeA, adCreativeB, and targeting from first object
+    processedItem.adCreativeA = sharedData.adCreativeA;
+    processedItem.adCreativeB = sharedData.adCreativeB;
+    processedItem.targeting = sharedData.targeting;
+    console.log(`📋 Object ${index + 1}: Applied shared adCreativeA, adCreativeB, and targeting (Google mode)`);
+  }
+
+  return processedItem;
 };
 
 const getImageSizeForIndex = (
@@ -521,10 +619,7 @@ const convertUrlToBase64 = async (imageUrl: string): Promise<string> => {
     return imageUrl;
   }
 
-  console.log(
-    "🔄 Converting URL to base64:",
-    imageUrl.substring(0, 100) + "..."
-  );
+  console.log("🔄 Converting URL to base64:", imageUrl.substring(0, 100) + "...");
 
   // Method 1: Try backend proxy first
   try {
@@ -543,41 +638,39 @@ const convertUrlToBase64 = async (imageUrl: string): Promise<string> => {
     if (response.ok) {
       const data = JSON.parse(responseText);
       if (data.success && data.base64) {
-        console.log(
-          `✅ Backend proxy conversion successful, size: ${Math.round(
-            data.size / 1024
-          )}KB`
-        );
+        console.log(`✅ Backend proxy conversion successful, size: ${Math.round(data.size / 1024)}KB`);
         return data.base64;
       } else {
-        throw new Error(
-          `Backend returned success=false: ${data.error || "Unknown error"}`
-        );
+        throw new Error(`Backend returned success=false: ${data.error || "Unknown error"}`);
       }
     } else {
-      const errorData = JSON.parse(responseText).catch(() => ({
-        error: responseText,
-      }));
-      throw new Error(
-        `Backend proxy failed: ${response.status} - ${
-          errorData.error || errorData.message || responseText
-        }`
-      );
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch {
+        errorData = { error: responseText };
+      }
+      throw new Error(`Backend proxy failed: ${response.status} - ${errorData.error || errorData.message || responseText}`);
     }
   } catch (backendError) {
     console.log("⚠️ Backend proxy failed:", backendError.message);
 
     // Method 2: Try direct image proxy as fallback
+    console.log("🔄 Trying direct image proxy...");
     try {
-      console.log("🔄 Trying direct image proxy...");
       const encodedUrl = encodeURIComponent(imageUrl);
       const proxyUrl = `${API_ENDPOINTS.PROXY_IMAGE_DIRECT}?url=${encodedUrl}`;
+
+      // Use fetch with AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const img = new Image();
       img.crossOrigin = "anonymous";
 
-      return new Promise((resolve, reject) => {
+      const result = await new Promise<string>((resolve, reject) => {
         img.onload = function () {
+          clearTimeout(timeoutId);
           try {
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d");
@@ -603,31 +696,42 @@ const convertUrlToBase64 = async (imageUrl: string): Promise<string> => {
         };
 
         img.onerror = function (error) {
+          clearTimeout(timeoutId);
           console.error("❌ Direct proxy image load failed:", error);
           reject(new Error("Direct proxy image load failed"));
         };
 
-        img.src = proxyUrl;
-
-        // Timeout after 15 seconds
+        // Set timeout
         setTimeout(() => {
+          clearTimeout(timeoutId);
           reject(new Error("Direct proxy timeout"));
         }, 15000);
+
+        img.src = proxyUrl;
       });
+
+      return result;
+
     } catch (directProxyError) {
       console.log("⚠️ Direct proxy also failed:", directProxyError.message);
 
       // Method 3: Try direct fetch (will likely fail due to CORS but let's try)
+      console.log("🔄 Trying direct fetch as last resort...");
       try {
-        console.log("🔄 Trying direct fetch as last resort...");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const response = await fetch(imageUrl, {
           mode: "cors",
           headers: {
             Accept: "image/*",
+            "User-Agent": "Mozilla/5.0 (compatible; ImageConverter/1.0)",
           },
           credentials: "omit",
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -646,14 +750,94 @@ const convertUrlToBase64 = async (imageUrl: string): Promise<string> => {
           reader.onerror = () => reject(new Error("FileReader failed"));
           reader.readAsDataURL(blob);
         });
-      } catch (directFetchError) {
-        console.log(
-          "⚠️ Direct fetch also failed (expected due to CORS):",
-          directFetchError.message
-        );
 
-        console.log("🔄 All conversion methods failed, returning original URL");
-        return imageUrl;
+      } catch (directFetchError) {
+        console.log("⚠️ Direct fetch also failed (expected due to CORS):", directFetchError.message);
+
+        // Method 4: Last resort - try using a different proxy service or return original URL
+        console.log("🔄 All conversion methods failed");
+        
+        // ✅ INSTEAD OF RETURNING URL, TRY ONE MORE METHOD: iframe technique
+        try {
+          console.log("🔄 Trying iframe proxy technique...");
+          
+          return new Promise<string>((resolve, reject) => {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = 'about:blank';
+            
+            document.body.appendChild(iframe);
+            
+            const cleanup = () => {
+              document.body.removeChild(iframe);
+            };
+            
+            iframe.onload = () => {
+              try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                if (!iframeDoc) {
+                  throw new Error('Cannot access iframe document');
+                }
+                
+                const img = iframeDoc.createElement('img');
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = () => {
+                  try {
+                    const canvas = iframeDoc.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    if (!ctx) {
+                      throw new Error('Cannot get canvas context in iframe');
+                    }
+                    
+                    canvas.width = img.naturalWidth || img.width;
+                    canvas.height = img.naturalHeight || img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                    cleanup();
+                    console.log("✅ Iframe proxy conversion successful");
+                    resolve(dataUrl);
+                  } catch (error) {
+                    cleanup();
+                    reject(error);
+                  }
+                };
+                
+                img.onerror = () => {
+                  cleanup();
+                  reject(new Error('Iframe image load failed'));
+                };
+                
+                img.src = imageUrl;
+                
+                // Timeout
+                setTimeout(() => {
+                  cleanup();
+                  reject(new Error('Iframe conversion timeout'));
+                }, 10000);
+                
+              } catch (error) {
+                cleanup();
+                reject(error);
+              }
+            };
+            
+            setTimeout(() => {
+              cleanup();
+              reject(new Error('Iframe setup timeout'));
+            }, 5000);
+          });
+          
+        } catch (iframeError) {
+          console.log("⚠️ Iframe method also failed:", iframeError.message);
+          
+          // Final fallback: return original URL with warning
+          console.log("🔄 Returning original URL as final fallback");
+          console.warn("⚠️ All base64 conversion methods failed. Image may not display correctly.");
+          return imageUrl;
+        }
       }
     }
   }
@@ -1433,7 +1617,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         const data = await response.json();
         claudeResponseText =
           data.content?.[0]?.text || "No response from Claude";
-        parsedResponse = parseClaudeResponse(claudeResponseText);
+        parsedResponse = parseClaudeResponse(claudeResponseText, selectedCategory.category);
       }
 
       // Kiểm tra lại nếu đã bị hủy
@@ -3193,7 +3377,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           }
                         })()}
 
-                      <div className="flex gap-10">
+                      <div className="flex gap-2">
                         {currentSessionId &&
                           selectedSessions.find(
                             (s) => s.sessionId === currentSessionId
