@@ -3231,8 +3231,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 {showUserDropdown && (
                   <div className="user-dropdown-menu">
                     <div className="user-info">
-                      <div className="user-name">Bui Tran Tung</div>
-                      <div className="user-email">tungbt@misencorp.com</div>
+                      <div className="user-name">MISEN</div>
+                      <div className="user-email">ai@miseninc.com</div>
 
                       <div className="theme-toggles">
                         <button className="theme-btn light-mode active">

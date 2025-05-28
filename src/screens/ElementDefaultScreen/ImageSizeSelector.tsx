@@ -252,7 +252,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     if (isDragging) {
       document.addEventListener("mousemove", handleGlobalMouseMove);
       document.addEventListener("mouseup", handleGlobalMouseUp);
-      document.body.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
 
       return () => {
@@ -313,17 +312,15 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                       ref={sliderRef}
                       className="h-1.5 bg-gray-200 rounded-full cursor-pointer"
                       onMouseDown={handleMouseDown}
-                      style={{ cursor: isDragging ? "grabbing" : "pointer" }}
                     >
                       <div 
                         className="absolute top-0 left-0 h-1.5 rounded-full bg-gray-700"
                         style={{ width: `${sliderPercentage + 6}%` }}
                       />
                       <div 
-                        className="absolute top-1/2 transform w-3 h-3 bg-white border border-gray-700 rounded-full cursor-grab"
+                        className="absolute top-1/2 transform w-3 h-3 bg-white border border-gray-700 rounded-full"
                         style={{ 
                           left: `calc(${sliderPercentage}%)`,
-                          cursor: isDragging ? "grabbing" : "grab",
                           transform: `translateY(-50%) ${isDragging ? 'scale(1.1)' : 'scale(1)'}`
                         }}
                       />
