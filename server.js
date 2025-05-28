@@ -820,8 +820,4 @@ app.listen(port, () => {
   console.log(`   GET  /api/proxy-image-direct?url=... (direct image proxy)`);
   console.log(`🎨 OpenAI DALL-E 3 ready with size mapping`);
   console.log(`💾 Prompt caching enabled for cost optimization`);
-  console.log(`📋 Instructions loaded: ${cachedInstructions ? 'YES' : 'NO'}`);
-  if (cachedInstructions) {
-    console.log(`📏 Instructions size: ${cachedInstructions.length} chars`);
-  }
 });
