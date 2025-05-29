@@ -8,6 +8,64 @@ interface ImageInfoDropdownProps {
   copyContent?: string; // NEW: Direct content to copy
 }
 
+// Utility function to convert HTML to plain text with proper line breaks
+const htmlToPlainText = (html: string): string => {
+  // Create a temporary div to parse HTML
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+
+  // Define block elements that should have line breaks before/after
+  const blockElements = [
+    'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+    'ul', 'ol', 'li', 'br', 'hr', 'section', 'article', 
+    'header', 'footer', 'nav', 'main', 'aside', 'blockquote'
+  ];
+
+  // Function to recursively process nodes
+  const processNode = (node: Node): string => {
+    let result = '';
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      // Text node - return the text content
+      return node.textContent || '';
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element;
+      const tagName = element.tagName.toLowerCase();
+
+      // Add line break before block elements (except the first one)
+      if (blockElements.includes(tagName)) {
+        result += '\n';
+      }
+
+      // Process child nodes
+      for (let i = 0; i < node.childNodes.length; i++) {
+        result += processNode(node.childNodes[i]);
+      }
+
+      // Special handling for specific elements
+      if (tagName === 'li') {
+        result += '\n'; // Line break after each list item
+      } else if (tagName === 'br') {
+        result += '\n'; // Line break for <br> tags
+      } else if (blockElements.includes(tagName) && tagName !== 'li') {
+        result += '\n'; // Line break after other block elements
+      }
+    }
+
+    return result;
+  };
+
+  let plainText = processNode(tempDiv);
+
+  // Clean up extra line breaks
+  plainText = plainText
+    .replace(/^\n+/, '') // Remove leading line breaks
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // Replace multiple consecutive line breaks with double line breaks
+    .replace(/\n+$/, ''); // Remove trailing line breaks
+
+  return plainText;
+};
+
 const ImageInfoDropdown: React.FC<ImageInfoDropdownProps> = ({ 
   title, 
   children,
@@ -31,7 +89,12 @@ const ImageInfoDropdown: React.FC<ImageInfoDropdownProps> = ({
     
     // Method 1: Use provided copyContent
     if (copyContent) {
-      textToCopy = copyContent;
+      // Check if copyContent contains HTML tags
+      if (copyContent.includes('<') && copyContent.includes('>')) {
+        textToCopy = htmlToPlainText(copyContent);
+      } else {
+        textToCopy = copyContent;
+      }
     }
     // Method 2: Use onCopyContent callback
     else if (onCopyContent) {
@@ -40,7 +103,13 @@ const ImageInfoDropdown: React.FC<ImageInfoDropdownProps> = ({
     }
     // Method 3: Extract text from children content
     else if (contentRef.current) {
-      textToCopy = contentRef.current.innerText || contentRef.current.textContent || '';
+      // Check if content has HTML
+      const htmlContent = contentRef.current.innerHTML;
+      if (htmlContent.includes('<') && htmlContent.includes('>')) {
+        textToCopy = htmlToPlainText(htmlContent);
+      } else {
+        textToCopy = contentRef.current.innerText || contentRef.current.textContent || '';
+      }
     }
     
     if (textToCopy.trim()) {
@@ -48,6 +117,7 @@ const ImageInfoDropdown: React.FC<ImageInfoDropdownProps> = ({
         .then(() => {
           // Change icon to copied state
           setIsCopied(true);
+          console.log('Copied text:', textToCopy); // Debug log
         })
         .catch((err) => {
           console.error('Failed to copy text: ', err);

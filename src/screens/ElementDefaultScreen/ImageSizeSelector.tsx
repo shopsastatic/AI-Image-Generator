@@ -335,7 +335,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               {/* Top Row: Model Selection */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-600">Model</span>
+                  <strong className="text-gray-700">Setting</strong>
+                  {/* <span className="text-xs text-gray-600">Model</span>
                   <select
                     value={selectedModel}
                     onChange={(e) => handleModelChange(e.target.value)}
@@ -346,7 +347,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </select> */}
                 </div>
                 
                 {/* Mode Toggles */}

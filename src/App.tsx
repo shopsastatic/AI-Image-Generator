@@ -5,6 +5,7 @@ import { ElementDefaultScreen } from "./screens/ElementDefaultScreen";
 import { ElementDefaultWrapper } from "./screens/ElementDefaultWrapper";
 import { ElementWDefault } from "./screens/ElementWDefault";
 import { ElementWDefaultWrapper } from "./screens/ElementWDefaultWrapper";
+import ProjectManagement from "./screens/ElementDefaultScreen/ProjectManagement";
 import LoginScreen from "./screens/ElementDefaultScreen/LoginScreen";
 import { API_ENDPOINTS } from "./utils/apiConfig";
 
@@ -24,10 +25,10 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: "/ty*",
+    path: "/project-management",
     element: (
       <ProtectedRoute>
-        <ElementDefaultScreen />
+        <ProjectManagement />
       </ProtectedRoute>
     ),
   },

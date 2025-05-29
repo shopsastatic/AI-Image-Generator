@@ -1351,14 +1351,22 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const editPrompt = (prompt: string = "") => {
-    if (textareaRef.current && prompt) {
-      textareaRef.current.value = prompt;
-      setPromptText(prompt);
-      const event = new Event("input", { bubbles: true });
-      textareaRef.current.dispatchEvent(event);
-      adjustHeight();
+  if (textareaRef.current && prompt) {
+    // Convert HTML to plain text if needed
+    let cleanPrompt = prompt;
+    if (prompt.includes('<') && prompt.includes('>')) {
+      const div = document.createElement('div');
+      div.innerHTML = prompt.replace(/<(li|h[1-6]|p|div)>/gi, '\n\n<$1>').replace(/<br\s*\/?>/gi, '\n\n');
+      cleanPrompt = div.innerText.replace(/\n{2,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
     }
-  };
+    
+    textareaRef.current.value = cleanPrompt;
+    setPromptText(cleanPrompt);
+    const event = new Event("input", { bubbles: true });
+    textareaRef.current.dispatchEvent(event);
+    adjustHeight();
+  }
+};
 
   const downloadImage = async (
     imageUrl: string,
@@ -2030,7 +2038,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
               <div className="horizontal-border-2">
                 <div className="heading-images-2">Images</div>
 
-                <div className="flex gap-10">
+                <div className="flex">
                   {selectedImages.length > 0 && (
                     <button className="button-5" onClick={clearAllImages}>
                       <div className="overlap-group-3">
@@ -2139,6 +2147,15 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       className={`image-items image-item-${index + 1}`}
                       onClick={() => viewImage(index)}
                     >
+                      {(() => {
+                        if (img.sessionId) {
+                          const session = selectedSessions.find(s => s.sessionId === img.sessionId);
+                          if (session && session.list.length > 1) {
+                            return <div className="overlay-item-count">{session.list.length}</div>;
+                          }
+                        }
+                        return null;
+                      })()}
                       <SafeImage
                         src={img.imageUrl}
                         alt={`Generated image ${index + 1}`}
@@ -2251,8 +2268,26 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                 }
 
                                 if (promptText) {
+                                  // Convert HTML to plain text with double line breaks
+                                  let textToCopy = promptText;
+                                  if (
+                                    promptText.includes("<") &&
+                                    promptText.includes(">")
+                                  ) {
+                                    const div = document.createElement("div");
+                                    div.innerHTML = promptText
+                                      .replace(
+                                        /<(li|h[1-6]|p|div)>/gi,
+                                        "\n\n<$1>"
+                                      )
+                                      .replace(/<br\s*\/?>/gi, "\n\n");
+                                    textToCopy = div.innerText
+                                      .replace(/\n{2,}/g, "\n\n")
+                                      .replace(/^\n+|\n+$/g, "");
+                                  }
+
                                   navigator.clipboard
-                                    .writeText(promptText)
+                                    .writeText(textToCopy)
                                     .then(() => {
                                       const notification =
                                         document.createElement("div");
@@ -2300,8 +2335,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                 let claudeResponse = "";
                                 let imageIndex = 0;
                                 let imageName = "";
-
-                                console.log("📂 Image object:", image); // Debug log
 
                                 if (image.sessionId) {
                                   const session = selectedSessions.find(
@@ -2594,7 +2627,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
             <div className="background-6">
               <div className="text-wrapper-10">A</div>
             </div>
-            <div className="flex gap-10">
+            <div className="flex gap-2.5">
               <div className="container-9">
                 <div className="container-10">
                   <div className="text-wrapper-9">AI IMAGE</div>
@@ -2772,17 +2805,21 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 <div className="image-viewer-right">
                   <div className="image-viewer-details">
                     <div className="session-possition">
-                      {currentSessionId &&
+                      <span className="session-possition-text">
+                        {currentSessionId &&
                         (() => {
                           const session = selectedSessions.find(
                             (s) => s.sessionId === currentSessionId
                           );
-                          if (session) {
-                            return `${currentSessionImageIndex + 1}.`;
+                          if (session && session.list.length > 0) {
+                            return `${currentSessionImageIndex + 1}/${
+                              session.list.length
+                            }`;
                           } else {
-                            return "1.";
+                            return "1/1";
                           }
                         })()}
+                      </span>
 
                       <div className="flex gap-2">
                         {currentSessionId &&
@@ -3071,7 +3108,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             "🔖 Final describe for display:",
                             describeText
                           );
-                          return <p className="prompt-text describe-box">{describeText}</p>;
+                          return (
+                            <p className="prompt-text describe-box">
+                              {describeText}
+                            </p>
+                          );
                         })()}
                       </ImageInfoDropdown>
 
