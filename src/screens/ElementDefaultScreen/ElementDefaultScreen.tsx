@@ -2525,7 +2525,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           onHDModeChange={handleHDModeChange}
                         />
 
-                        <div className="button-6" onClick={handleUploadClick}>
+                        {/* <div className="button-6" onClick={handleUploadClick}>
                           <img
                             className="SVG-6"
                             alt="Svg"
@@ -2539,7 +2539,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             onChange={handleFileChange}
                             multiple
                           />
-                        </div>
+                        </div> */}
                       </div>
 
                       <div
@@ -3071,7 +3071,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             "🔖 Final describe for display:",
                             describeText
                           );
-                          return <p className="prompt-text describe">{describeText}</p>;
+                          return <p className="prompt-text describe-box">{describeText}</p>;
                         })()}
                       </ImageInfoDropdown>
 
@@ -3324,7 +3324,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
                           return (
                             <div
-                              className="prompt-text html-content"
+                              className="prompt-text html-content targeting-box"
                               dangerouslySetInnerHTML={{
                                 __html:
                                   targetingText || "No Targeting available",

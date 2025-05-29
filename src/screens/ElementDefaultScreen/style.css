@@ -2796,7 +2796,7 @@ button {
   font-weight: 600;
 }
 
-.main-prompt {
+.main-prompt, .targeting-box, .describe-box {
   white-space: break-spaces;
 }
 
