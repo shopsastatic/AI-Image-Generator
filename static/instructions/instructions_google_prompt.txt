@@ -232,6 +232,12 @@ GOOGLE_ADS_COPY_LIMITS:
 ├── Text Overlay must be in <strong> tags with headline in single quotes
 └── Use nested <ul> for multi-item specifications
 
+Targeting HTML Formatting Guidelines:
+├── Wrap entire targeting in <ul> tags
+├── Each targeting category in <li><strong>Category:</strong> content</li>
+├── Primary Targeting: must be in <strong> tags with specific combination
+└── Use nested <ul> for multiple targeting options
+
 ## Quality Assurance Framework
 GOOGLE_ADS_COMPLIANCE:
 ├── ✅ Image text coverage under 20%
@@ -309,35 +315,35 @@ Optimization: Mobile-responsive design
 #### Google Ads Copy Set A:
 
 **Headlines**
-1. [Curiosity-driven headline variation 1]
-2. [Benefit-focused headline variation 1]
-3. [Authority-based headline variation 1]
-4. [Problem-focused headline variation 1]
-5. [Solution-focused headline variation 1]
-6. [Local expert headline variation 1]
-7. [Scientific breakthrough headline 1]
-8. [Transformation headline variation 1]
-9. [Warning/alert headline variation 1]
-10. [Discovery headline variation 1]
-11. [Results-focused headline variation 1]
-12. [Time-sensitive headline variation 1]
-13. [Expert reveals headline variation 1]
-14. [Secret exposed headline variation 1]
-15. [New method headline variation 1]
+[Curiosity-driven headline variation 1]
+[Benefit-focused headline variation 1]
+[Authority-based headline variation 1]
+[Problem-focused headline variation 1]
+[Solution-focused headline variation 1]
+[Local expert headline variation 1]
+[Scientific breakthrough headline 1]
+[Transformation headline variation 1]
+[Warning/alert headline variation 1]
+[Discovery headline variation 1]
+[Results-focused headline variation 1]
+[Time-sensitive headline variation 1]
+[Expert reveals headline variation 1]
+[Secret exposed headline variation 1]
+[New method headline variation 1]
 
 **Long Headlines**
-1. [Extended story hook with credibility and transformation promise]
-2. [Problem amplification with expert solution introduction]
-3. [Scientific backing with personal success story elements]
-4. [Local authority with industry secret revelation approach]
-5. [Transformation narrative with social proof and urgency]
+[Extended story hook with credibility and transformation promise]
+[Problem amplification with expert solution introduction]
+[Scientific backing with personal success story elements]
+[Local authority with industry secret revelation approach]
+[Transformation narrative with social proof and urgency]
 
 **Descriptions**
-1. [Story hook with social proof and soft CTA]
-2. [Problem agitation with solution tease and urgency]
-3. [Expert credibility with transformation promise]
-4. [Scientific backing with immediate benefit focus]
-5. [Local success story with risk-free offer]
+[Story hook with social proof and soft CTA]
+[Problem agitation with solution tease and urgency]
+[Expert credibility with transformation promise]
+[Scientific backing with immediate benefit focus]
+[Local success story with risk-free offer]
 
 **Sitelinks**
 • Read Full Story
@@ -367,35 +373,35 @@ Optimization: Mobile-responsive design
 #### Google Ads Copy Set B:
 
 **Headlines**
-1. [Alternative curiosity angle 1]
-2. [Different benefit focus 1]
-3. [Credibility variation 1]
-4. [Alternative problem angle 1]
-5. [Different solution focus 1]
-6. [Local expert variation 2]
-7. [Scientific approach variation 2]
-8. [Transformation angle 2]
-9. [Warning/alert variation 2]
-10. [Discovery angle 2]
-11. [Results-focused variation 2]
-12. [Time-sensitive variation 2]
-13. [Expert reveals variation 2]
-14. [Secret exposed variation 2]
-15. [New method variation 2]
+[Alternative curiosity angle 1]
+[Different benefit focus 1]
+[Credibility variation 1]
+[Alternative problem angle 1]
+[Different solution focus 1]
+[Local expert variation 2]
+[Scientific approach variation 2]
+[Transformation angle 2]
+[Warning/alert variation 2]
+[Discovery angle 2]
+[Results-focused variation 2]
+[Time-sensitive variation 2]
+[Expert reveals variation 2]
+[Secret exposed variation 2]
+[New method variation 2]
 
 **Long Headlines**
-1. [Alternative story approach with different credibility elements]
-2. [Different problem angle with unique solution presentation]
-3. [Alternative scientific backing with different success elements]
-4. [Different local authority with alternative secret revelation]
-5. [Alternative transformation with different social proof approach]
+[Alternative story approach with different credibility elements]
+[Different problem angle with unique solution presentation]
+[Alternative scientific backing with different success elements]
+[Different local authority with alternative secret revelation]
+[Alternative transformation with different social proof approach]
 
 **Descriptions**
-1. [Alternative story approach with different social proof]
-2. [Different problem angle with alternative solution tease]
-3. [Alternative expert credibility with different transformation]
-4. [Different scientific backing with alternative benefit focus]
-5. [Alternative local success with different risk-free approach]
+[Alternative story approach with different social proof]
+[Different problem angle with alternative solution tease]
+[Alternative expert credibility with different transformation]
+[Different scientific backing with alternative benefit focus]
+[Alternative local success with different risk-free approach]
 
 **Sitelinks**
 • Discover Method
