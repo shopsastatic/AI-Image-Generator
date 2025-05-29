@@ -3071,7 +3071,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             "🔖 Final describe for display:",
                             describeText
                           );
-                          return <p className="prompt-text">{describeText}</p>;
+                          return <p className="prompt-text describe">{describeText}</p>;
                         })()}
                       </ImageInfoDropdown>
 
@@ -3125,7 +3125,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
                           return (
                             <div
-                              className="prompt-text html-content"
+                              className="prompt-text html-content main-prompt"
                               dangerouslySetInnerHTML={{
                                 __html:
                                   currentImagePrompt || "No prompt available",
@@ -3194,7 +3194,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
                           return (
                             <div
-                              className="prompt-text html-content"
+                              className="prompt-text html-content creative-a"
                               dangerouslySetInnerHTML={{
                                 __html:
                                   adCreativeText ||
@@ -3264,7 +3264,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
                           return (
                             <div
-                              className="prompt-text html-content"
+                              className="prompt-text html-content creative-b"
                               dangerouslySetInnerHTML={{
                                 __html:
                                   adCreativeText ||
