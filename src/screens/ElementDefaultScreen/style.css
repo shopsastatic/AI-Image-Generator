@@ -1578,11 +1578,19 @@ button {
 }
 
 .session-possition {
+  position: relative;
   font-weight: 600;
   font-size: 32px;
   display: flex;
   align-items: center;
   gap: 20px;
+}
+
+.image-viewer-download {
+  position: absolute;
+  right: 0;
+  font-size: 26px;
+  color: #3f3232;
 }
 
 .image-viewer-nav {

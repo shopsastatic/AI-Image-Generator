@@ -11,6 +11,14 @@ import {
   ImageCompressor,
 } from "./storageUtils";
 
+interface LoadingSession {
+  sessionId: string;
+  prompt: string;
+  startTime: number;
+  jobId: string | null;
+  countdown: number;
+}
+
 export const ElementDefaultScreen = (): JSX.Element => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
@@ -57,6 +65,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const [countdown, setCountdown] = useState<number>(0);
   const [loadingStatus, setLoadingStatus] = useState<string>("");
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [loadingSessions, setLoadingSessions] = useState<LoadingSession[]>([]);
+
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
   const [selectedSessions, setSelectedSessions] = useState<
     Array<{
@@ -126,6 +138,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const promptTextRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const submitButtonRef = useRef<HTMLDivElement>(null);
+
+  const sessionCountdownRefs = useRef<Record<string, NodeJS.Timeout>>({});
+  const pollingIntervalRefs = useRef<Record<string, NodeJS.Timeout>>({});
 
   const sizeOptions = [
     {
@@ -288,61 +303,89 @@ export const ElementDefaultScreen = (): JSX.Element => {
     return text.split(" ").slice(0, 10).join(" ") + "...";
   };
 
-  const startJobPolling = useCallback(
-    (jobId: string) => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-
-      const pollJob = async () => {
-        try {
-          const response = await fetch(`/api/image-generation/status/${jobId}`);
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data.error || "Failed to check job status");
-          }
-
-          switch (data.status) {
-            case "pending":
-              setLoadingStatus("Job queued...");
-              break;
-            case "processing":
-              setLoadingStatus(data.progress.currentStep || "Processing...");
-              break;
-            case "completed":
-              await handleJobCompleted(jobId);
-              return;
-            case "failed":
-              handleJobFailed(data.error || "Job failed");
-              return;
-            case "cancelled":
-              handleJobCancelled();
-              return;
-          }
-        } catch (error) {
-          console.error(`Polling error for job ${jobId}:`, error);
-          handleJobFailed(error.message);
-        }
-      };
-
-      pollJob();
-
-      const interval = setInterval(pollJob, 2000);
-      setPollingInterval(interval);
-    },
-    [pollingInterval]
-  );
-
-  const stopJobPolling = useCallback(() => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
+  const startJobPolling = useCallback((jobId: string, sessionId: string) => {
+    // Xóa interval cũ của job này nếu có
+    if (pollingIntervalRefs.current[sessionId]) {
+      clearInterval(pollingIntervalRefs.current[sessionId]);
+      delete pollingIntervalRefs.current[sessionId];
     }
-  }, [pollingInterval]);
+
+    const pollJob = async () => {
+      try {
+        const response = await fetch(`/api/image-generation/status/${jobId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to check job status");
+        }
+
+        // Cập nhật trạng thái loading session
+        setLoadingSessions((prev) =>
+          prev.map((session) => {
+            if (session.sessionId === sessionId) {
+              let status = "Queued...";
+
+              switch (data.status) {
+                case "pending":
+                  status = "Job queued...";
+                  break;
+                case "processing":
+                  status = data.progress.currentStep || "Processing...";
+                  break;
+                case "completed":
+                  // Sẽ được xử lý bên dưới
+                  break;
+                case "failed":
+                  status = `Failed: ${data.error || "Unknown error"}`;
+                  break;
+                case "cancelled":
+                  status = "Cancelled";
+                  break;
+              }
+
+              return { ...session, status };
+            }
+            return session;
+          })
+        );
+
+        switch (data.status) {
+          case "completed":
+            await handleJobCompleted(jobId, sessionId);
+            return;
+          case "failed":
+            handleJobFailed(data.error || "Job failed", sessionId);
+            return;
+          case "cancelled":
+            handleJobCancelled(sessionId);
+            return;
+        }
+      } catch (error) {
+        console.error(`Polling error for job ${jobId}:`, error);
+        handleJobFailed(error.message, sessionId);
+      }
+    };
+
+    pollJob(); // Gọi ngay lần đầu
+
+    // Tạo interval mới cho job này và lưu vào refs
+    const interval = setInterval(pollJob, 2000);
+    pollingIntervalRefs.current[sessionId] = interval;
+
+    // Cập nhật state để React biết về việc thay đổi polling
+    setPollingInterval(interval); // Vẫn giữ biến này cho backwards compatibility
+  }, []);
+
+  const stopJobPolling = useCallback((sessionId: string) => {
+    if (pollingIntervalRefs.current[sessionId]) {
+      clearInterval(pollingIntervalRefs.current[sessionId]);
+      delete pollingIntervalRefs.current[sessionId];
+      console.log(`🛑 Stopped polling for session: ${sessionId}`);
+    }
+  }, []);
 
   // FIX: Improved handleJobCompleted
-  const handleJobCompleted = async (jobId: string) => {
+  const handleJobCompleted = async (jobId: string, sessionId: string) => {
     try {
       console.log("🎯 Job completed, fetching results:", jobId);
 
@@ -354,31 +397,54 @@ export const ElementDefaultScreen = (): JSX.Element => {
       }
 
       console.log("📦 Results received:", data);
-      await processJobResults(data);
+      await processJobResults(data, sessionId);
     } catch (error) {
       console.error("Failed to fetch job results:", error);
-      handleJobFailed(error.message);
+      handleJobFailed(error.message, sessionId);
     } finally {
-      // FIX: Always stop polling and reset state
-      stopJobPolling();
-      setTimeout(() => {
-        resetLoadingState();
-      }, 1000);
+      // Dừng polling chỉ cho job này
+      stopJobPolling(sessionId);
+      removeLoadingSession(sessionId);
     }
   };
 
-  const handleJobFailed = (error: string) => {
-    setLoadingStatus(`Generation failed: ${error}`);
+  const handleJobFailed = (error: string, sessionId: string) => {
     showNotification("error", "Generation Failed!", error);
-
-    setTimeout(() => {
-      resetLoadingState();
-    }, 3000);
+    removeLoadingSession(sessionId);
   };
 
-  const handleJobCancelled = () => {
-    setLoadingStatus("Generation cancelled");
-    resetLoadingState();
+  const handleJobCancelled = (sessionId: string) => {
+    removeLoadingSession(sessionId);
+  };
+
+  const removeLoadingSession = (sessionId: string) => {
+    // Clear countdown interval
+    if (sessionCountdownRefs.current[sessionId]) {
+      clearInterval(sessionCountdownRefs.current[sessionId]);
+      delete sessionCountdownRefs.current[sessionId];
+    }
+
+    // Clear polling interval
+    if (pollingIntervalRefs.current[sessionId]) {
+      clearInterval(pollingIntervalRefs.current[sessionId]);
+      delete pollingIntervalRefs.current[sessionId];
+    }
+
+    // Xóa session khỏi loadingSessions
+    setLoadingSessions((prev) =>
+      prev.filter((session) => session.sessionId !== sessionId)
+    );
+  };
+
+  const editPromptFromLoadingSession = (session: LoadingSession) => {
+    if (session.prompt && textareaRef.current) {
+      textareaRef.current.value = session.prompt;
+      setPromptText(session.prompt);
+
+      const event = new Event("input", { bubbles: true });
+      textareaRef.current.dispatchEvent(event);
+      adjustHeight();
+    }
   };
 
   const resetLoadingState = () => {
@@ -389,9 +455,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     setIsLoading(false);
     setLoadingStatus("");
-    // FIX: DON'T reset currentLoadingPrompt here - we need it for the session
-    // setCurrentLoadingPrompt(""); // ← COMMENTED OUT
     setCurrentJobId(null);
+    // FIX: Không reset loadingSessionId ở đây vì cần giữ lại cho đến khi job hoàn thành
 
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
@@ -407,23 +472,23 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   // FIX: Complete rewrite of processJobResults
-  const processJobResults = async (jobData: any) => {
+  const processJobResults = async (jobData: any, sessionId: string) => {
     try {
-      const { results, sessionId, claudeResponse, originalPrompt, userPrompt } =
-        jobData;
+      const { results, claudeResponse } = jobData;
 
-      console.log("🔄 Processing job results:", {
-        sessionId,
-        hasClaudeResponse: !!claudeResponse,
-        resultCount: results?.length || 0,
-      });
+      console.log("🔄 Processing job results for session:", sessionId);
+      console.log(
+        "📝 Claude response received:",
+        claudeResponse ? "YES" : "NO"
+      );
 
-      // CRITICAL: Validate results to ensure we have valid images
-      if (!results || !Array.isArray(results) || results.length === 0) {
-        throw new Error("No results received from job");
-      }
+      // Tìm prompt từ loading session
+      const loadingSession = loadingSessions.find(
+        (session) => session.sessionId === sessionId
+      );
+      const promptFromLoadingSession = loadingSession?.prompt || "";
 
-      // Filter out any invalid or placeholder images
+      // Fix: Attach Claude response to each image
       const successfulImages = results
         .filter(
           (img: any) =>
@@ -431,75 +496,68 @@ export const ElementDefaultScreen = (): JSX.Element => {
             img.imageBase64.startsWith("data:") &&
             !img.imageBase64.includes(
               "PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM"
-            ) &&
-            img.imageBase64 !==
-              "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg=="
+            )
         )
         .map((img: any) => ({
           ...img,
-          claudeResponse: claudeResponse || "",
+          claudeResponse: claudeResponse, // Use claudeResponse from server
         }));
 
-      // Check we have at least one valid image
       if (successfulImages.length === 0) {
-        throw new Error("No valid images were successfully generated");
+        throw new Error("No images were successfully generated");
       }
 
-      console.log(`✅ Found ${successfulImages.length} valid images`);
-
-      // Determine what to use for the describe field
-      // Priority: 1. currentLoadingPrompt, 2. originalPrompt, 3. userPrompt, 4. fallback
-      let describeToUse = currentLoadingPrompt;
+      // Fix: Better handling of describe - use fallback if currentLoadingPrompt is empty
+      let describeToUse = promptFromLoadingSession;
       if (!describeToUse || describeToUse.trim() === "") {
-        describeToUse = originalPrompt || userPrompt || "Generated images";
-        console.log("⚠️ Using fallback for describe:", describeToUse);
+        // Fallback: try to get from jobData or use a default
+        describeToUse =
+          jobData.originalPrompt || jobData.userPrompt || "Generated images";
+        console.log(
+          "⚠️ PROCESS DEBUG - prompt is empty, using fallback:",
+          describeToUse
+        );
       }
 
-      // Prepare session data for storage
+      console.log("🔍 PROCESS DEBUG - Final describe to use:", describeToUse);
+
+      // Fix: Ensure describe is ALWAYS the user's original input
       const sessionData = {
         sessionId: sessionId,
-        describe: describeToUse,
+        describe: describeToUse, // Use the corrected describe
         images: successfulImages,
       };
 
-      // Save to storage
       try {
         await storageManager.saveSession(sessionData);
-        console.log(
-          `✅ Session saved successfully with ${successfulImages.length} images`
-        );
+        console.log("✅ Session saved with describe:", describeToUse);
       } catch (storageError) {
-        console.error("❌ Storage save failed:", storageError);
+        console.error("Storage save failed:", storageError);
         showNotification(
           "error",
-          "Storage Error!",
-          "Your images were generated but couldn't be saved properly. Try refreshing the page."
+          "Storage Full!",
+          "Your images were generated but couldn't be saved due to storage limits."
         );
       }
 
-      // Convert images to blob URLs for display (and clean up any existing ones)
+      // Convert images to blob URLs for display
       const convertedImages = await Promise.all(
-        successfulImages.map(async (img: any, index: number) => {
+        successfulImages.map(async (img: any) => {
           try {
-            // Use image compressor to create blob URL
             const compressed = await ImageCompressor.compressImage(
-              img.imageBase64,
-              0.85 // slightly higher quality
+              img.imageBase64
             );
-
-            // Create blob URL
             const blobUrl = URL.createObjectURL(compressed.blob);
 
             return {
               ...img,
-              imageBase64: blobUrl, // use blob URL for display
-              originalBase64: null, // don't store original to save memory
+              imageBase64: blobUrl,
+              originalBase64: img.imageBase64,
               isBlob: true,
               claudeResponse: img.claudeResponse,
-              imageName: img.imageName || `generated-image-${index + 1}`,
             };
           } catch (error) {
-            console.warn("❌ Failed to convert to blob:", error);
+            console.warn("Failed to convert to blob, using base64:", error);
             return {
               ...img,
               isBlob: false,
@@ -509,9 +567,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         })
       );
 
-      console.log(`✅ Converted ${convertedImages.length} images to blob URLs`);
-
-      // Create the session object
+      // Create new session
       const newSession = {
         sessionId: sessionId,
         clickedAt: Date.now(),
@@ -520,60 +576,27 @@ export const ElementDefaultScreen = (): JSX.Element => {
         list: convertedImages,
       };
 
-      // Check for and update existing session or add new session
+      // Update selectedSessions
       setSelectedSessions((prevSessions) => {
         const existingIndex = prevSessions.findIndex(
           (s) => s.sessionId === sessionId
         );
 
         if (existingIndex !== -1) {
-          // Update existing session
           console.log("🔄 Updating existing session:", sessionId);
-
-          // Clean up any existing blob URLs to prevent memory leaks
-          prevSessions[existingIndex].list.forEach((img) => {
-            if (
-              img.isBlob &&
-              img.imageBase64 &&
-              img.imageBase64.startsWith("blob:")
-            ) {
-              try {
-                URL.revokeObjectURL(img.imageBase64);
-              } catch (e) {
-                // Ignore errors
-              }
-            }
-          });
-
           const updatedSessions = [...prevSessions];
           updatedSessions[existingIndex] = newSession;
           return updatedSessions;
         }
 
-        // Add new session
         console.log("➕ Adding new session:", sessionId);
         return [newSession, ...prevSessions];
       });
 
-      // Add first image to the grid
+      // Add image to selectedImages without replacing loading items
       if (convertedImages.length > 0) {
         setSelectedImages((prevImages) => {
-          // Clean up any existing blob URLs for this session to prevent memory leaks
-          prevImages.forEach((img) => {
-            if (
-              img.sessionId === sessionId &&
-              img.imageUrl &&
-              img.imageUrl.startsWith("blob:")
-            ) {
-              try {
-                URL.revokeObjectURL(img.imageUrl);
-              } catch (e) {
-                // Ignore errors
-              }
-            }
-          });
-
-          // Create new image object
+          // Create image object
           const firstImageObj = {
             imageUrl: convertedImages[0].imageBase64,
             clickedAt: Date.now(),
@@ -589,25 +612,36 @@ export const ElementDefaultScreen = (): JSX.Element => {
             imageName: convertedImages[0].imageName,
           };
 
-          // Remove any existing images from this session and add the new one
+          // Remove any existing images from this session
           const filteredImages = prevImages.filter(
             (img) => img.sessionId !== sessionId
           );
-          return [firstImageObj, ...filteredImages].slice(0, gridItemCount);
+
+          // Add new image at the beginning, right after any loading items
+          const loadingItems = filteredImages.filter((img) =>
+            loadingSessions.some(
+              (session) => session.sessionId === img.sessionId
+            )
+          );
+
+          const regularItems = filteredImages.filter(
+            (img) =>
+              !loadingSessions.some(
+                (session) => session.sessionId === img.sessionId
+              )
+          );
+
+          return [...loadingItems, firstImageObj, ...regularItems].slice(
+            0,
+            gridItemCount
+          );
         });
       }
 
-      // Notify history sidebar to update
-      window.dispatchEvent(new CustomEvent("historyUpdated"));
-
+      window.dispatchEvent(new Event("historyUpdated"));
       console.log("✅ Job results processed successfully");
     } catch (error) {
-      console.error("❌ Error processing job results:", error);
-      showNotification(
-        "error",
-        "Processing Error",
-        "There was a problem processing the generated images."
-      );
+      console.error("Error processing job results:", error);
       throw error;
     }
   };
@@ -644,19 +678,29 @@ export const ElementDefaultScreen = (): JSX.Element => {
     });
   };
 
-  const cancelImageGeneration = async () => {
-    if (currentJobId) {
+  const cancelImageGeneration = async (sessionId?: string) => {
+    if (!sessionId && loadingSessions.length > 0) {
+      // Cancel session mới nhất nếu không có sessionId
+      sessionId = loadingSessions[loadingSessions.length - 1].sessionId;
+    }
+
+    if (!sessionId) return;
+
+    const loadingSession = loadingSessions.find(
+      (session) => session.sessionId === sessionId
+    );
+
+    if (loadingSession?.jobId) {
       try {
-        await fetch(`/api/image-generation/cancel/${currentJobId}`, {
+        await fetch(`/api/image-generation/cancel/${loadingSession.jobId}`, {
           method: "POST",
         });
-        setLoadingStatus("Cancelling...");
       } catch (error) {
         console.error("Error cancelling job:", error);
       }
     }
 
-    resetLoadingState();
+    removeLoadingSession(sessionId);
   };
 
   const editPromptFromLoading = () => {
@@ -668,6 +712,23 @@ export const ElementDefaultScreen = (): JSX.Element => {
       textareaRef.current.dispatchEvent(event);
       adjustHeight();
     }
+  };
+
+  const startSessionCountdown = (sessionId: string) => {
+    // Tạo interval cho session này
+    const intervalId = setInterval(() => {
+      setLoadingSessions((prev) =>
+        prev.map((session) => {
+          if (session.sessionId === sessionId) {
+            return { ...session, countdown: session.countdown + 1 };
+          }
+          return session;
+        })
+      );
+    }, 1000);
+
+    // Lưu intervalId để có thể clear sau này
+    sessionCountdownRefs.current[sessionId] = intervalId;
   };
 
   // FIX: Improved handleFormSubmit with better state management
@@ -686,20 +747,21 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     const currentPromptText = promptText.trim();
 
-    // FIX: Debug currentLoadingPrompt
-    console.log("🔍 SUBMIT DEBUG - promptText:", promptText);
-    console.log("🔍 SUBMIT DEBUG - currentPromptText:", currentPromptText);
-    console.log("🔍 SUBMIT DEBUG - Before setCurrentLoadingPrompt");
+    // Thêm session mới vào loadingSessions
+    const newLoadingSession: LoadingSession = {
+      sessionId,
+      prompt: currentPromptText,
+      startTime: Date.now(),
+      jobId: null,
+      countdown: 0,
+    };
 
+    setLoadingSessions((prev) => [newLoadingSession, ...prev]);
+
+    // Lưu prompt hiện tại (vẫn giữ lại biến này để tương thích)
     setCurrentLoadingPrompt(currentPromptText);
 
-    console.log("🔍 SUBMIT DEBUG - After setCurrentLoadingPrompt");
-    console.log(
-      "🔍 SUBMIT DEBUG - currentLoadingPrompt should be:",
-      currentPromptText
-    );
-
-    // Clear input AFTER saving to currentLoadingPrompt
+    // Clear input
     setPromptText("");
     setUploadedImages([]);
     if (textareaRef.current) {
@@ -710,39 +772,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
       });
     }
 
-    setIsLoading(true);
-    setLoadingStatus("Starting generation...");
-
-    setCountdown(1);
-
-    // FIX: Clear existing countdown before setting new one
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
-
-    countdownRef.current = setInterval(() => {
-      setCountdown((prevCount) => {
-        // FIX: Check if component is still mounted
-        if (!textareaRef.current) {
-          if (countdownRef.current) {
-            clearInterval(countdownRef.current);
-            countdownRef.current = null;
-          }
-          return prevCount;
-        }
-        return prevCount + 1;
-      });
-    }, 1000);
-
     try {
       const outputCount = numberOfImages;
       const imageSizesString = generateImageSizesString();
-
-      // FIX: Use currentPromptText directly instead of relying on state
-      console.log("🔍 SUBMIT DEBUG - Sending to server:", currentPromptText);
-      console.log("🔍 SUBMIT DEBUG - Selected model:", selectedModel);
-      console.log("🔍 SUBMIT DEBUG - HD Mode:", isHDMode);
 
       const jobResponse = await fetch("/api/image-generation/submit", {
         method: "POST",
@@ -751,13 +783,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
         },
         body: JSON.stringify({
           sessionId: sessionId,
-          userPrompt: currentPromptText, // Use the captured prompt text
+          userPrompt: currentPromptText,
           numberOfImages: outputCount,
           imageSizesString: imageSizesString,
           selectedQuality: selectedQuality,
           selectedCategory: selectedCategory,
-          selectedModel: selectedModel, // FIX: Add model selection
-          isHDMode: isHDMode, // FIX: Add HD mode flag
+          selectedModel: selectedModel,
+          isHDMode: isHDMode,
         }),
       });
 
@@ -769,35 +801,49 @@ export const ElementDefaultScreen = (): JSX.Element => {
       const jobData = await jobResponse.json();
       const jobId = jobData.jobId;
 
-      setCurrentJobId(jobId);
-      setLoadingStatus("Processing...");
+      // Cập nhật jobId cho loading session
+      setLoadingSessions((prev) =>
+        prev.map((session) =>
+          session.sessionId === sessionId ? { ...session, jobId } : session
+        )
+      );
 
-      startJobPolling(jobId);
+      // Bắt đầu đếm thời gian cho session này
+      startSessionCountdown(sessionId);
+
+      // Bắt đầu polling cho job này
+      startJobPolling(jobId, sessionId);
     } catch (error) {
       console.error("Form submission failed:", error);
-      setLoadingStatus("Error occurred");
-      showNotification("error", "API Error!", error.message);
 
-      setTimeout(() => {
-        resetLoadingState();
-      }, 3000);
+      // Xóa session này khỏi loadingSessions
+      setLoadingSessions((prev) =>
+        prev.filter((session) => session.sessionId !== sessionId)
+      );
+
+      showNotification("error", "API Error!", error.message);
     }
   };
 
   useEffect(() => {
     return () => {
-      // Clean up all blob URLs when component unmounts
-      cleanupBlobUrls();
+      // Clear tất cả các countdown intervals
+      Object.values(sessionCountdownRefs.current).forEach((intervalId) => {
+        clearInterval(intervalId);
+      });
 
-      // Clear any pending timers
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
+      // Clear tất cả các polling intervals
+      Object.values(pollingIntervalRefs.current).forEach((intervalId) => {
+        clearInterval(intervalId);
+      });
 
+      // Clear polling interval cũ (nếu còn)
       if (pollingInterval) {
         clearInterval(pollingInterval);
       }
+
+      // Clean up blob URLs
+      cleanupBlobUrls();
     };
   }, []);
 
@@ -2032,12 +2078,18 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
               <div>
                 <div className="image-grid-items" ref={gridContainerRef}>
-                  {isLoading && (
-                    <div className="image-items image-item-loading">
+                  {loadingSessions.map((session) => (
+                    <div
+                      key={session.sessionId}
+                      className="image-items image-item-loading"
+                      data-session-id={session.sessionId}
+                    >
                       <div className="loading-container">
                         <button
                           className="loading-close-btn"
-                          onClick={cancelImageGeneration}
+                          onClick={() =>
+                            cancelImageGeneration(session.sessionId)
+                          }
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -2053,10 +2105,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             ></path>
                           </svg>
                         </button>
-                        <div className="loading-time">{countdown}s</div>
+                        <div className="loading-time">{session.countdown}s</div>
                         <button
                           className="loading-edit-btn"
-                          onClick={editPromptFromLoading}
+                          onClick={() => editPromptFromLoadingSession(session)}
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -2073,13 +2125,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           </svg>
                         </button>
                         <div className="loading-prompt-preview">
-                          {currentLoadingPrompt
-                            ? getFirst10Words(currentLoadingPrompt)
+                          {session.prompt
+                            ? getFirst10Words(session.prompt)
                             : "Generating..."}
                         </div>
                       </div>
                     </div>
-                  )}
+                  ))}
 
                   {selectedImages.map((img, index) => (
                     <div
@@ -2786,6 +2838,54 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             ) : null;
                           })()}
                       </div>
+
+                      <button
+                        className="image-viewer-download"
+                        onClick={() => {
+                          if (
+                            currentSessionId &&
+                            currentViewImageIndex !== null
+                          ) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+
+                            if (
+                              session &&
+                              session.list[currentSessionImageIndex]
+                            ) {
+                              const imageData =
+                                session.list[currentSessionImageIndex];
+                              downloadImage(
+                                imageData.imageBase64,
+                                imageData.claudeResponse,
+                                currentSessionImageIndex,
+                                imageData.imageName
+                              );
+                            } else if (selectedImages[currentViewImageIndex]) {
+                              const imageData =
+                                selectedImages[currentViewImageIndex];
+                              downloadImage(
+                                imageData.imageUrl,
+                                imageData.claudeResponse,
+                                imageData.imageIndex || 0,
+                                imageData.imageName
+                              );
+                            }
+                          }
+                        }}
+                        title="Download image"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="1em"
+                          height="1em"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
+                        </svg>
+                      </button>
                     </div>
 
                     <div className="image-info-dropdowns">

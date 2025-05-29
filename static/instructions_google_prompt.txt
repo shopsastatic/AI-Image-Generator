@@ -209,26 +209,22 @@ SEARCH_BEHAVIOR_TARGETING:
 ├── "health breakthrough"
 └── "[your product category] reviews"
 
-## Google Ads Copy Specifications
+## Google Ads Copy Set Formatting Template Structure (Per Creative)
+
+**Container:** `<div class=google-ads-copy-set>`
 
 ### Ad Components Structure
 GOOGLE_ADS_COPY_LIMITS:
-├── **Headlines**: 30 characters (15 headlines per campaign)
-├── **Long Headlines**: 90 characters (5 long headlines per campaign)
-├── **Descriptions**: 90 characters (5 descriptions per campaign)
-├── **Sitelinks**: 25 characters (4-6 sitelinks per campaign)
-├── **Callouts**: 25 characters (6-8 callouts per campaign)
-└── **Promotions**: 20 characters (up to percent discount)
+├── **Headlines** (30 chars max): 15 items in `<ol>`
+├── **Long Headlines** (90 chars max): 5 items in `<ol>`
+├── **Descriptions** (90 chars max): 5 items in `<ol>`
+├── **Sitelinks** (25 chars max): 4-6 items in `<ul>`
+├── **Callouts** (25 chars max): 6-8 items in `<ul>`
+└── **Promotions** (20 chars max): 1-2 items in `<ul>`
 
-### Responsive Display Ad Copy
-RESPONSIVE_DISPLAY_SPECS:
-├── **Short Headlines**: 30 characters (15 required for campaign)
-├── **Long Headlines**: 90 characters (5 required for campaign)
-├── **Descriptions**: 90 characters (5 required for campaign)
-├── **Sitelinks**: 25 characters (4-6 for campaign)
-├── **Callouts**: 25 characters (6-8 for campaign)
-├── **Promotions**: 20 characters (discount offers)
-└── **Business Name**: Auto-populated
+### Prompt Format:
+- Each section needs `<h3>` title with character limit
+- Mention character limits are strict
 
 ## Quality Assurance Framework
 GOOGLE_ADS_COMPLIANCE:
@@ -267,73 +263,166 @@ The system generates a pure JSON array with each object containing complete Goog
 ]
 ```
 
+### Generated Image Prompts & Google Ads Copy
+
+#### Prompt 1: [Template_Type]
+
+Create an image with the following specifications:
+
+**Visual Composition**: [Detailed scene description optimized for Google Display Network, focusing on professional advertorial appearance with clean, trustworthy design elements]
+
+**Text Overlay**: [Exact headline text optimized]
+
+**Text Styling Requirements**:
+• **Coverage**: Maximum 20% of total image area
+• **Font**: Sans-serif, minimum 14pt equivalent size
+• **Contrast**: High readability specifications
+• **Border**: [Specific Google-compliant styling]
+• **Background**: [High-contrast, readable background treatment]
+• **Effects**: [Highlights and emphasis techniques]
+
+**Color Palette**: [Brand-aligned, professional color scheme suitable for diverse Google Display Network placements]
+
+**Image Size**: [Landscape | Square | Portrait]
+
+**Advertorial Elements**: [Specific editorial disguise features for Google Ads environment]
+
+**Optimization**: Mobile-responsive design
+
+---
+
+#### Prompt 2: [Template_Type]
+[Complete structured prompt following same format]
+
+---
+
+[Continue for all specified number of prompts...]
+
+### Google Ads Copy Set Structure (Per Creative)
+
+#### Google Ads Copy Set A:
+
+**Headlines**
+1. [Curiosity-driven headline variation 1]
+2. [Benefit-focused headline variation 1]
+3. [Authority-based headline variation 1]
+4. [Problem-focused headline variation 1]
+5. [Solution-focused headline variation 1]
+6. [Local expert headline variation 1]
+7. [Scientific breakthrough headline 1]
+8. [Transformation headline variation 1]
+9. [Warning/alert headline variation 1]
+10. [Discovery headline variation 1]
+11. [Results-focused headline variation 1]
+12. [Time-sensitive headline variation 1]
+13. [Expert reveals headline variation 1]
+14. [Secret exposed headline variation 1]
+15. [New method headline variation 1]
+
+**Long Headlines**
+1. [Extended story hook with credibility and transformation promise]
+2. [Problem amplification with expert solution introduction]
+3. [Scientific backing with personal success story elements]
+4. [Local authority with industry secret revelation approach]
+5. [Transformation narrative with social proof and urgency]
+
+**Descriptions**
+1. [Story hook with social proof and soft CTA]
+2. [Problem agitation with solution tease and urgency]
+3. [Expert credibility with transformation promise]
+4. [Scientific backing with immediate benefit focus]
+5. [Local success story with risk-free offer]
+
+**Sitelinks**
+• Read Full Story
+• See the Research
+• Get Expert Guide
+• View Results
+• Try Risk-Free
+• Learn the Method
+
+**Callouts**
+• Expert Recommended
+• Scientifically Backed
+• Risk-Free Trial
+• Proven Results
+• Natural Solution
+• Fast Acting
+• Doctor Approved
+• Money Back Guarantee
+
+**Promotions**
+• Up to [X]% off today
+
+**Primary Targeting**: [Most effective demographic + interest + behavior combination]
+
+---
+
+#### Google Ads Copy Set B:
+
+**Headlines**
+1. [Alternative curiosity angle 1]
+2. [Different benefit focus 1]
+3. [Credibility variation 1]
+4. [Alternative problem angle 1]
+5. [Different solution focus 1]
+6. [Local expert variation 2]
+7. [Scientific approach variation 2]
+8. [Transformation angle 2]
+9. [Warning/alert variation 2]
+10. [Discovery angle 2]
+11. [Results-focused variation 2]
+12. [Time-sensitive variation 2]
+13. [Expert reveals variation 2]
+14. [Secret exposed variation 2]
+15. [New method variation 2]
+
+**Long Headlines**
+1. [Alternative story approach with different credibility elements]
+2. [Different problem angle with unique solution presentation]
+3. [Alternative scientific backing with different success elements]
+4. [Different local authority with alternative secret revelation]
+5. [Alternative transformation with different social proof approach]
+
+**Descriptions**
+1. [Alternative story approach with different social proof]
+2. [Different problem angle with alternative solution tease]
+3. [Alternative expert credibility with different transformation]
+4. [Different scientific backing with alternative benefit focus]
+5. [Alternative local success with different risk-free approach]
+
+**Sitelinks**
+• Discover Method
+• Access Research
+• Download Guide
+• Check Results
+• Start Free Trial
+• Get Solution
+
+**Callouts**
+• Clinically Tested
+• Research Proven
+• 30-Day Guarantee
+• Real Results
+• Safe & Natural
+•  Quick Results
+• Expert Approved
+• 100% Money Back
+
+**Promotions**
+• Save up to [X]% now
+
+**Secondary Targeting**: [Alternative targeting combination for A/B testing]
+
+---
+
 ### Image Name Guidelines
 IMAGE_NAME_SPECIFICATIONS:
 ├── Maximum 12 words total
-├── Use dash instead of spaces
 ├── Descriptive of advertorial content and template type
 ├── Format: [product/topic]_[template_type]_[image_format]
-├── Examples: "health-breakthrough-credibility-square", "weight-loss-transformation-landscape"
+├── Examples: "health-breakthrough-credibility-square"
 └── Keep concise but informative for easy identification
-
-### Google Ads Copy Set Structure (Per Creative)
-EACH_AD_CREATIVE_CONTAINS:
-├── **Headlines**: 15 variations (30 characters each)
-├── **Long Headlines**: 5 variations (90 characters each)
-├── **Descriptions**: 5 variations (90 characters each)
-├── **Sitelinks**: 4-6 variations (25 characters each)
-├── **Callouts**: 6-8 variations (25 characters each)
-├── **Promotions**: 1-2 variations (20 characters each)
-└── **Targeting**: Demographic + Interest + Behavior combinations
-
-### Ad Creative Formatting Template
-AD_CREATIVE_HTML_STRUCTURE:
-```html
-<div class="google-ads-copy-set">
-  <h3>Headlines (30 chars max):</h3>
-  <ol>
-    <li>"[Headline 1]"</li>
-    <li>"[Headline 2]"</li>
-    
-    <li>"[Headline 15]"</li>
-  </ol>
-  
-  <h3>Long Headlines (90 chars max):</h3>
-  <ol>
-    <li>"[Long headline 1]"</li>
-    
-    <li>"[Long headline 5]"</li>
-  </ol>
-  
-  <h3>Descriptions (90 chars max):</h3>
-  <ol>
-    <li>"[Description 1]"</li>
-    
-    <li>"[Description 5]"</li>
-  </ol>
-  
-  <h3>Sitelinks (25 chars max):</h3>
-  <ul>
-    <li>"[Sitelink 1]"</li>
-    
-    <li>"[Sitelink 4-6]"</li>
-  </ul>
-  
-  <h3>Callouts (25 chars max):</h3>
-  <ul>
-    <li>"[Callout 1]"</li>
-    
-    <li>"[Callout 6-8]"</li>
-  </ul>
-  
-  <h3>Promotions (20 chars max):</h3>
-  <ul>
-    <li>"[Promotion offer]"</li>
-  </ul>
-</div>
-```
-
----
 
 ## Usage Instructions
 
