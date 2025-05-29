@@ -421,7 +421,7 @@ button {
   margin-top: 56px;
   width: 100%;
   min-height: calc(100vh - 56px - 120px);
-  max-height: 1000px;
+  max-height: 1500px;
   cursor: pointer;
 }
 
