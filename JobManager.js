@@ -10,7 +10,7 @@ class APIConfigManager {
   }
 
   // FIX: Get config based on HD mode and model
-  getConfigForRequest(isHDMode = false, selectedModel = 'deepsearch') {
+  getConfigForRequest(isHDMode = false, selectedModel = 'claude-sonnet') {
     console.log(`🔍 Getting config for HD:${isHDMode}, Model:${selectedModel}`);
 
     // Model determines which AI service to use for PROMPT GENERATION
@@ -245,7 +245,7 @@ export class JobManager {
     this.startCleanupInterval();
   }
 
-  async createJob(sessionId, userPrompt, numberOfImages, imageSizesString, selectedQuality, selectedCategory, selectedModel = 'deepsearch', isHDMode = false) {
+  async createJob(sessionId, userPrompt, numberOfImages, imageSizesString, selectedQuality, selectedCategory, selectedModel = 'claude-sonnet', isHDMode = false) {
     const jobId = uuidv4();
 
     console.log(`🔍 Creating job with model:${selectedModel}, HD:${isHDMode}`);

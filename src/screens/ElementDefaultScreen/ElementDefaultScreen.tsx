@@ -45,7 +45,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
   });
 
   // FIX: Add states for model and HD mode
-  const [selectedModel, setSelectedModel] = useState<string>("deepsearch");
+  const [selectedModel, setSelectedModel] = useState<string>("claude-sonnet");
   const [isHDMode, setIsHDMode] = useState<boolean>(false);
 
   const [numberOfImages, setNumberOfImages] = useState<number>(1);

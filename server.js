@@ -130,7 +130,7 @@ app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
       imageSizesString,
       selectedQuality = 'low',
       selectedCategory,
-      selectedModel = 'deepsearch',  // ✅ ADD: Extract selectedModel
+      selectedModel = 'claude-sonnet',  // ✅ ADD: Extract selectedModel
       isHDMode = false               // ✅ ADD: Extract isHDMode
     } = req.body;
 

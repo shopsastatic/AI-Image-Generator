@@ -223,7 +223,7 @@ GOOGLE_ADS_COPY_LIMITS:
 └── **Promotions** (20 chars max): 1-2 items in `<ul>`
 
 ### Google Ads Copy Format:
-├── Each section needs `<h3>` title with character limit
+├── Each section uses clean `<h3>` title without character limit display
 └── Mention character limits are strict
 
 ### Prompt HTML Formatting Guidelines:
