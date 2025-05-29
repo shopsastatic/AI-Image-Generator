@@ -1,4 +1,4 @@
-// JobManager.js - Updated with Deepseek API Support
+// JobManager.js - Updated with Deepseek Prompt Integration and piapi.ai chat completions
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
@@ -12,7 +12,7 @@ class APIConfigManager {
   // FIX: Get config based on HD mode and model
   getConfigForRequest(isHDMode = false, selectedModel = 'deepsearch') {
     console.log(`🔍 Getting config for HD:${isHDMode}, Model:${selectedModel}`);
-    
+
     // Model determines which AI service to use for PROMPT GENERATION
     if (selectedModel === 'claude-sonnet') {
       return {
@@ -34,21 +34,22 @@ class APIConfigManager {
         imageConfig: this.getImageConfig(isHDMode)
       };
     }
-    
+
     throw new Error(`Unsupported model: ${selectedModel}`);
   }
 
   getImageConfig(isHDMode) {
     if (isHDMode) {
-      // HD Mode ON → Use unofficial (laozhang)
+      // HD Mode ON → Use unofficial (piapi.ai)
       const subKey = process.env.OPENAI_API_SUB_KEY;
       if (!subKey) {
         throw new Error('HD Mode requires OPENAI_API_SUB_KEY');
       }
-      
+
       return {
         mode: 'unofficial',
-        baseURL: 'https://api.laozhang.ai/v1/',
+        baseURL: 'https://api.piapi.ai/v1/',
+        endpoint: 'chat/completions', // Changed from 'images/generations' to 'chat/completions'
         model: 'gpt-4o-image',
         keys: [subKey]
       };
@@ -61,14 +62,15 @@ class APIConfigManager {
         process.env.OPENAI_API_KEY_4,
         process.env.OPENAI_API_KEY_5,
       ].filter(Boolean);
-      
+
       if (officialKeys.length === 0) {
         throw new Error('Official OpenAI mode requires at least one OPENAI_API_KEY');
       }
-      
+
       return {
         mode: 'official',
         baseURL: 'https://api.openai.com/v1/',
+        endpoint: 'images/generations',
         model: 'gpt-image-1',
         keys: officialKeys
       };
@@ -148,19 +150,19 @@ class APIKeyRotationManager {
 
     while (attempts < maxAttempts) {
       const keyInfo = this.apiKeys[this.currentIndex];
-      
+
       if (this.isKeyAvailable(keyInfo)) {
         keyInfo.status = 'in_use';
         keyInfo.lastUsed = Date.now();
         keyInfo.requestCount++;
-        
+
         this.currentIndex = (this.currentIndex + 1) % this.apiKeys.length;
         return keyInfo;
       }
-      
+
       this.currentIndex = (this.currentIndex + 1) % this.apiKeys.length;
       attempts++;
-      
+
       if (attempts === this.apiKeys.length) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
@@ -175,7 +177,7 @@ class APIKeyRotationManager {
 
   isKeyAvailable(keyInfo) {
     const now = Date.now();
-    
+
     if (keyInfo.errorCount >= 3) {
       if (now - (keyInfo.lastUsed || 0) < 180000) {
         return false;
@@ -183,13 +185,13 @@ class APIKeyRotationManager {
       keyInfo.errorCount = 0;
       keyInfo.status = 'available';
     }
-    
+
     if (keyInfo.rateLimitResetTime && now < keyInfo.rateLimitResetTime) {
       return false;
     }
-    
-    return keyInfo.status === 'available' || 
-           (keyInfo.status === 'in_use' && now - (keyInfo.lastUsed || 0) > 60000);
+
+    return keyInfo.status === 'available' ||
+      (keyInfo.status === 'in_use' && now - (keyInfo.lastUsed || 0) > 60000);
   }
 
   getLeastRecentlyUsedKey() {
@@ -202,12 +204,12 @@ class APIKeyRotationManager {
 
   releaseKey(keyInfo, success = true, error = null) {
     keyInfo.status = 'available';
-    
+
     if (success) {
       keyInfo.errorCount = Math.max(0, keyInfo.errorCount - 1);
     } else {
       keyInfo.errorCount++;
-      
+
       if (error && error.status === 429) {
         keyInfo.status = 'rate_limited';
         keyInfo.rateLimitResetTime = Date.now() + 300000;
@@ -245,9 +247,9 @@ export class JobManager {
 
   async createJob(sessionId, userPrompt, numberOfImages, imageSizesString, selectedQuality, selectedCategory, selectedModel = 'deepsearch', isHDMode = false) {
     const jobId = uuidv4();
-    
+
     console.log(`🔍 Creating job with model:${selectedModel}, HD:${isHDMode}`);
-    
+
     const job = {
       id: jobId,
       status: 'pending',
@@ -273,7 +275,7 @@ export class JobManager {
     };
 
     this.jobs.set(jobId, job);
-    
+
     this.processJob(jobId).catch(error => {
       console.error(`Job ${jobId} processing failed:`, error);
       this.updateJobStatus(jobId, 'failed', error.message);
@@ -306,24 +308,24 @@ export class JobManager {
         promptResponse = await this.callClaudeAPI(job);
       } else if (config.promptMode === 'deepseek') {
         console.log('🤖 Using Deepseek for prompt generation');
-        promptResponse = await this.callDeepseekAPI(job);
+        promptResponse = await this.callDeepSeekAPI(job);
       } else {
         throw new Error(`Unsupported prompt mode: ${config.promptMode}`);
       }
 
-      console.log('📝 Prompt generation response:', promptResponse.substring(0, 100)); 
-      
+      console.log('📝 Prompt generation response:', promptResponse.substring(0, 100));
+
       // Store response in job
       job.claudeResponse = promptResponse; // Keep the name for compatibility
-      
+
       // Parse the response
       parsedResponse = this.parsePromptResponse(promptResponse, job.selectedCategory.category);
-      
+
       if (job.status === 'cancelled') return;
 
       job.progress.total = parsedResponse.prompts.length;
       job.progress.currentStep = 'Generating images...';
-      
+
       // Setup API manager for image generation (always uses OpenAI-based services)
       this.apiManager = new APIKeyRotationManager(config.imageConfig);
 
@@ -331,35 +333,35 @@ export class JobManager {
         if (job.status === 'cancelled') return;
 
         const promptData = parsedResponse.prompts[i];
-        
+
         if (!promptData.size || promptData.size === "Square") {
           const sizes = job.imageSizesString.split(',').map(s => s.trim());
           if (sizes[i] && sizes[i] !== 'auto') {
             promptData.size = sizes[i];
           } else {
             const sizesArray = [];
-            
+
             for (let j = 0; j < job.numberOfImages; j++) {
               if (job.imageSizesString.includes('Square')) sizesArray.push('Square');
-              if (job.imageSizesString.includes('Portrait')) sizesArray.push('Portrait');  
+              if (job.imageSizesString.includes('Portrait')) sizesArray.push('Portrait');
               if (job.imageSizesString.includes('Landscape')) sizesArray.push('Landscape');
             }
-            
+
             promptData.size = sizesArray[i] || 'Square';
           }
         }
-        
+
         try {
           const imageResult = await this.generateSingleImageWithRetry(promptData, job, config.imageConfig);
-          
+
           job.results.push(imageResult);
           job.progress.completed++;
           job.updatedAt = Date.now();
-          
+
         } catch (error) {
           job.progress.failed++;
           job.updatedAt = Date.now();
-          
+
           job.results.push({
             imageBase64: this.getErrorPlaceholder(),
             prompt: promptData.prompt,
@@ -385,8 +387,40 @@ export class JobManager {
     }
   }
 
-  // NEW: Deepseek API call
-  async callDeepseekAPI(job) {
+  // NEW: Load Deepseek-specific instruction files
+  async loadDeepseekInstruction(category = 'google_prompt') {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+
+      const fileMapping = {
+        'google_prompt': 'user_prompt_deepseek_google.txt',
+        'facebook_prompt': 'user_prompt_deepseek_facebook.txt'
+      };
+
+      const filename = fileMapping[category];
+
+      if (!filename) {
+        console.warn(`⚠️ No Deepseek instruction file for category: ${category}`);
+        return '';
+      }
+
+      const instructionsPath = path.join(process.cwd(), 'static', filename);
+
+      console.log(`📄 Loading Deepseek instruction: ${filename}`);
+      const content = fs.readFileSync(instructionsPath, 'utf8');
+
+      console.log(`✅ Deepseek instruction loaded: ${content.length} characters`);
+      return content;
+
+    } catch (error) {
+      console.error(`❌ Failed to load Deepseek instruction for ${category}:`, error);
+      return '';
+    }
+  }
+
+  // UPDATED: Deepseek API call with both system and user instructions
+  async callDeepSeekAPI(job) {
     const maxRetries = this.maxRetries;
     let lastError;
 
@@ -395,21 +429,42 @@ export class JobManager {
 
       try {
         job.progress.currentStep = `Deepseek generating... (attempt ${attempt}/${maxRetries})`;
-        
-        const deepseekPrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
+
+        // FIX: Load cả system instruction và deepseek-specific instruction
+        const systemInstruction = await this.loadInstructions(job.selectedCategory.category);
+        const deepseekInstruction = await this.loadDeepseekInstruction(job.selectedCategory.category);
+
+        let deepseekPrompt;
+        if (deepseekInstruction && deepseekInstruction.trim()) {
+          // Có deepseek instruction → merge vào user prompt
+          deepseekPrompt = `${deepseekInstruction}\n\n---\n\nUSER REQUEST:\n${job.userPrompt}\n\nOutput: ${job.numberOfImages}\nImage sizes: ${job.imageSizesString}`;
+          console.log(`📝 Deepseek prompt with instruction: ${deepseekPrompt.length} characters`);
+        } else {
+          // Không có deepseek instruction → dùng format cũ
+          deepseekPrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
+          console.log(`📝 Deepseek prompt without instruction: ${deepseekPrompt.length} characters`);
+        }
+
+        const messages = [];
+
+        // Add system message if available
+        if (systemInstruction && systemInstruction.trim()) {
+          messages.push({
+            role: "system",
+            content: systemInstruction
+          });
+          console.log(`📋 System instruction added: ${systemInstruction.length} characters`);
+        }
+
+        // Add user message
+        messages.push({
+          role: "user",
+          content: deepseekPrompt
+        });
 
         const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
           model: "deepseek-chat",
-          messages: [
-            {
-              role: "system", 
-              content: await this.loadInstructions(job.selectedCategory.category)
-            },
-            {
-              role: "user", 
-              content: deepseekPrompt
-            }
-          ],
+          messages: messages,
           max_tokens: 8000,
           temperature: 0.7
         }, {
@@ -419,14 +474,29 @@ export class JobManager {
           }
         });
 
-        return response.data.choices?.[0]?.message?.content || "No response from Deepseek";
+        const responseContent = response.data.choices?.[0]?.message?.content || "No response from Deepseek";
+
+        console.log(`✅ Deepseek API success (attempt ${attempt}):`, {
+          responseLength: responseContent.length,
+          hasSystemInstruction: !!systemInstruction,
+          hasDeepseekInstruction: !!deepseekInstruction,
+          messagesCount: messages.length,
+          category: job.selectedCategory.category
+        });
+
+        return responseContent;
 
       } catch (error) {
         lastError = error;
-        console.error(`Deepseek API attempt ${attempt} failed:`, error.message);
-        
+        console.error(`❌ Deepseek API attempt ${attempt} failed:`, {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data
+        });
+
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000;
+          console.log(`⏳ Retrying Deepseek in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -435,7 +505,7 @@ export class JobManager {
     throw lastError || new Error('Deepseek API failed after retries');
   }
 
-  // UPDATED: Claude API call (renamed for clarity)
+  // UPDATED: Claude API call (unchanged, still uses system message)
   async callClaudeAPI(job) {
     const maxRetries = this.maxRetries;
     let lastError;
@@ -445,14 +515,14 @@ export class JobManager {
 
       try {
         job.progress.currentStep = `Claude Sonnet generating... (attempt ${attempt}/${maxRetries})`;
-        
+
         const claudePrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
 
         const response = await axios.post('https://api.anthropic.com/v1/messages', {
           model: "claude-sonnet-4-20250514",
           max_tokens: 8000,
           messages: [{ role: "user", content: claudePrompt }],
-          system: await this.loadInstructions(job.selectedCategory.category)
+          system: await this.loadInstructions(job.selectedCategory.category) // Claude vẫn dùng system message
         }, {
           headers: {
             'Content-Type': 'application/json',
@@ -466,7 +536,7 @@ export class JobManager {
       } catch (error) {
         lastError = error;
         console.error(`Claude API attempt ${attempt} failed:`, error.message);
-        
+
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000;
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -484,6 +554,7 @@ export class JobManager {
     console.log(`🎨 Image generation config:`, {
       mode: imageConfig.mode,
       baseURL: imageConfig.baseURL,
+      endpoint: imageConfig.endpoint,
       model: imageConfig.model,
       keysCount: imageConfig.keys?.length
     });
@@ -492,85 +563,58 @@ export class JobManager {
       if (job.status === 'cancelled') throw new Error('Job cancelled');
 
       const keyInfo = await this.apiManager.getAvailableKey();
-      
-      try {
-        const requestBody = {
-          model: imageConfig.model,
-          prompt: promptData.prompt,
-          n: 1,
-          size: this.getSizeMapping(promptData.size),
-          quality: 'low',
-          output_format: "png"
-        };
 
+      try {
         console.log(`🎨 Generating image attempt ${attempt}/${maxRetries}:`, {
           apiMode: imageConfig.mode,
           model: imageConfig.model,
           baseURL: imageConfig.baseURL,
+          endpoint: imageConfig.endpoint,
           promptLength: promptData.prompt.length,
-          size: requestBody.size,
+          size: this.getSizeMapping(promptData.size),
           keyId: keyInfo.id
         });
 
-        console.log(`🔍 LAOZHANG REQUEST DEBUG:`, {
-          endpoint: `${imageConfig.baseURL}/images/generations`,
-          headers: {
-            'Authorization': `Bearer ${keyInfo.key.substring(0, 10)}...`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody, null, 2)
-        });
+        let response;
 
-        const response = await keyInfo.client.images.generate(requestBody);
+        // Use different API call based on HD mode (unofficial) vs normal mode (official)
+        if (imageConfig.mode === 'unofficial') {
+          // Use piapi.ai chat completions API for HD mode
+          response = await this.generateImageWithPiapiChatCompletions(keyInfo, promptData, imageConfig);
+        } else {
+          // Use standard OpenAI images API for normal mode
+          const requestBody = {
+            model: imageConfig.model,
+            prompt: promptData.prompt,
+            n: 1,
+            size: this.getSizeMapping(promptData.size),
+            quality: 'low',
+            output_format: "png"
+          };
 
-        // 🔍 DEBUG: Log complete response structure
-        console.log(`🔍 LAOZHANG RESPONSE DEBUG:`, {
+          console.log(`🔍 STANDARD OPENAI REQUEST:`, {
+            endpoint: `${imageConfig.baseURL}${imageConfig.endpoint}`,
+            model: imageConfig.model,
+            size: requestBody.size
+          });
+
+          response = await keyInfo.client.images.generate(requestBody);
+        }
+
+        // Log response overview
+        console.log(`🔍 IMAGE RESPONSE DEBUG:`, {
           hasResponse: !!response,
-          responseKeys: response ? Object.keys(response) : 'no response',
           hasData: !!response?.data,
           dataType: typeof response?.data,
-          dataKeys: response?.data ? Object.keys(response.data) : 'no data',
-          dataLength: Array.isArray(response?.data) ? response.data.length : 'not array',
-          fullResponse: JSON.stringify(response, null, 2)
+          dataLength: Array.isArray(response?.data) ? response.data.length : 'not array'
         });
 
-        // 🔧 FIX: Safe access to response data
-        let imageData = null;
-        
-        // Try different response formats
-        if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
-          // Standard OpenAI format: response.data[0]
-          imageData = response.data[0];
-          console.log(`✅ Using standard format: response.data[0]`);
-        } else if (response?.data && !Array.isArray(response.data)) {
-          // Direct object format: response.data
-          imageData = response.data;
-          console.log(`✅ Using direct format: response.data`);
-        } else if (response?.image) {
-          // Alternative format: response.image
-          imageData = response.image;
-          console.log(`✅ Using alternative format: response.image`);
-        } else if (response?.images && Array.isArray(response.images)) {
-          // Alternative array format: response.images[0]
-          imageData = response.images[0];
-          console.log(`✅ Using images array format: response.images[0]`);
-        } else if (response && typeof response === 'object') {
-          // Try to find image data in response object
-          const possibleKeys = ['url', 'b64_json', 'image_url', 'image_data', 'data_url'];
-          for (const key of possibleKeys) {
-            if (response[key]) {
-              imageData = { [key]: response[key] };
-              console.log(`✅ Found image data in response.${key}`);
-              break;
-            }
-          }
-        }
+        // Extract image data from response (different formats based on API mode)
+        let imageData = this.extractImageDataFromResponse(response, imageConfig.mode);
 
         if (!imageData) {
           console.error(`❌ No image data found in response structure:`, {
             responseType: typeof response,
-            responseKeys: response ? Object.keys(response) : 'no response',
-            fullResponse: response
           });
           throw new Error('No image data found in response');
         }
@@ -581,45 +625,18 @@ export class JobManager {
           hasUrl: !!imageData?.url,
           hasB64: !!imageData?.b64_json,
           hasImageUrl: !!imageData?.image_url,
-          hasDataUrl: !!imageData?.data_url,
-          urlPreview: imageData?.url?.substring(0, 50),
-          b64Length: imageData?.b64_json?.length
+          hasDataUrl: !!imageData?.data_url
         });
-        
-        let imageBase64 = '';
-        
-        // Try different image data formats
-        if (imageData.b64_json) {
-          imageBase64 = `data:image/png;base64,${imageData.b64_json}`;
-          console.log(`✅ Using b64_json, length: ${imageData.b64_json.length}`);
-        } else if (imageData.url) {
-          console.log(`🔗 Converting URL to base64: ${imageData.url.substring(0, 50)}...`);
-          imageBase64 = await this.convertUrlToBase64(imageData.url);
-          console.log(`✅ URL converted to base64, length: ${imageBase64.length}`);
-        } else if (imageData.image_url) {
-          console.log(`🔗 Converting image_url to base64: ${imageData.image_url.substring(0, 50)}...`);
-          imageBase64 = await this.convertUrlToBase64(imageData.image_url);
-          console.log(`✅ image_url converted to base64, length: ${imageBase64.length}`);
-        } else if (imageData.data_url) {
-          imageBase64 = imageData.data_url;
-          console.log(`✅ Using data_url directly, length: ${imageBase64.length}`);
-        } else if (typeof imageData === 'string' && imageData.startsWith('data:')) {
-          imageBase64 = imageData;
-          console.log(`✅ Using direct data URL string, length: ${imageBase64.length}`);
-        } else if (typeof imageData === 'string' && imageData.startsWith('http')) {
-          console.log(`🔗 Converting string URL to base64: ${imageData.substring(0, 50)}...`);
-          imageBase64 = await this.convertUrlToBase64(imageData);
-          console.log(`✅ String URL converted to base64, length: ${imageBase64.length}`);
-        } else {
-          console.error(`❌ No valid image format found:`, {
-            imageDataType: typeof imageData,
-            imageDataContent: imageData
-          });
-          throw new Error('No valid image format in response data');
+
+        // Convert image data to base64 format
+        let imageBase64 = await this.convertImageDataToBase64(imageData);
+
+        if (!imageBase64) {
+          throw new Error('Failed to convert image data to base64');
         }
 
         this.apiManager.releaseKey(keyInfo, true);
-        
+
         const result = {
           imageBase64,
           prompt: promptData.prompt,
@@ -643,21 +660,22 @@ export class JobManager {
         console.log(`🖼️ Generated image successfully:`, {
           hasImageName: !!result.imageName,
           hasAdCreativeA: !!result.AdCreativeA,
-          hasAdCreativeB: !!result.AdCreativeB, 
+          hasAdCreativeB: !!result.AdCreativeB,
           hasTargeting: !!result.targeting,
           size: result.size,
           imageApiMode: imageConfig.mode,
           attempt: attempt,
           imageBase64Length: result.imageBase64.length
         });
-        
+
         return result;
-        
+
       } catch (error) {
         console.error(`❌ Image generation attempt ${attempt} failed:`, {
           apiMode: imageConfig.mode,
           model: imageConfig.model,
           baseURL: imageConfig.baseURL,
+          endpoint: imageConfig.endpoint,
           keyId: keyInfo.id,
           errorType: error.constructor.name,
           errorMessage: error.message
@@ -671,17 +689,6 @@ export class JobManager {
             headers: error.response.headers,
             data: error.response.data
           });
-
-          if (imageConfig.mode === 'unofficial') {
-            console.error(`🚨 LAOZHANG SPECIFIC ERROR:`, {
-              url: error.config?.url,
-              method: error.config?.method,
-              requestData: error.config?.data,
-              responseData: error.response.data,
-              responseStatus: error.response.status,
-              responseHeaders: error.response.headers
-            });
-          }
         } else if (error.request) {
           console.error(`🌐 Network Error:`, {
             message: error.message,
@@ -710,7 +717,7 @@ export class JobManager {
 
         this.apiManager.releaseKey(keyInfo, false, error);
         lastError = error;
-        
+
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000;
           console.log(`⏳ Retrying in ${delay}ms...`);
@@ -724,6 +731,7 @@ export class JobManager {
       apiMode: imageConfig.mode,
       model: imageConfig.model,
       baseURL: imageConfig.baseURL,
+      endpoint: imageConfig.endpoint,
       promptPreview: promptData.prompt.substring(0, 100),
       finalError: {
         message: lastError?.message,
@@ -736,11 +744,215 @@ export class JobManager {
     throw lastError || new Error('Image generation failed after retries');
   }
 
+  // NEW: Method for generating images using piapi.ai chat completions API
+  async generateImageWithPiapiChatCompletions(keyInfo, promptData, imageConfig) {
+    // Create chat completions request for piapi.ai
+    const requestBody = {
+      model: imageConfig.model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: promptData.prompt
+            }
+          ],
+
+        }
+      ],
+      modalities: ["image"],
+      stream: false
+    };
+
+    console.log(`🔍 PIAPI CHAT COMPLETIONS REQUEST:`, {
+      endpoint: `${imageConfig.baseURL}${imageConfig.endpoint}`,
+      model: imageConfig.model,
+      promptPreview: promptData.prompt.substring(0, 100)
+    });
+
+    // Use axios for the request since we're using a different endpoint structure
+    const response = await axios.post(`${imageConfig.baseURL}${imageConfig.endpoint}`, requestBody, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${keyInfo.key}`
+      }
+    });
+
+    console.log(`✅ PIAPI response received:`, {
+      status: response.status,
+      hasData: !!response.data,
+      data: response.data,
+    });
+
+    return response.data;
+  }
+
+  // NEW: Extract image data from different response formats
+  // Improved extractImageDataFromResponse function
+  extractImageDataFromResponse(response, mode) {
+    if (!response) return null;
+
+    if (mode === 'unofficial') {
+      // First, try to extract the storage.theapi.app URL format using regex
+      if (typeof response === 'string') {
+        const theapiUrlMatch = response.match(/https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png/);
+        if (theapiUrlMatch) {
+          return { url: theapiUrlMatch[0] };
+        }
+      }
+
+      // Check if response is a string containing JSON
+      if (typeof response === 'string' && response.includes('storage.theapi.app')) {
+        try {
+          // Try to find the URL in the string using regex
+          const theapiUrlMatch = response.match(/https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png/);
+          if (theapiUrlMatch) {
+            return { url: theapiUrlMatch[0] };
+          }
+        } catch (error) {
+          console.error('Error parsing response string:', error);
+        }
+      }
+
+      // For structured response data from piapi.ai chat completions
+      if (response.choices && response.choices.length > 0) {
+        const message = response.choices[0].message;
+
+        // Look for the specific markdown image pattern in content
+        if (message && message.content && typeof message.content === 'string') {
+          const markdownMatch = message.content.match(/!\[.*?\]\((https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png)\)/);
+          if (markdownMatch && markdownMatch[1]) {
+            return { url: markdownMatch[1] };
+          }
+        }
+
+        // Handle array content format
+        if (message && message.content && Array.isArray(message.content)) {
+          for (const part of message.content) {
+            // Check each content part for text containing the URL
+            if (part.type === 'text' && part.text) {
+              const markdownMatch = part.text.match(/!\[.*?\]\((https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png)\)/);
+              if (markdownMatch && markdownMatch[1]) {
+                return { url: markdownMatch[1] };
+              }
+
+              // Direct URL in text
+              const directUrlMatch = part.text.match(/https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png/);
+              if (directUrlMatch) {
+                return { url: directUrlMatch[0] };
+              }
+            }
+
+            // Other part types that might contain image URL
+            if (part.image_url) return { url: part.image_url.url };
+            if (part.image) return { data_url: part.image };
+            if (part.url) return { url: part.url };
+          }
+        }
+
+        // Check for delta content if in streaming mode
+        if (response.choices[0].delta && response.choices[0].delta.content) {
+          const content = response.choices[0].delta.content;
+          const markdownMatch = content.match(/!\[.*?\]\((https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png)\)/);
+          if (markdownMatch && markdownMatch[1]) {
+            return { url: markdownMatch[1] };
+          }
+        }
+      }
+
+      // Fall back to other locations in the response
+      if (response.data && response.data.url) return { url: response.data.url };
+      if (response.data && response.data.b64_json) return { b64_json: response.data.b64_json };
+      if (response.url) return { url: response.url };
+      if (response.b64_json) return { b64_json: response.b64_json };
+      if (response.image_url) return { url: response.image_url };
+      if (response.image) return { data_url: response.image };
+
+    } else {
+      // Standard OpenAI response format (unchanged)
+      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+        return response.data[0];
+      } else if (response.data && !Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.image) {
+        return response.image;
+      } else if (response.images && Array.isArray(response.images)) {
+        return response.images[0];
+      }
+    }
+
+    return null;
+  }
+
+
+  // NEW: Convert various image data formats to base64
+  async convertImageDataToBase64(imageData) {
+    if (!imageData) return null;
+
+    // Handle our special URL extraction format
+    if (imageData.specialImageUrl) {
+      try {
+        return await this.convertUrlToBase64(imageData.specialImageUrl);
+      } catch (error) {
+        console.error('Failed to convert special URL to base64:', error);
+        return this.getErrorPlaceholder();
+      }
+    }
+
+    // Already in base64 data URL format
+    if (imageData.data_url && typeof imageData.data_url === 'string' &&
+      imageData.data_url.startsWith('data:image')) {
+      return imageData.data_url;
+    }
+
+    // Base64 JSON without data URL prefix
+    if (imageData.b64_json) {
+      return `data:image/png;base64,${imageData.b64_json}`;
+    }
+
+    // URL that needs to be fetched and converted
+    if (imageData.url) {
+      try {
+        return await this.convertUrlToBase64(imageData.url);
+      } catch (error) {
+        console.error('Failed to convert URL to base64:', error);
+        return this.getErrorPlaceholder();
+      }
+    }
+
+    // Direct URL (from our extraction)
+    if (imageData.directUrl) {
+      try {
+        return await this.convertUrlToBase64(imageData.directUrl);
+      } catch (error) {
+        console.error('Failed to convert direct URL to base64:', error);
+        return this.getErrorPlaceholder();
+      }
+    }
+
+    // Direct string that might be a data URL or URL
+    if (typeof imageData === 'string') {
+      if (imageData.startsWith('data:image')) {
+        return imageData;
+      } else if (imageData.startsWith('http')) {
+        try {
+          return await this.convertUrlToBase64(imageData);
+        } catch (error) {
+          console.error('Failed to convert string URL to base64:', error);
+          return this.getErrorPlaceholder();
+        }
+      }
+    }
+
+    return null;
+  }
+
   async loadInstructions(category = 'google_prompt') {
     try {
       const fs = await import('fs');
       const path = await import('path');
-      
+
       const fileMapping = {
         'google_prompt': 'instructions_google_prompt.txt',
         'facebook_prompt': 'instructions_facebook_prompt.txt',
@@ -749,7 +961,7 @@ export class JobManager {
 
       const filename = fileMapping[category] || fileMapping['google_prompt'];
       const instructionsPath = path.join(process.cwd(), 'static', filename);
-      
+
       return fs.readFileSync(instructionsPath, 'utf8');
     } catch (error) {
       return "You are an AI assistant that helps generate image prompts.";
@@ -760,10 +972,10 @@ export class JobManager {
   parsePromptResponse(response, category = 'google_prompt') {
     try {
       const jsonArrayMatch = response.match(/\[\s*\{[\s\S]*?\}\s*\]/);
-      
+
       if (jsonArrayMatch) {
         const jsonData = JSON.parse(jsonArrayMatch[0]);
-        
+
         if (Array.isArray(jsonData) && jsonData.length > 0) {
           // Get shared data from first object
           const firstObject = jsonData[0];
@@ -922,7 +1134,7 @@ export class JobManager {
 
     job.status = status;
     job.updatedAt = Date.now();
-    
+
     if (error) {
       job.error = error;
     }
@@ -943,7 +1155,7 @@ export class JobManager {
 
   getStats() {
     const jobs = Array.from(this.jobs.values());
-    
+
     let apiStats = {
       mode: 'dynamic',
       totalKeys: 0,
@@ -954,7 +1166,7 @@ export class JobManager {
     if (this.apiManager) {
       apiStats = this.apiManager.getStats();
     }
-    
+
     return {
       api: apiStats,
       jobs: {

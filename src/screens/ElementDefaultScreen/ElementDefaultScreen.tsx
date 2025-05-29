@@ -427,20 +427,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
           claudeResponse: claudeResponse, // Use claudeResponse from server
         }));
 
-      const failedImages = results.filter(
-        (img: any) => !successfulImages.some((success: any) => success === img)
-      );
-
       if (successfulImages.length === 0) {
         throw new Error("No images were successfully generated");
-      }
-
-      if (failedImages.length > 0 && successfulImages.length > 0) {
-        showNotification(
-          "warning",
-          "Partial Success",
-          `${successfulImages.length}/${results.length} images generated successfully.`
-        );
       }
 
       // FIX: Better handling of describe - use fallback if currentLoadingPrompt is empty
@@ -1619,7 +1607,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       if (notification.parentElement) {
         document.body.removeChild(notification);
       }
-    }, 5000);
+    }, 3000);
   };
 
   const SafeImage: React.FC<{

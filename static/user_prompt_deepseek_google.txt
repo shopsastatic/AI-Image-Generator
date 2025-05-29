@@ -31,7 +31,7 @@ IMAGE_NAME_SPECIFICATIONS:
 ├── Examples: "health-breakthrough-credibility-square", "weight-loss-transformation-landscape"
 └── Keep concise but informative for easy identification
 
-### Google Ads Copy Set Structure (Per Creative)
+### MUST BE HTML FORMAT: Google Ads Copy Set Structure (Per Creative)
 EACH_AD_CREATIVE_CONTAINS:
 ├── **Headlines**: 15 variations (30 characters each)
 ├── **Long Headlines**: 5 variations (90 characters each)
