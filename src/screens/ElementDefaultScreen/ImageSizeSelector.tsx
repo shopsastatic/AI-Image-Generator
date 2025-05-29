@@ -8,6 +8,7 @@ import {
   Image,
   Shuffle,
   RotateCw,
+  Zap,
 } from "lucide-react";
 
 interface ImageSizeSelectorProps {
@@ -27,6 +28,9 @@ interface ImageSizeSelectorProps {
   >;
   // Optional category selection props
   onCategoryChange?: (category: string, subcategory: string) => void;
+  // New props for Model and HD mode
+  onModelChange?: (model: string) => void;
+  onHDModeChange?: (isHD: boolean) => void;
 }
 
 interface CategoryOption {
@@ -44,9 +48,13 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   imageSizes,
   setImageSizes,
   onCategoryChange,
+  onModelChange,
+  onHDModeChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(true);
+  const [isHDMode, setIsHDMode] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('deepsearch');
   const [parentCategory, setParentCategory] = useState('design');
   const [childOption, setChildOption] = useState('modern');
 
@@ -65,6 +73,11 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const categoryOptions: CategoryOption[] = [
     { value: 'google_prompt', label: 'Google' },
     { value: 'facebook_prompt', label: 'Facebook' },
+  ];
+
+  const modelOptions = [
+    { value: 'deepsearch', label: 'DeepSearch' },
+    { value: 'claude-sonnet', label: 'Claude Sonnet' }
   ];
 
   const childOptions: ChildOptions = {
@@ -148,6 +161,23 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         return false;
       }
     });
+  };
+
+  const toggleHDMode = () => {
+    setIsHDMode(prev => {
+      const newValue = !prev;
+      if (onHDModeChange) {
+        onHDModeChange(newValue);
+      }
+      return newValue;
+    });
+  };
+
+  const handleModelChange = (newModel: string) => {
+    setSelectedModel(newModel);
+    if (onModelChange) {
+      onModelChange(newModel);
+    }
   };
 
   const updateQuantity = (format: keyof typeof imageSizes, delta: number) => {
@@ -292,6 +322,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
             {isAutoMode
               ? `Auto • ${numberOfImages}`
               : `${getCurrentTotal()}/${numberOfImages}`}
+            {isHDMode ? ' • HD' : ''}
           </span>
         </button>
 
@@ -299,48 +330,81 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         {isOpen && (
           <div className="absolute bottom-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-xl z-50 w-80 overflow-hidden mb-2">
             
-            {/* Header Row: Title + Auto + Images */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 border-b border-gray-200">
-              <span className="text-sm font-medium text-gray-700">Settings</span>
-              
-              <div className="flex items-center space-x-3">
-                {/* Images Slider */}
+            {/* Enhanced Header Row: Model, Auto, HD, Images */}
+            <div className="p-3 bg-gray-50 border-b border-gray-200 space-y-3">
+              {/* Top Row: Model Selection */}
+              <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-600">Images</span>
-                  <div className="w-16 relative">
-                    <div 
-                      ref={sliderRef}
-                      className="h-1.5 bg-gray-200 rounded-full cursor-pointer"
-                      onMouseDown={handleMouseDown}
-                    >
-                      <div 
-                        className="absolute top-0 left-0 h-1.5 rounded-full bg-gray-700"
-                        style={{ width: `${sliderPercentage + 6}%` }}
-                      />
-                      <div 
-                        className="absolute top-1/2 transform w-3 h-3 bg-white border border-gray-700 rounded-full"
-                        style={{ 
-                          left: `calc(${sliderPercentage}%)`,
-                          transform: `translateY(-50%) ${isDragging ? 'scale(1.1)' : 'scale(1)'}`
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-gray-700 min-w-[16px]">{numberOfImages}</span>
+                  <span className="text-xs text-gray-600">Model</span>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => handleModelChange(e.target.value)}
+                    className="px-2 py-1 text-xs bg-white border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                  >
+                    {modelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                
+                {/* Mode Toggles */}
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={toggleAutoMode}
+                    className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      isAutoMode 
+                        ? 'bg-gray-200 text-gray-700' 
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Shuffle className="w-3 h-3" />
+                    <span>Auto</span>
+                  </button>
 
-                {/* Auto Button */}
-                <button
-                  onClick={toggleAutoMode}
-                  className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    isAutoMode 
-                      ? 'bg-gray-200 text-gray-700' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <Shuffle className="w-3 h-3" />
-                  <span>Auto</span>
-                </button>
+                  <button
+                    onClick={toggleHDMode}
+                    className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      isHDMode 
+                        ? 'bg-gray-200 text-gray-700' 
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Zap className="w-3 h-3" />
+                    <span>HD</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Bottom Row: Images Control */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-600">Total Images</span>
+                
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-40 relative">
+                      <div 
+                        ref={sliderRef}
+                        className="h-1.5 bg-gray-200 rounded-full cursor-pointer"
+                        onMouseDown={handleMouseDown}
+                      >
+                        <div 
+                          className="absolute top-0 left-0 h-1.5 rounded-full bg-gray-700"
+                          style={{ width: `${sliderPercentage + 6}%` }}
+                        />
+                        <div 
+                          className="absolute top-1/2 transform w-3 h-3 bg-white border border-gray-700 rounded-full"
+                          style={{ 
+                            left: `calc(${sliderPercentage}%)`,
+                            transform: `translateY(-50%) ${isDragging ? 'scale(1.1)' : 'scale(1)'}`
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-gray-700 min-w-[16px]">{numberOfImages}</span>
+                  </div>
+                </div>
               </div>
             </div>
 

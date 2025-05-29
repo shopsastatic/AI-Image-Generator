@@ -129,7 +129,9 @@ app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
       numberOfImages,
       imageSizesString,
       selectedQuality = 'low',
-      selectedCategory
+      selectedCategory,
+      selectedModel = 'deepsearch',  // ✅ ADD: Extract selectedModel
+      isHDMode = false               // ✅ ADD: Extract isHDMode
     } = req.body;
 
     if (!sessionId || !userPrompt || !numberOfImages) {
@@ -138,13 +140,17 @@ app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
       });
     }
 
+    console.log(`🔍 Creating job with model: ${selectedModel}, HD Mode: ${isHDMode}`);
+
     const jobId = await jobManager.createJob(
       sessionId,
       userPrompt,
       numberOfImages,
       imageSizesString || 'auto',
       selectedQuality,
-      selectedCategory || { category: 'google_prompt', subcategory: '' }
+      selectedCategory || { category: 'google_prompt', subcategory: '' },
+      selectedModel,  // ✅ FIX: Pass selectedModel
+      isHDMode        // ✅ FIX: Pass isHDMode
     );
 
     res.json({
@@ -152,7 +158,11 @@ app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
       jobId: jobId,
       totalImages: numberOfImages,
       estimatedTime: numberOfImages * 15,
-      message: 'Job submitted successfully'
+      message: 'Job submitted successfully',
+      config: {
+        model: selectedModel,
+        hdMode: isHDMode
+      }
     });
 
   } catch (error) {
@@ -240,7 +250,9 @@ app.get('/api/image-generation/results/:jobId', requireAuth, (req, res) => {
       sessionId: job.sessionId,
       results: job.results,
       progress: job.progress,
-      originalPrompt: job.userPrompt,
+      originalPrompt: job.userPrompt, // FIX: Include original user prompt
+      userPrompt: job.userPrompt, // FIX: Also include as userPrompt for fallback
+      claudeResponse: job.claudeResponse, // FIX: Return Claude response
       completedAt: job.updatedAt
     });
 

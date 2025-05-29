@@ -1,34 +1,71 @@
-// JobManager.js - Node.js Compatible Version
+// JobManager.js - Updated with Deepseek API Support
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 
 class APIConfigManager {
   constructor() {
-    this.config = this.detectAPIMode();
-    console.log(`🔍 Detected API Mode: ${this.config.mode}`);
+    this.config = null;
+    console.log(`🔍 APIConfigManager initialized for dynamic configuration`);
   }
 
-  detectAPIMode() {
-    const subKey = process.env.OPENAI_API_SUB_KEY;
-    const officialKeys = [
-      process.env.OPENAI_API_KEY_1,
-      process.env.OPENAI_API_KEY_2,
-      process.env.OPENAI_API_KEY_3,
-      process.env.OPENAI_API_KEY_4,
-      process.env.OPENAI_API_KEY_5,
-    ].filter(Boolean);
+  // FIX: Get config based on HD mode and model
+  getConfigForRequest(isHDMode = false, selectedModel = 'deepsearch') {
+    console.log(`🔍 Getting config for HD:${isHDMode}, Model:${selectedModel}`);
+    
+    // Model determines which AI service to use for PROMPT GENERATION
+    if (selectedModel === 'claude-sonnet') {
+      return {
+        promptMode: 'claude',
+        model: 'claude-sonnet-4-20250514',
+        apiKey: process.env.CLAUDE_API_KEY,
+        // Image generation still uses OpenAI based on HD mode
+        imageMode: isHDMode ? 'unofficial' : 'official',
+        imageConfig: this.getImageConfig(isHDMode)
+      };
+    } else if (selectedModel === 'deepsearch') {
+      return {
+        promptMode: 'deepseek',
+        model: 'deepseek-chat', // or whatever model name Deepseek uses
+        apiKey: process.env.DEEPSEEK_API_KEY,
+        baseURL: 'https://api.deepseek.com/v1', // Deepseek API URL
+        // Image generation still uses OpenAI based on HD mode  
+        imageMode: isHDMode ? 'unofficial' : 'official',
+        imageConfig: this.getImageConfig(isHDMode)
+      };
+    }
+    
+    throw new Error(`Unsupported model: ${selectedModel}`);
+  }
 
-    if (subKey) {
+  getImageConfig(isHDMode) {
+    if (isHDMode) {
+      // HD Mode ON → Use unofficial (laozhang)
+      const subKey = process.env.OPENAI_API_SUB_KEY;
+      if (!subKey) {
+        throw new Error('HD Mode requires OPENAI_API_SUB_KEY');
+      }
+      
       return {
         mode: 'unofficial',
         baseURL: 'https://api.laozhang.ai/v1/',
         model: 'gpt-4o-image',
         keys: [subKey]
       };
-    }
-
-    if (officialKeys.length > 0) {
+    } else {
+      // HD Mode OFF → Use official OpenAI
+      const officialKeys = [
+        process.env.OPENAI_API_KEY_1,
+        process.env.OPENAI_API_KEY_2,
+        process.env.OPENAI_API_KEY_3,
+        process.env.OPENAI_API_KEY_4,
+        process.env.OPENAI_API_KEY_5,
+      ].filter(Boolean);
+      
+      if (officialKeys.length === 0) {
+        throw new Error('Official OpenAI mode requires at least one OPENAI_API_KEY');
+      }
+      
       return {
         mode: 'official',
         baseURL: 'https://api.openai.com/v1/',
@@ -36,12 +73,24 @@ class APIConfigManager {
         keys: officialKeys
       };
     }
+  }
 
-    throw new Error('No OpenAI API keys found');
+  // Legacy methods for backward compatibility
+  detectAPIMode() {
+    console.warn('⚠️ detectAPIMode is deprecated, use getConfigForRequest instead');
+    return this.getConfigForRequest(false, 'deepsearch');
   }
 
   getConfig() {
+    if (!this.config) {
+      console.warn('⚠️ Config not set, using default');
+      return this.getConfigForRequest(false, 'deepsearch');
+    }
     return this.config;
+  }
+
+  setConfig(config) {
+    this.config = config;
   }
 }
 
@@ -187,15 +236,17 @@ class APIKeyRotationManager {
 export class JobManager {
   constructor() {
     const configManager = new APIConfigManager();
-    this.config = configManager.getConfig();
-    this.apiManager = new APIKeyRotationManager(this.config);
+    this.configManager = configManager;
+    this.apiManager = null; // Will be initialized per job for image generation
     this.jobs = new Map();
     this.maxRetries = 3;
     this.startCleanupInterval();
   }
 
-  async createJob(sessionId, userPrompt, numberOfImages, imageSizesString, selectedQuality, selectedCategory) {
+  async createJob(sessionId, userPrompt, numberOfImages, imageSizesString, selectedQuality, selectedCategory, selectedModel = 'deepsearch', isHDMode = false) {
     const jobId = uuidv4();
+    
+    console.log(`🔍 Creating job with model:${selectedModel}, HD:${isHDMode}`);
     
     const job = {
       id: jobId,
@@ -206,7 +257,10 @@ export class JobManager {
       imageSizesString,
       selectedQuality,
       selectedCategory,
+      selectedModel,
+      isHDMode,
       results: [],
+      claudeResponse: '', // Will store prompt generation response
       progress: {
         total: numberOfImages,
         completed: 0,
@@ -232,7 +286,7 @@ export class JobManager {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
-    console.log('🎯 Processing job:', jobId);
+    console.log(`🎯 Processing job: ${jobId} with model: ${job.selectedModel}, HD: ${job.isHDMode}`);
 
     this.updateJobStatus(jobId, 'processing');
     job.progress.currentStep = 'Generating prompts...';
@@ -240,14 +294,38 @@ export class JobManager {
     try {
       if (job.status === 'cancelled') return;
 
-      const claudeResponse = await this.callClaudeWithRetry(job);
-      console.log('📝 Claude response:', claudeResponse.substring(0, 100)); 
+      let promptResponse = '';
+      let parsedResponse = null;
+
+      // Get configuration for this job
+      const config = this.configManager.getConfigForRequest(job.isHDMode, job.selectedModel);
+
+      // Generate prompts using selected model
+      if (config.promptMode === 'claude') {
+        console.log('🤖 Using Claude Sonnet for prompt generation');
+        promptResponse = await this.callClaudeAPI(job);
+      } else if (config.promptMode === 'deepseek') {
+        console.log('🤖 Using Deepseek for prompt generation');
+        promptResponse = await this.callDeepseekAPI(job);
+      } else {
+        throw new Error(`Unsupported prompt mode: ${config.promptMode}`);
+      }
+
+      console.log('📝 Prompt generation response:', promptResponse.substring(0, 100)); 
+      
+      // Store response in job
+      job.claudeResponse = promptResponse; // Keep the name for compatibility
+      
+      // Parse the response
+      parsedResponse = this.parsePromptResponse(promptResponse, job.selectedCategory.category);
+      
       if (job.status === 'cancelled') return;
 
-      const parsedResponse = this.parseClaudeResponse(claudeResponse, job.selectedCategory.category);
-      
       job.progress.total = parsedResponse.prompts.length;
       job.progress.currentStep = 'Generating images...';
+      
+      // Setup API manager for image generation (always uses OpenAI-based services)
+      this.apiManager = new APIKeyRotationManager(config.imageConfig);
 
       for (let i = 0; i < parsedResponse.prompts.length; i++) {
         if (job.status === 'cancelled') return;
@@ -272,7 +350,7 @@ export class JobManager {
         }
         
         try {
-          const imageResult = await this.generateSingleImageWithRetry(promptData, job);
+          const imageResult = await this.generateSingleImageWithRetry(promptData, job, config.imageConfig);
           
           job.results.push(imageResult);
           job.progress.completed++;
@@ -307,7 +385,8 @@ export class JobManager {
     }
   }
 
-  async callClaudeWithRetry(job) {
+  // NEW: Deepseek API call
+  async callDeepseekAPI(job) {
     const maxRetries = this.maxRetries;
     let lastError;
 
@@ -315,7 +394,57 @@ export class JobManager {
       if (job.status === 'cancelled') throw new Error('Job cancelled');
 
       try {
-        job.progress.currentStep = `Generating prompts... (attempt ${attempt}/${maxRetries})`;
+        job.progress.currentStep = `Deepseek generating... (attempt ${attempt}/${maxRetries})`;
+        
+        const deepseekPrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
+
+        const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
+          model: "deepseek-chat",
+          messages: [
+            {
+              role: "system", 
+              content: await this.loadInstructions(job.selectedCategory.category)
+            },
+            {
+              role: "user", 
+              content: deepseekPrompt
+            }
+          ],
+          max_tokens: 8000,
+          temperature: 0.7
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
+          }
+        });
+
+        return response.data.choices?.[0]?.message?.content || "No response from Deepseek";
+
+      } catch (error) {
+        lastError = error;
+        console.error(`Deepseek API attempt ${attempt} failed:`, error.message);
+        
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error('Deepseek API failed after retries');
+  }
+
+  // UPDATED: Claude API call (renamed for clarity)
+  async callClaudeAPI(job) {
+    const maxRetries = this.maxRetries;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (job.status === 'cancelled') throw new Error('Job cancelled');
+
+      try {
+        job.progress.currentStep = `Claude Sonnet generating... (attempt ${attempt}/${maxRetries})`;
         
         const claudePrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
 
@@ -336,6 +465,7 @@ export class JobManager {
 
       } catch (error) {
         lastError = error;
+        console.error(`Claude API attempt ${attempt} failed:`, error.message);
         
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000;
@@ -347,9 +477,16 @@ export class JobManager {
     throw lastError || new Error('Claude API failed after retries');
   }
 
-  async generateSingleImageWithRetry(promptData, job) {
+  async generateSingleImageWithRetry(promptData, job, imageConfig) {
     const maxRetries = this.maxRetries;
     let lastError;
+
+    console.log(`🎨 Image generation config:`, {
+      mode: imageConfig.mode,
+      baseURL: imageConfig.baseURL,
+      model: imageConfig.model,
+      keysCount: imageConfig.keys?.length
+    });
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (job.status === 'cancelled') throw new Error('Job cancelled');
@@ -358,7 +495,7 @@ export class JobManager {
       
       try {
         const requestBody = {
-          model: this.config.model,
+          model: imageConfig.model,
           prompt: promptData.prompt,
           n: 1,
           size: this.getSizeMapping(promptData.size),
@@ -366,43 +503,235 @@ export class JobManager {
           output_format: "png"
         };
 
+        console.log(`🎨 Generating image attempt ${attempt}/${maxRetries}:`, {
+          apiMode: imageConfig.mode,
+          model: imageConfig.model,
+          baseURL: imageConfig.baseURL,
+          promptLength: promptData.prompt.length,
+          size: requestBody.size,
+          keyId: keyInfo.id
+        });
+
+        console.log(`🔍 LAOZHANG REQUEST DEBUG:`, {
+          endpoint: `${imageConfig.baseURL}/images/generations`,
+          headers: {
+            'Authorization': `Bearer ${keyInfo.key.substring(0, 10)}...`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody, null, 2)
+        });
+
         const response = await keyInfo.client.images.generate(requestBody);
-        const imageData = response.data[0];
+
+        // 🔍 DEBUG: Log complete response structure
+        console.log(`🔍 LAOZHANG RESPONSE DEBUG:`, {
+          hasResponse: !!response,
+          responseKeys: response ? Object.keys(response) : 'no response',
+          hasData: !!response?.data,
+          dataType: typeof response?.data,
+          dataKeys: response?.data ? Object.keys(response.data) : 'no data',
+          dataLength: Array.isArray(response?.data) ? response.data.length : 'not array',
+          fullResponse: JSON.stringify(response, null, 2)
+        });
+
+        // 🔧 FIX: Safe access to response data
+        let imageData = null;
+        
+        // Try different response formats
+        if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+          // Standard OpenAI format: response.data[0]
+          imageData = response.data[0];
+          console.log(`✅ Using standard format: response.data[0]`);
+        } else if (response?.data && !Array.isArray(response.data)) {
+          // Direct object format: response.data
+          imageData = response.data;
+          console.log(`✅ Using direct format: response.data`);
+        } else if (response?.image) {
+          // Alternative format: response.image
+          imageData = response.image;
+          console.log(`✅ Using alternative format: response.image`);
+        } else if (response?.images && Array.isArray(response.images)) {
+          // Alternative array format: response.images[0]
+          imageData = response.images[0];
+          console.log(`✅ Using images array format: response.images[0]`);
+        } else if (response && typeof response === 'object') {
+          // Try to find image data in response object
+          const possibleKeys = ['url', 'b64_json', 'image_url', 'image_data', 'data_url'];
+          for (const key of possibleKeys) {
+            if (response[key]) {
+              imageData = { [key]: response[key] };
+              console.log(`✅ Found image data in response.${key}`);
+              break;
+            }
+          }
+        }
+
+        if (!imageData) {
+          console.error(`❌ No image data found in response structure:`, {
+            responseType: typeof response,
+            responseKeys: response ? Object.keys(response) : 'no response',
+            fullResponse: response
+          });
+          throw new Error('No image data found in response');
+        }
+
+        console.log(`🔍 IMAGE DATA DEBUG:`, {
+          hasImageData: !!imageData,
+          imageDataKeys: imageData ? Object.keys(imageData) : 'no image data',
+          hasUrl: !!imageData?.url,
+          hasB64: !!imageData?.b64_json,
+          hasImageUrl: !!imageData?.image_url,
+          hasDataUrl: !!imageData?.data_url,
+          urlPreview: imageData?.url?.substring(0, 50),
+          b64Length: imageData?.b64_json?.length
+        });
         
         let imageBase64 = '';
         
-        if (imageData && imageData.b64_json) {
+        // Try different image data formats
+        if (imageData.b64_json) {
           imageBase64 = `data:image/png;base64,${imageData.b64_json}`;
-        } else if (imageData && imageData.url) {
+          console.log(`✅ Using b64_json, length: ${imageData.b64_json.length}`);
+        } else if (imageData.url) {
+          console.log(`🔗 Converting URL to base64: ${imageData.url.substring(0, 50)}...`);
           imageBase64 = await this.convertUrlToBase64(imageData.url);
+          console.log(`✅ URL converted to base64, length: ${imageBase64.length}`);
+        } else if (imageData.image_url) {
+          console.log(`🔗 Converting image_url to base64: ${imageData.image_url.substring(0, 50)}...`);
+          imageBase64 = await this.convertUrlToBase64(imageData.image_url);
+          console.log(`✅ image_url converted to base64, length: ${imageBase64.length}`);
+        } else if (imageData.data_url) {
+          imageBase64 = imageData.data_url;
+          console.log(`✅ Using data_url directly, length: ${imageBase64.length}`);
+        } else if (typeof imageData === 'string' && imageData.startsWith('data:')) {
+          imageBase64 = imageData;
+          console.log(`✅ Using direct data URL string, length: ${imageBase64.length}`);
+        } else if (typeof imageData === 'string' && imageData.startsWith('http')) {
+          console.log(`🔗 Converting string URL to base64: ${imageData.substring(0, 50)}...`);
+          imageBase64 = await this.convertUrlToBase64(imageData);
+          console.log(`✅ String URL converted to base64, length: ${imageBase64.length}`);
         } else {
-          throw new Error('No image data in response');
+          console.error(`❌ No valid image format found:`, {
+            imageDataType: typeof imageData,
+            imageDataContent: imageData
+          });
+          throw new Error('No valid image format in response data');
         }
 
         this.apiManager.releaseKey(keyInfo, true);
         
-        return {
+        const result = {
           imageBase64,
           prompt: promptData.prompt,
           timestamp: new Date().toISOString(),
           size: promptData.size,
           quality: job.selectedQuality,
-          AdCreativeA: promptData.adCreativeA,
-          AdCreativeB: promptData.adCreativeB,
-          targeting: promptData.targeting,
           imageName: promptData.imageName
         };
+
+        // Add optional fields only if they exist
+        if (promptData.adCreativeA) {
+          result.AdCreativeA = promptData.adCreativeA;
+        }
+        if (promptData.adCreativeB) {
+          result.AdCreativeB = promptData.adCreativeB;
+        }
+        if (promptData.targeting) {
+          result.targeting = promptData.targeting;
+        }
+
+        console.log(`🖼️ Generated image successfully:`, {
+          hasImageName: !!result.imageName,
+          hasAdCreativeA: !!result.AdCreativeA,
+          hasAdCreativeB: !!result.AdCreativeB, 
+          hasTargeting: !!result.targeting,
+          size: result.size,
+          imageApiMode: imageConfig.mode,
+          attempt: attempt,
+          imageBase64Length: result.imageBase64.length
+        });
+        
+        return result;
         
       } catch (error) {
+        console.error(`❌ Image generation attempt ${attempt} failed:`, {
+          apiMode: imageConfig.mode,
+          model: imageConfig.model,
+          baseURL: imageConfig.baseURL,
+          keyId: keyInfo.id,
+          errorType: error.constructor.name,
+          errorMessage: error.message
+        });
+
+        // Enhanced error logging
+        if (error.response) {
+          console.error(`🚨 HTTP Error Response:`, {
+            status: error.response.status,
+            statusText: error.response.statusText,
+            headers: error.response.headers,
+            data: error.response.data
+          });
+
+          if (imageConfig.mode === 'unofficial') {
+            console.error(`🚨 LAOZHANG SPECIFIC ERROR:`, {
+              url: error.config?.url,
+              method: error.config?.method,
+              requestData: error.config?.data,
+              responseData: error.response.data,
+              responseStatus: error.response.status,
+              responseHeaders: error.response.headers
+            });
+          }
+        } else if (error.request) {
+          console.error(`🌐 Network Error:`, {
+            message: error.message,
+            code: error.code,
+            errno: error.errno,
+            syscall: error.syscall,
+            hostname: error.hostname
+          });
+        } else {
+          console.error(`🔧 Other Error:`, {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          });
+        }
+
+        if (error.status) {
+          console.error(`🤖 OpenAI SDK Error:`, {
+            status: error.status,
+            type: error.type,
+            code: error.code,
+            param: error.param,
+            message: error.message
+          });
+        }
+
         this.apiManager.releaseKey(keyInfo, false, error);
         lastError = error;
         
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000;
+          console.log(`⏳ Retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
     }
+
+    console.error(`💥 ALL ATTEMPTS FAILED for image generation:`, {
+      totalAttempts: maxRetries,
+      apiMode: imageConfig.mode,
+      model: imageConfig.model,
+      baseURL: imageConfig.baseURL,
+      promptPreview: promptData.prompt.substring(0, 100),
+      finalError: {
+        message: lastError?.message,
+        status: lastError?.status || lastError?.response?.status,
+        type: lastError?.type,
+        code: lastError?.code
+      }
+    });
 
     throw lastError || new Error('Image generation failed after retries');
   }
@@ -427,7 +756,8 @@ export class JobManager {
     }
   }
 
-  parseClaudeResponse(response, category = 'google_prompt') {
+  // RENAMED: parseClaudeResponse -> parsePromptResponse (works for both Claude and Deepseek)
+  parsePromptResponse(response, category = 'google_prompt') {
     try {
       const jsonArrayMatch = response.match(/\[\s*\{[\s\S]*?\}\s*\]/);
       
@@ -435,19 +765,73 @@ export class JobManager {
         const jsonData = JSON.parse(jsonArrayMatch[0]);
         
         if (Array.isArray(jsonData) && jsonData.length > 0) {
-          const prompts = jsonData.map((item, index) => ({
-            prompt: item.prompt || `Generated prompt ${index + 1}`,
-            adCreativeA: item.adCreativeA || "",
-            adCreativeB: item.adCreativeB || "",
-            imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
-            targeting: item.targeting || "",
-            size: item.size || "Square" // Fix: Lấy size từ Claude response
-          }));
+          // Get shared data from first object
+          const firstObject = jsonData[0];
+          const sharedTargeting = firstObject.targeting || "";
+          const sharedAdCreativeA = firstObject.adCreativeA || "";
+          const sharedAdCreativeB = firstObject.adCreativeB || "";
 
+          console.log(`📋 Shared data for ${category}:`, {
+            hasSharedTargeting: !!sharedTargeting,
+            hasSharedAdCreativeA: !!sharedAdCreativeA,
+            hasSharedAdCreativeB: !!sharedAdCreativeB
+          });
+
+          const prompts = jsonData.map((item, index) => {
+            // Base object with required fields
+            const basePrompt = {
+              prompt: item.prompt || `Generated prompt ${index + 1}`,
+              imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
+              size: item.size || "Square",
+              adCreativeA: "",
+              adCreativeB: "",
+              targeting: ""
+            };
+
+            if (category === 'facebook_prompt') {
+              // Facebook: First object gets its own data, others get shared targeting
+              if (index === 0) {
+                basePrompt.adCreativeA = item.adCreativeA || "";
+                basePrompt.adCreativeB = item.adCreativeB || "";
+                basePrompt.targeting = item.targeting || "";
+              } else {
+                // Subsequent objects: own AdCreatives, shared targeting
+                basePrompt.adCreativeA = item.adCreativeA || "";
+                basePrompt.adCreativeB = item.adCreativeB || "";
+                basePrompt.targeting = sharedTargeting; // Copy from first object
+              }
+            } else if (category === 'google_prompt') {
+              // Google: First object gets its own data, others share everything except prompt
+              if (index === 0) {
+                basePrompt.adCreativeA = item.adCreativeA || "";
+                basePrompt.adCreativeB = item.adCreativeB || "";
+                basePrompt.targeting = item.targeting || "";
+              } else {
+                // Subsequent objects: share AdCreatives and targeting from first object
+                basePrompt.adCreativeA = sharedAdCreativeA;
+                basePrompt.adCreativeB = sharedAdCreativeB;
+                basePrompt.targeting = sharedTargeting;
+              }
+            }
+
+            console.log(`📝 Parsed item ${index + 1} for ${category}:`, {
+              hasPrompt: !!basePrompt.prompt,
+              hasImageName: !!basePrompt.imageName,
+              hasAdCreativeA: !!basePrompt.adCreativeA,
+              hasAdCreativeB: !!basePrompt.adCreativeB,
+              hasTargeting: !!basePrompt.targeting,
+              isSharedData: index > 0
+            });
+
+            return basePrompt;
+          });
+
+          console.log(`✅ Total parsed prompts for ${category}:`, prompts.length);
           return { prompts };
         }
       }
 
+      console.warn('⚠️ No JSON array found in response, using fallback');
       return {
         prompts: [{
           prompt: response,
@@ -455,11 +839,12 @@ export class JobManager {
           adCreativeB: "",
           imageName: `ai-image-fallback-${Date.now()}`,
           targeting: "",
-          size: "Square" // Fallback default
+          size: "Square"
         }]
       };
 
     } catch (error) {
+      console.error('❌ Error parsing response:', error);
       return {
         prompts: [{
           prompt: response,
@@ -559,8 +944,19 @@ export class JobManager {
   getStats() {
     const jobs = Array.from(this.jobs.values());
     
+    let apiStats = {
+      mode: 'dynamic',
+      totalKeys: 0,
+      availableKeys: 0,
+      keys: []
+    };
+
+    if (this.apiManager) {
+      apiStats = this.apiManager.getStats();
+    }
+    
     return {
-      api: this.apiManager.getStats(),
+      api: apiStats,
       jobs: {
         total: jobs.length,
         pending: jobs.filter(j => j.status === 'pending').length,
@@ -568,6 +964,11 @@ export class JobManager {
         completed: jobs.filter(j => j.status === 'completed').length,
         failed: jobs.filter(j => j.status === 'failed').length,
         cancelled: jobs.filter(j => j.status === 'cancelled').length,
+      },
+      models: {
+        deepsearch: jobs.filter(j => j.selectedModel === 'deepsearch').length,
+        claude: jobs.filter(j => j.selectedModel === 'claude-sonnet').length,
+        hdMode: jobs.filter(j => j.isHDMode === true).length,
       }
     };
   }
@@ -596,6 +997,3 @@ export const getJobManager = () => {
   }
   return jobManagerInstance;
 };
-
-// Export functions for manual instance creation
-// Note: Instance should be created after environment variables are loaded

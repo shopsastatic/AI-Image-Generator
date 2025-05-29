@@ -35,6 +35,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
     category: "google_prompt",
     subcategory: "",
   });
+  
+  // FIX: Add states for model and HD mode
+  const [selectedModel, setSelectedModel] = useState<string>("deepsearch");
+  const [isHDMode, setIsHDMode] = useState<boolean>(false);
+  
   const [numberOfImages, setNumberOfImages] = useState<number>(1);
   const [selectedQuality, setSelectedQuality] = useState<string>("Low");
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -87,6 +92,17 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const handleCategoryChange = (category: string, subcategory: string) => {
     setSelectedCategory({ category, subcategory });
+  };
+
+  // FIX: Add handlers for model and HD mode changes
+  const handleModelChange = (model: string) => {
+    console.log('🔄 Model changed to:', model);
+    setSelectedModel(model);
+  };
+
+  const handleHDModeChange = (isHD: boolean) => {
+    console.log('🔄 HD Mode changed to:', isHD);
+    setIsHDMode(isHD);
   };
 
   const [currentViewImageIndex, setCurrentViewImageIndex] = useState<
@@ -325,8 +341,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
     }
   }, [pollingInterval]);
 
+  // FIX: Improved handleJobCompleted
   const handleJobCompleted = async (jobId: string) => {
     try {
+      console.log('🎯 Job completed, fetching results:', jobId);
+      
       const response = await fetch(`/api/image-generation/results/${jobId}`);
       const data = await response.json();
 
@@ -334,11 +353,14 @@ export const ElementDefaultScreen = (): JSX.Element => {
         throw new Error(data.error || "Failed to fetch job results");
       }
 
+      console.log('📦 Results received:', data);
       await processJobResults(data);
+      
     } catch (error) {
       console.error("Failed to fetch job results:", error);
       handleJobFailed(error.message);
     } finally {
+      // FIX: Always stop polling and reset state
       stopJobPolling();
       setTimeout(() => {
         resetLoadingState();
@@ -361,9 +383,12 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const resetLoadingState = () => {
+    console.log('🔍 RESET DEBUG - Before reset - currentLoadingPrompt:', currentLoadingPrompt);
+    
     setIsLoading(false);
     setLoadingStatus("");
-    setCurrentLoadingPrompt("");
+    // FIX: DON'T reset currentLoadingPrompt here - we need it for the session
+    // setCurrentLoadingPrompt(""); // ← COMMENTED OUT
     setCurrentJobId(null);
 
     if (countdownRef.current) {
@@ -372,13 +397,22 @@ export const ElementDefaultScreen = (): JSX.Element => {
     }
 
     stopJobPolling();
+    
+    console.log('🔍 RESET DEBUG - After reset - currentLoadingPrompt should still be:', currentLoadingPrompt);
   };
 
+  // FIX: Complete rewrite of processJobResults
   const processJobResults = async (jobData: any) => {
     try {
-      const { results, sessionId } = jobData;
+      const { results, sessionId, claudeResponse } = jobData; // FIX: Get claudeResponse from jobData
 
-      // Fix: Lưu Claude response vào từng image
+      console.log('🔄 Processing job results for session:', sessionId);
+      console.log('📝 Claude response received:', claudeResponse ? 'YES' : 'NO');
+      console.log('🔍 PROCESS DEBUG - currentLoadingPrompt:', currentLoadingPrompt);
+      console.log('🔍 PROCESS DEBUG - currentLoadingPrompt length:', currentLoadingPrompt.length);
+      console.log('🔍 PROCESS DEBUG - currentLoadingPrompt type:', typeof currentLoadingPrompt);
+
+      // Fix: Attach Claude response to each image
       const successfulImages = results
         .filter(
           (img: any) =>
@@ -390,11 +424,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
         )
         .map((img: any) => ({
           ...img,
-          claudeResponse: jobData.claudeResponse, // Thêm Claude response
+          claudeResponse: claudeResponse, // Use claudeResponse from server
         }));
 
       const failedImages = results.filter(
-        (img: any) => !successfulImages.includes(img)
+        (img: any) => !successfulImages.some((success: any) => success === img)
       );
 
       if (successfulImages.length === 0) {
@@ -409,16 +443,26 @@ export const ElementDefaultScreen = (): JSX.Element => {
         );
       }
 
-      // Fix: Đảm bảo lưu describe với prompt gốc
+      // FIX: Better handling of describe - use fallback if currentLoadingPrompt is empty
+      let describeToUse = currentLoadingPrompt;
+      if (!describeToUse || describeToUse.trim() === '') {
+        // Fallback: try to get from jobData or use a default
+        describeToUse = jobData.originalPrompt || jobData.userPrompt || 'Generated images';
+        console.log('⚠️ PROCESS DEBUG - currentLoadingPrompt is empty, using fallback:', describeToUse);
+      }
+
+      console.log('🔍 PROCESS DEBUG - Final describe to use:', describeToUse);
+
+      // Fix: Ensure describe is ALWAYS the user's original input
       const sessionData = {
         sessionId: sessionId,
-        describe: currentLoadingPrompt, // Prompt gốc user nhập
+        describe: describeToUse, // Use the corrected describe
         images: successfulImages,
       };
 
       try {
         await storageManager.saveSession(sessionData);
-        console.log("✅ Session saved with describe:", currentLoadingPrompt);
+        console.log("✅ Session saved with describe:", describeToUse);
       } catch (storageError) {
         console.error("Storage save failed:", storageError);
         showNotification(
@@ -428,59 +472,64 @@ export const ElementDefaultScreen = (): JSX.Element => {
         );
       }
 
-      // Fix: Tạo session object với describe chính xác
+      // Convert images to blob URLs for display
+      const convertedImages = await Promise.all(
+        successfulImages.map(async (img: any) => {
+          try {
+            const compressed = await ImageCompressor.compressImage(
+              img.imageBase64
+            );
+            const blobUrl = URL.createObjectURL(compressed.blob);
+
+            return {
+              ...img,
+              imageBase64: blobUrl,
+              originalBase64: img.imageBase64,
+              isBlob: true,
+              claudeResponse: img.claudeResponse,
+            };
+          } catch (error) {
+            console.warn("Failed to convert to blob, using base64:", error);
+            return {
+              ...img,
+              isBlob: false,
+              claudeResponse: img.claudeResponse,
+            };
+          }
+        })
+      );
+
+      // FIX: Only create session ONCE and avoid duplicates
+      const existingSessionIndex = selectedSessions.findIndex(
+        s => s.sessionId === sessionId
+      );
+
       const newSession = {
         sessionId: sessionId,
         clickedAt: Date.now(),
         currentImageIndex: 0,
-        describe: currentLoadingPrompt, // Đảm bảo describe là prompt gốc
-        list: successfulImages,
+        describe: describeToUse, // Use the corrected describe
+        list: convertedImages,
       };
 
-      console.log("🔄 Creating session with describe:", newSession.describe);
-      setSelectedSessions((prevSessions) => [newSession, ...prevSessions]);
+      console.log('🔖 Creating session with describe:', newSession.describe);
 
-      if (successfulImages.length > 0) {
-        const convertedImages = await Promise.all(
-          successfulImages.map(async (img: any) => {
-            try {
-              const compressed = await ImageCompressor.compressImage(
-                img.imageBase64
-              );
-              const blobUrl = URL.createObjectURL(compressed.blob);
-
-              return {
-                ...img,
-                imageBase64: blobUrl,
-                originalBase64: img.imageBase64,
-                isBlob: true,
-                claudeResponse: img.claudeResponse, // Giữ Claude response
-              };
-            } catch (error) {
-              console.warn("Failed to convert to blob, using base64:", error);
-              return {
-                ...img,
-                isBlob: false,
-                claudeResponse: img.claudeResponse, // Giữ Claude response
-              };
-            }
-          })
+      if (existingSessionIndex !== -1) {
+        // Update existing session
+        console.log('🔄 Updating existing session:', sessionId);
+        setSelectedSessions((prevSessions) => 
+          prevSessions.map((session, index) => 
+            index === existingSessionIndex ? newSession : session
+          )
         );
+      } else {
+        // Add new session
+        console.log('➕ Adding new session:', sessionId);
+        setSelectedSessions((prevSessions) => [newSession, ...prevSessions]);
+      }
 
-        // Fix: Update session với converted images nhưng giữ nguyên describe
-        const updatedSession = {
-          sessionId: sessionId,
-          clickedAt: Date.now(),
-          currentImageIndex: 0,
-          describe: currentLoadingPrompt, // Giữ nguyên describe
-          list: convertedImages,
-        };
-
-        setSelectedSessions((prevSessions) => [
-          updatedSession,
-          ...prevSessions.filter((s) => s.sessionId !== sessionId), // Remove cũ, add mới
-        ]);
-
+      // FIX: Update selectedImages without duplicates
+      if (convertedImages.length > 0) {
         const firstImageObj = {
           imageUrl: convertedImages[0].imageBase64,
           clickedAt: Date.now(),
@@ -496,13 +545,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
           imageName: convertedImages[0].imageName,
         };
 
-        setSelectedImages((prevImages) => [
-          firstImageObj,
-          ...prevImages.slice(0, gridItemCount - 1),
-        ]);
+        // FIX: Remove existing images from same session first
+        setSelectedImages((prevImages) => {
+          const filteredImages = prevImages.filter(img => img.sessionId !== sessionId);
+          return [firstImageObj, ...filteredImages.slice(0, gridItemCount - 1)];
+        });
       }
 
       window.dispatchEvent(new Event("historyUpdated"));
+      console.log('✅ Job results processed successfully');
+      
     } catch (error) {
       console.error("Error processing job results:", error);
       throw error;
@@ -535,6 +587,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
     }
   };
 
+  // FIX: Improved handleFormSubmit with better state management
   const handleFormSubmit = async () => {
     if (!promptText.trim()) return;
 
@@ -549,8 +602,18 @@ export const ElementDefaultScreen = (): JSX.Element => {
       .substr(2, 9)}`;
 
     const currentPromptText = promptText.trim();
+    
+    // FIX: Debug currentLoadingPrompt
+    console.log('🔍 SUBMIT DEBUG - promptText:', promptText);
+    console.log('🔍 SUBMIT DEBUG - currentPromptText:', currentPromptText);
+    console.log('🔍 SUBMIT DEBUG - Before setCurrentLoadingPrompt');
+    
     setCurrentLoadingPrompt(currentPromptText);
+    
+    console.log('🔍 SUBMIT DEBUG - After setCurrentLoadingPrompt');
+    console.log('🔍 SUBMIT DEBUG - currentLoadingPrompt should be:', currentPromptText);
 
+    // Clear input AFTER saving to currentLoadingPrompt
     setPromptText("");
     setUploadedImages([]);
     if (textareaRef.current) {
@@ -566,18 +629,34 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     setCountdown(1);
 
+    // FIX: Clear existing countdown before setting new one
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
       countdownRef.current = null;
     }
 
     countdownRef.current = setInterval(() => {
-      setCountdown((prevCount) => prevCount + 1); // ← Fix: functional update
+      setCountdown((prevCount) => {
+        // FIX: Check if component is still mounted
+        if (!textareaRef.current) {
+          if (countdownRef.current) {
+            clearInterval(countdownRef.current);
+            countdownRef.current = null;
+          }
+          return prevCount;
+        }
+        return prevCount + 1;
+      });
     }, 1000);
 
     try {
       const outputCount = numberOfImages;
       const imageSizesString = generateImageSizesString();
+
+      // FIX: Use currentPromptText directly instead of relying on state
+      console.log('🔍 SUBMIT DEBUG - Sending to server:', currentPromptText);
+      console.log('🔍 SUBMIT DEBUG - Selected model:', selectedModel);
+      console.log('🔍 SUBMIT DEBUG - HD Mode:', isHDMode);
 
       const jobResponse = await fetch("/api/image-generation/submit", {
         method: "POST",
@@ -586,11 +665,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
         },
         body: JSON.stringify({
           sessionId: sessionId,
-          userPrompt: currentPromptText,
+          userPrompt: currentPromptText, // Use the captured prompt text
           numberOfImages: outputCount,
           imageSizesString: imageSizesString,
           selectedQuality: selectedQuality,
           selectedCategory: selectedCategory,
+          selectedModel: selectedModel, // FIX: Add model selection
+          isHDMode: isHDMode, // FIX: Add HD mode flag
         }),
       });
 
@@ -646,20 +727,21 @@ export const ElementDefaultScreen = (): JSX.Element => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("unload", handleUnload);
       stopJobPolling();
-
-      // Fix: Chỉ clear countdown khi component unmount
-      // KHÔNG clear countdown trong useEffect cleanup thông thường
-      // if (countdownRef.current) {
-      //   clearInterval(countdownRef.current);
-      // }
     };
   }, [currentJobId, stopJobPolling]);
 
+  // FIX: Better cleanup on unmount
   useEffect(() => {
     return () => {
-      // Chỉ cleanup khi component thực sự unmount
+      // Only cleanup when component actually unmounts
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+      
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
       }
     };
   }, []);
@@ -777,7 +859,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
   useEffect(() => {
     calculateOptimalGridSize();
 
-    let resizeTimeout;
+    let resizeTimeout: NodeJS.Timeout;
     const handleResize = () => {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
@@ -814,20 +896,47 @@ export const ElementDefaultScreen = (): JSX.Element => {
   }, [selectedImages, calculateOptimalGridSize]);
 
   const handleHistoryItemClick = (item: any) => {
+    // 🔍 Console log toàn bộ data của session khi click
+    console.log('🎯 History session clicked:', item.id);
+    console.log('📊 Full session data:', item);
+    console.log('📝 Session describe:', item.describe);
+    console.log('🖼️  Session images count:', item.list ? item.list.length : 0);
+    console.log('📋 Session images list:', item.list);
+    
     if (item.list && item.list.length > 0) {
+      // Console thêm chi tiết từng ảnh
+      item.list.forEach((img: any, index: number) => {
+        console.log(`🖼️  Image ${index + 1}:`, {
+          prompt: img.prompt,
+          size: img.size,
+          quality: img.quality,
+          timestamp: img.timestamp,
+          AdCreativeA: img.AdCreativeA,
+          AdCreativeB: img.AdCreativeB,
+          targeting: img.targeting,
+          claudeResponse: img.claudeResponse ? 'Present' : 'Missing',
+          imageBase64: img.imageBase64 ? `${img.imageBase64.substring(0, 50)}...` : 'Missing'
+        });
+      });
+      
       const sessionIndex = selectedSessions.findIndex(
         (s) => s.sessionId === item.id
       );
 
       if (sessionIndex === -1) {
+        // FIX: Ensure describe is preserved when loading from history
+        const newSession = {
+          sessionId: item.id,
+          clickedAt: Date.now(),
+          currentImageIndex: 0,
+          describe: item.describe || 'History session', // Use describe from history
+          list: [...item.list],
+        };
+
+        console.log('🔖 Loading history session with describe:', newSession.describe);
+
         setSelectedSessions((prevSessions) => [
-          {
-            sessionId: item.id,
-            clickedAt: Date.now(),
-            currentImageIndex: 0,
-            describe: item.describe,
-            list: [...item.list],
-          },
+          newSession,
           ...prevSessions,
         ]);
 
@@ -841,6 +950,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
             quality: firstImage.quality,
             sessionId: item.id,
             imageIndex: 0,
+            claudeResponse: firstImage.claudeResponse,
+            AdCreativeA: firstImage.AdCreativeA,
+            AdCreativeB: firstImage.AdCreativeB,
+            targeting: firstImage.targeting,
+            imageName: firstImage.imageName,
           };
 
           const updatedImages = [newImageObj, ...prevImages];
@@ -853,6 +967,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
           return updatedImages;
         });
       }
+    } else {
+      console.log('⚠️ No images found in this session');
     }
   };
 
@@ -910,27 +1026,44 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const viewImage = (index: number) => {
     const selectedImage = selectedImages[index];
+    console.log('🔍 viewImage called with index:', index);
+    console.log('🔍 selectedImage:', selectedImage);
+    
     setCurrentViewImageIndex(index);
     setPromptExpanded(false);
 
     if (selectedImage && selectedImage.sessionId) {
+      console.log('🔍 Setting currentSessionId to:', selectedImage.sessionId);
       setCurrentSessionId(selectedImage.sessionId);
 
       const session = selectedSessions.find(
         (s) => s.sessionId === selectedImage.sessionId
       );
+      
+      console.log('🔍 Found session:', session ? 'YES' : 'NO');
       if (session) {
+        console.log('🔍 Session data:', {
+          sessionId: session.sessionId,
+          describe: session.describe,
+          imageCount: session.list.length
+        });
+        
         if (selectedImage.imageIndex !== undefined) {
+          console.log('🔍 Using predefined imageIndex:', selectedImage.imageIndex);
           setCurrentSessionImageIndex(selectedImage.imageIndex);
         } else {
           const imageIndex = session.list.findIndex(
             (img) => img.imageBase64 === selectedImage.imageUrl
           );
+          console.log('🔍 Found imageIndex:', imageIndex);
           if (imageIndex !== -1) {
             setCurrentSessionImageIndex(imageIndex);
           }
         }
       }
+    } else {
+      console.log('⚠️ No sessionId found in selectedImage');
+      setCurrentSessionId(null);
     }
 
     setTimeout(checkPromptHeight, 100);
@@ -1239,6 +1372,27 @@ export const ElementDefaultScreen = (): JSX.Element => {
     };
   }, [showSuggestions]);
 
+  // Debug useEffect to track currentLoadingPrompt changes
+  useEffect(() => {
+    console.log('🔍 LOADING PROMPT CHANGE:', currentLoadingPrompt);
+    console.log('🔍 LOADING PROMPT LENGTH:', currentLoadingPrompt.length);
+  }, [currentLoadingPrompt]);
+
+  // Debug useEffect to track state changes
+  useEffect(() => {
+    console.log('🔍 DEBUG State Change - currentSessionId:', currentSessionId);
+    console.log('🔍 DEBUG State Change - currentViewImageIndex:', currentViewImageIndex);
+    console.log('🔍 DEBUG State Change - selectedSessions count:', selectedSessions.length);
+    
+    if (currentSessionId) {
+      const session = selectedSessions.find(s => s.sessionId === currentSessionId);
+      console.log('🔍 DEBUG State Change - Current session found:', session ? 'YES' : 'NO');
+      if (session) {
+        console.log('🔍 DEBUG State Change - Current session describe:', session.describe);
+      }
+    }
+  }, [currentSessionId, currentViewImageIndex, selectedSessions]);
+
   useEffect(() => {
     if (currentViewImageIndex !== null) {
       setTimeout(checkPromptHeight, 100);
@@ -1289,14 +1443,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       textarea.removeEventListener("cut", updateTextarea);
     };
   }, [adjustHeight]);
-
-  useEffect(() => {
-    return () => {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
-    };
-  }, []);
 
   const extractImageNameFromClaudeResponse = (
     claudeResponse: string,
@@ -1389,13 +1535,42 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const cleanFileName = (fileName: string): string => {
-    return fileName
+    // First, clean the basic characters
+    let cleaned = fileName
       .replace(/[<>:"/\\|?*]/g, "")
       .replace(/\s+/g, "-")
       .replace(/[-]{2,}/g, "-")
       .toLowerCase()
-      .substring(0, 50)
       .replace(/^-+|-+$/g, "");
+
+    // FIX: Increase limit and cut by words instead of hard cut
+    const maxLength = 120; // Increased from 50 to 120
+
+    if (cleaned.length <= maxLength) {
+      return cleaned;
+    }
+
+    // Cut by words to avoid cutting in the middle of a word
+    const words = cleaned.split('-');
+    let result = '';
+    
+    for (let i = 0; i < words.length; i++) {
+      const wordToAdd = i === 0 ? words[i] : '-' + words[i];
+      
+      if ((result + wordToAdd).length <= maxLength) {
+        result += wordToAdd;
+      } else {
+        break;
+      }
+    }
+
+    // If result is still empty or too short, use hard cut as fallback
+    if (result.length < 10) {
+      result = cleaned.substring(0, maxLength);
+    }
+
+    // Clean up any trailing dashes
+    return result.replace(/^-+|-+$/g, "");
   };
 
   const showNotification = (type: string, title: string, message: string) => {
@@ -2120,6 +2295,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           imageSizes={imageSizes}
                           setImageSizes={setImageSizes}
                           onCategoryChange={handleCategoryChange}
+                          onModelChange={handleModelChange}
+                          onHDModeChange={handleHDModeChange}
                         />
 
                         <div className="button-6" onClick={handleUploadClick}>
@@ -2441,54 +2618,116 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       <ImageInfoDropdown
                         title="Describe"
                         copyContent={(() => {
+                          // FIX: Enhanced debug and logic to get describe
+                          console.log('🔍 DEBUG Describe - Getting copyContent');
+                          console.log('🔍 currentSessionId:', currentSessionId);
+                          console.log('🔍 currentViewImageIndex:', currentViewImageIndex);
+                          console.log('🔍 selectedSessions length:', selectedSessions.length);
+                          console.log('🔍 selectedImages length:', selectedImages.length);
+
+                          let describeText = "No description available";
+
+                          // Method 1: Get from currentSessionId
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            console.log('🔍 Found session by currentSessionId:', session ? 'YES' : 'NO');
+                            if (session) {
+                              console.log('🔍 Session describe value:', session.describe);
+                              if (session.describe) {
+                                describeText = session.describe;
+                                console.log('✅ Found describe from currentSessionId:', describeText);
+                              }
+                            }
+                          }
+
+                          // Method 2: Get from current image's session
+                          if (describeText === "No description available" && currentViewImageIndex !== null) {
+                            const currentImage = selectedImages[currentViewImageIndex];
+                            console.log('🔍 Current image:', currentImage ? 'EXISTS' : 'NULL');
+                            if (currentImage) {
+                              console.log('🔍 Current image sessionId:', currentImage.sessionId);
+                              if (currentImage.sessionId) {
+                                const session = selectedSessions.find(
+                                  (s) => s.sessionId === currentImage.sessionId
+                                );
+                                console.log('🔍 Found session by image sessionId:', session ? 'YES' : 'NO');
+                                if (session) {
+                                  console.log('🔍 Session describe value:', session.describe);
+                                  if (session.describe) {
+                                    describeText = session.describe;
+                                    console.log('✅ Found describe from currentImage session:', describeText);
+                                  }
+                                }
+                              }
+                            }
+                          }
+
+                          // Method 3: Brute force - check all sessions
+                          if (describeText === "No description available") {
+                            console.log('🔍 Brute force checking all sessions...');
+                            selectedSessions.forEach((session, index) => {
+                              console.log(`🔍 Session ${index}:`, {
+                                sessionId: session.sessionId,
+                                describe: session.describe,
+                                hasDescribe: !!session.describe
+                              });
+                            });
+
+                            // Try to get from any session that has describe
+                            const sessionWithDescribe = selectedSessions.find(s => s.describe);
+                            if (sessionWithDescribe) {
+                              describeText = sessionWithDescribe.describe;
+                              console.log('✅ Found describe from any session:', describeText);
+                            }
+                          }
+
+                          console.log('🔖 Final describe for copy:', describeText);
+                          return describeText;
+                        })()}
+                      >
+                        {(() => {
+                          // FIX: Enhanced debug and logic to get describe for display
+                          console.log('🔍 DEBUG Describe - Getting display content');
+                          
+                          let describeText = "No description available";
+
+                          // Method 1: Get from currentSessionId
                           if (currentSessionId) {
                             const session = selectedSessions.find(
                               (s) => s.sessionId === currentSessionId
                             );
                             if (session && session.describe) {
-                              return session.describe;
+                              describeText = session.describe;
+                              console.log('✅ Display describe from currentSessionId:', describeText);
                             }
                           }
-                          return "Thông tin mô tả về ảnh này";
-                        })()}
-                      >
-                        {(() => {
-                          let describeText = "Thông tin mô tả về ảnh này";
 
-                          // Fix: Lấy từ currentViewImageIndex trước
-                          if (
-                            currentViewImageIndex !== null &&
-                            selectedImages[currentViewImageIndex]
-                          ) {
-                            const currentImage =
-                              selectedImages[currentViewImageIndex];
-
-                            // Tìm session của image này
-                            if (currentImage.sessionId) {
+                          // Method 2: Get from current image's session
+                          if (describeText === "No description available" && currentViewImageIndex !== null) {
+                            const currentImage = selectedImages[currentViewImageIndex];
+                            if (currentImage && currentImage.sessionId) {
                               const session = selectedSessions.find(
                                 (s) => s.sessionId === currentImage.sessionId
                               );
                               if (session && session.describe) {
                                 describeText = session.describe;
+                                console.log('✅ Display describe from currentImage session:', describeText);
                               }
                             }
                           }
 
-                          // Fallback: Lấy từ currentSessionId
-                          if (
-                            describeText === "Thông tin mô tả về ảnh này" &&
-                            currentSessionId
-                          ) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.describe) {
-                              describeText = session.describe;
+                          // Method 3: Brute force - get from any session that has describe
+                          if (describeText === "No description available") {
+                            const sessionWithDescribe = selectedSessions.find(s => s.describe);
+                            if (sessionWithDescribe) {
+                              describeText = sessionWithDescribe.describe;
+                              console.log('✅ Display describe from any session:', describeText);
                             }
                           }
 
-                          console.log("🔍 Describe text:", describeText); // Debug log
-
+                          console.log('🔖 Final describe for display:', describeText);
                           return <p className="prompt-text">{describeText}</p>;
                         })()}
                       </ImageInfoDropdown>
@@ -2562,14 +2801,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             const session = selectedSessions.find(
                               (s) => s.sessionId === currentSessionId
                             );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex] &&
-                              session.list[currentSessionImageIndex].AdCreativeA
-                            ) {
-                              adCreativeText =
-                                session.list[currentSessionImageIndex]
-                                  .AdCreativeA;
+                            if (session && session.list.length > 0) {
+                              // FIX: For Google, always use first object's AdCreativeA
+                              // For Facebook, use current image's AdCreativeA
+                              const targetImage = selectedCategory.category === 'google_prompt' 
+                                ? session.list[0] // Always first object for Google
+                                : session.list[currentSessionImageIndex]; // Current image for Facebook
+                              
+                              if (targetImage && targetImage.AdCreativeA) {
+                                adCreativeText = targetImage.AdCreativeA;
+                              }
                             }
                           } else if (
                             selectedImages[currentViewImageIndex]?.AdCreativeA
@@ -2588,14 +2829,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             const session = selectedSessions.find(
                               (s) => s.sessionId === currentSessionId
                             );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex] &&
-                              session.list[currentSessionImageIndex].AdCreativeA
-                            ) {
-                              adCreativeText =
-                                session.list[currentSessionImageIndex]
-                                  .AdCreativeA;
+                            if (session && session.list.length > 0) {
+                              // FIX: For Google, always use first object's AdCreativeA
+                              // For Facebook, use current image's AdCreativeA
+                              const targetImage = selectedCategory.category === 'google_prompt' 
+                                ? session.list[0] // Always first object for Google
+                                : session.list[currentSessionImageIndex]; // Current image for Facebook
+                              
+                              if (targetImage && targetImage.AdCreativeA) {
+                                adCreativeText = targetImage.AdCreativeA;
+                              }
                             }
                           } else if (
                             selectedImages[currentViewImageIndex]?.AdCreativeA
@@ -2626,14 +2869,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             const session = selectedSessions.find(
                               (s) => s.sessionId === currentSessionId
                             );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex] &&
-                              session.list[currentSessionImageIndex].AdCreativeB
-                            ) {
-                              adCreativeText =
-                                session.list[currentSessionImageIndex]
-                                  .AdCreativeB;
+                            if (session && session.list.length > 0) {
+                              // FIX: For Google, always use first object's AdCreativeB
+                              // For Facebook, use current image's AdCreativeB
+                              const targetImage = selectedCategory.category === 'google_prompt' 
+                                ? session.list[0] // Always first object for Google
+                                : session.list[currentSessionImageIndex]; // Current image for Facebook
+                              
+                              if (targetImage && targetImage.AdCreativeB) {
+                                adCreativeText = targetImage.AdCreativeB;
+                              }
                             }
                           } else if (
                             selectedImages[currentViewImageIndex]?.AdCreativeB
@@ -2652,14 +2897,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             const session = selectedSessions.find(
                               (s) => s.sessionId === currentSessionId
                             );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex] &&
-                              session.list[currentSessionImageIndex].AdCreativeB
-                            ) {
-                              adCreativeText =
-                                session.list[currentSessionImageIndex]
-                                  .AdCreativeB;
+                            if (session && session.list.length > 0) {
+                              // FIX: For Google, always use first object's AdCreativeB
+                              // For Facebook, use current image's AdCreativeB
+                              const targetImage = selectedCategory.category === 'google_prompt' 
+                                ? session.list[0] // Always first object for Google
+                                : session.list[currentSessionImageIndex]; // Current image for Facebook
+                              
+                              if (targetImage && targetImage.AdCreativeB) {
+                                adCreativeText = targetImage.AdCreativeB;
+                              }
                             }
                           } else if (
                             selectedImages[currentViewImageIndex]?.AdCreativeB
@@ -2690,14 +2937,12 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             const session = selectedSessions.find(
                               (s) => s.sessionId === currentSessionId
                             );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex] &&
-                              session.list[currentSessionImageIndex].targeting
-                            ) {
-                              targetingText =
-                                session.list[currentSessionImageIndex]
-                                  .targeting;
+                            if (session && session.list.length > 0) {
+                              // FIX: Always use first object's targeting for both Google and Facebook
+                              const firstImage = session.list[0];
+                              if (firstImage && firstImage.targeting) {
+                                targetingText = firstImage.targeting;
+                              }
                             }
                           } else if (
                             selectedImages[currentViewImageIndex]?.targeting
@@ -2716,14 +2961,12 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             const session = selectedSessions.find(
                               (s) => s.sessionId === currentSessionId
                             );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex] &&
-                              session.list[currentSessionImageIndex].targeting
-                            ) {
-                              targetingText =
-                                session.list[currentSessionImageIndex]
-                                  .targeting;
+                            if (session && session.list.length > 0) {
+                              // FIX: Always use first object's targeting for both Google and Facebook
+                              const firstImage = session.list[0];
+                              if (firstImage && firstImage.targeting) {
+                                targetingText = firstImage.targeting;
+                              }
                             }
                           } else if (
                             selectedImages[currentViewImageIndex]?.targeting
