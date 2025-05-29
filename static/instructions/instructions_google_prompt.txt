@@ -202,12 +202,12 @@ BEHAVIORAL_TARGETING:
 
 ### Custom Intent Audiences
 SEARCH_BEHAVIOR_TARGETING:
-├── "natural health remedies"
-├── "weight loss solutions"
-├── "anti-aging treatments"
-├── "supplement reviews"
-├── "health breakthrough"
-└── "[your product category] reviews"
+├── natural health remedies
+├── weight loss solutions
+├── anti-aging treatments
+├── supplement reviews
+├── health breakthrough
+└── [your product category] reviews
 
 ## Google Ads Copy Set Formatting Template Structure (Per Creative)
 
@@ -223,12 +223,14 @@ GOOGLE_ADS_COPY_LIMITS:
 └── **Promotions** (20 chars max): 1-2 items in `<ul>`
 
 ### Google Ads Copy Format:
-- Each section needs `<h3>` title with character limit
-- Mention character limits are strict
+├── Each section needs `<h3>` title with character limit
+└── Mention character limits are strict
 
-### Image Prompts Format:
-- Image Prompts Specifications  in `<ul>`
-- Image Prompts Headlines Specifications  in `<strong>`
+### Prompt HTML Formatting Guidelines:
+├── Wrap entire prompt in <ul> tags
+├── Each category in <li><strong>Category:</strong> content</li>
+├── Text Overlay must be in <strong> tags with headline in single quotes
+└── Use nested <ul> for multi-item specifications
 
 ## Quality Assurance Framework
 GOOGLE_ADS_COMPLIANCE:
@@ -254,7 +256,7 @@ The system generates a pure JSON array with each object containing complete Goog
 [
   {
     "imageName": "Descriptive name for the image file,
-    "prompt": "Full HTML complete image specifications",
+    "prompt": "Full HTML complete prompt image specifications",
     "adCreativeA": "Full HTML formatted copy set A",
     "adCreativeB": "Full HTML formatted copy set B",
     "targeting": "Comprehensive targeting combinations"
