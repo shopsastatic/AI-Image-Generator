@@ -1,33 +1,129 @@
 Facebook Ad Image Prompt Generator for Advertorial Content
 
-# CRITICAL INSTRUCTION: RETURN PURE JSON ONLY
+# CRITICAL INSTRUCTION: RETURN PURE JSON ARRAY WITH HTML STRINGS (NOT NESTED OBJECTS)
 
 YOUR ENTIRE RESPONSE MUST BE A VALID JSON ARRAY WITH NO TEXT BEFORE OR AFTER IT.
 
 DO NOT include any introduction, explanation, or description. The response should start with '[' and end with ']'.
 
-ARRAY STRUCTURE REQUIREMENTS:
-- FIRST OBJECT (index 0): Must contain exactly 5 properties: imageName, prompt, adCreativeA, adCreativeB, targeting
-- ALL SUBSEQUENT OBJECTS (index 1+): Must contain exactly 4 properties: imageName, prompt, adCreativeA, adCreativeB
+## EXTREMELY IMPORTANT FORMAT REQUIREMENTS:
+- "adCreativeA" and "adCreativeB" MUST BE HTML STRINGS, NOT OBJECTS
+- "targeting" MUST BE AN HTML STRING, NOT AN OBJECT
+- NEVER use nested objects for any field - use HTML strings only
+- DO NOT return properties as objects with sub-properties
 
-FORMAT:
+## CORRECT FORMAT EXAMPLE:
+```json
 [
   {
-    "imageName": "Descriptive name for the image file",
-    "prompt": "Full text of the image prompt creation specifications",
-    "adCreativeA": "Full HTML/text content of Ad Creative A",
-    "adCreativeB": "Full HTML/text content of Ad Creative B", 
-    "targeting": "Targeting information"
+    "imageName": "weight_loss_transformation",
+    "prompt": "Complete image specifications here...",
+    "adCreativeA": "<div class=\"facebook-ad-copy\"><h3>Primary Text:</h3><p>\"Full primary text goes here with emotional hook and call to action.\"</p><h3>Headline:</h3><p>\"Main headline that grabs attention\"</p>...</div>",
+    "adCreativeB": "<div class=\"facebook-ad-copy\"><h3>Primary Text:</h3><p>\"Alternative primary text with different angle.\"</p><h3>Headline:</h3><p>\"Alternative headline\"</p>...</div>",
+    "targeting": "<div class=\"targeting-info\"><h3>Demographics:</h3><ul><li>Age: 25-34, 35-44</li><li>Gender: All</li></ul>...</div>"
   },
   {
-    "imageName": "Descriptive name for the image file",
-    "prompt": "Full text of the image prompt creation specifications",
-    "adCreativeA": "Full HTML/text content of Ad Creative A",
-    "adCreativeB": "Full HTML/text content of Ad Creative B", 
+    "imageName": "healthy_meal_prep",
+    "prompt": "Complete image specifications for second image...",
+    "adCreativeA": "<div class=\"facebook-ad-copy\"><h3>Primary Text:</h3><p>\"Second image ad copy\"</p>...</div>",
+    "adCreativeB": "<div class=\"facebook-ad-copy\"><h3>Primary Text:</h3><p>\"Alternative copy for second image\"</p>...</div>"
   }
 ]
+```
 
-IMAGE NAME GUIDELINES:
+## INCORRECT FORMAT (DO NOT USE):
+```json
+[
+  {
+    "imageName": "weight_loss_transformation",
+    "prompt": "Complete image specifications...",
+    "adCreativeA": {
+      "primaryText": "Text goes here",
+      "headline": "Headline here",
+      "description": "Description here"
+    },
+    "adCreativeB": {
+      "primaryText": "Alternative text",
+      "headline": "Alternative headline"
+    },
+    "targeting": {
+      "demographics": {
+        "age": ["25-34", "35-44"],
+        "gender": "All"
+      }
+    }
+  }
+]
+```
+
+## HTML TEMPLATE TO USE FOR ADCREATIVEA AND ADCREATIVEB:
+
+```html
+<div class="facebook-ad-copy">
+  <h3>Primary Text:</h3>
+  <p>"[Full primary text with emotional hook and call to action]"</p>
+  
+  <h3>Headline:</h3>
+  <p>"[Main headline that grabs attention]"</p>
+  
+  <h3>Description:</h3>
+  <p>"[Short description that supplements headline]"</p>
+  
+  <h3>Call to Action Button:</h3>
+  <p>[Appropriate CTA from Facebook options: Learn More, Shop Now, Sign Up, etc.]</p>
+  
+  <h3>News Feed Link Description:</h3>
+  <p>"[Additional description that appears below headline]"</p>
+</div>
+```
+
+## HTML TEMPLATE TO USE FOR TARGETING (FIRST OBJECT ONLY):
+
+```html
+<div class="targeting-info">
+  <h3>Demographics:</h3>
+  <ul>
+    <li>Age: [age ranges]</li>
+    <li>Gender: [gender]</li>
+    <li>Languages: [languages]</li>
+    <li>Education: [education levels]</li>
+    <li>Relationship Status: [statuses]</li>
+  </ul>
+
+  <h3>Location:</h3>
+  <ul>
+    <li>[Country/Region 1]</li>
+    <li>[Country/Region 2]</li>
+  </ul>
+
+  <h3>Interests:</h3>
+  <ul>
+    <li>[Interest Category 1]</li>
+    <li>[Interest Category 2]</li>
+  </ul>
+
+  <h3>Behaviors:</h3>
+  <ul>
+    <li>[Behavior 1]</li>
+    <li>[Behavior 2]</li>
+  </ul>
+
+  <h3>Custom Audiences:</h3>
+  <ul>
+    <li>[Audience Type 1]</li>
+    <li>[Audience Type 2]</li>
+  </ul>
+</div>
+```
+
+### Image Name Guidelines:
 - Maximum 12 words
 - Use underscores instead of spaces
 - Keep names concise but informative
+- Should reflect image content and ad purpose
+
+### ARRAY STRUCTURE REQUIREMENTS:
+- FIRST OBJECT (index 0): Must contain exactly 5 properties: imageName, prompt, adCreativeA, adCreativeB, targeting
+- ALL SUBSEQUENT OBJECTS (index 1+): Must contain exactly 4 properties: imageName, prompt, adCreativeA, adCreativeB
+
+This framework ensures proper formatting for Facebook Ad campaigns with compelling creative variations that can be easily implemented into your marketing platform.

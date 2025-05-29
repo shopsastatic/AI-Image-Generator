@@ -1,814 +1,941 @@
-// ROBUST Storage Solution - Fixed Migration & Recovery
-interface CompressedImageResult {
-  thumbnail: string;
-  blob: Blob;
-  originalSize: number;
-  compressedSize: number;
-}
+/**
+ * storageUtils.ts - Phiên bản hoàn toàn mới
+ * 
+ * Quản lý lưu trữ và truy xuất dữ liệu phiên ảnh với cơ chế xử lý lỗi mạnh mẽ
+ */
 
-class ImageCompressor {
-  static async compressImage(imageBase64: string): Promise<CompressedImageResult> {
-    try {
-      const img = await this.loadImage(imageBase64);
-      const thumbnail = this.createThumbnail(img);
-      const blob = await this.imageToBlob(img);
-      
-      return {
-        thumbnail,
-        blob,
-        originalSize: this.calculateBase64Size(imageBase64),
-        compressedSize: blob.size
-      };
-    } catch (error) {
-      console.warn('Compression failed, using fallback:', error);
-      return await this.fallbackCompress(imageBase64);
-    }
-  }
-
-  private static loadImage(base64: string): Promise<HTMLImageElement> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = base64;
-    });
-  }
-
-  private static createThumbnail(img: HTMLImageElement): string {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    
-    const size = 150;
-    const { width, height } = this.calculateDimensions(img.width, img.height, size);
-    
-    canvas.width = width;
-    canvas.height = height;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(img, 0, 0, width, height);
-    
-    return canvas.toDataURL('image/jpeg', 0.7);
-  }
-
-  private static async imageToBlob(img: HTMLImageElement): Promise<Blob> {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    
-    const { width, height } = this.calculateDimensions(img.width, img.height, 1024);
-    
-    canvas.width = width;
-    canvas.height = height;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(img, 0, 0, width, height);
-    
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')),
-        'image/jpeg',
-        0.8
-      );
-    });
-  }
-
-  private static calculateDimensions(originalWidth: number, originalHeight: number, maxSize: number) {
-    let { width, height } = { width: originalWidth, height: originalHeight };
-    
-    if (width > height) {
-      if (width > maxSize) {
-        height = (height * maxSize) / width;
-        width = maxSize;
-      }
-    } else {
-      if (height > maxSize) {
-        width = (width * maxSize) / height;
-        height = maxSize;
-      }
-    }
-    
-    return { width: Math.round(width), height: Math.round(height) };
-  }
-
-  private static calculateBase64Size(base64: string): number {
-    return Math.round((base64.length * (3/4)) - (base64.match(/=/g) || []).length);
-  }
-
-  private static async fallbackCompress(imageBase64: string): Promise<CompressedImageResult> {
-    const response = await fetch(imageBase64);
-    const blob = await response.blob();
-    
-    return {
-      thumbnail: imageBase64,
-      blob,
-      originalSize: this.calculateBase64Size(imageBase64),
-      compressedSize: blob.size
-    };
-  }
-}
-
-interface ImageRecord {
-  id: string;
-  sessionId: string;
-  imageIndex: number;
-  blob: Blob;
+// Định nghĩa các interface để type safety
+interface ImageData {
+  imageUrl: string;
   prompt: string;
-  claudeResponse?: string;
   timestamp: string;
-  size: string;
-  quality: string;
+  size?: string;
+  quality?: string;
+  claudeResponse?: string;
   AdCreativeA?: string;
   AdCreativeB?: string;
+  targeting?: string;
+  imageName?: string;
+  isBlob?: boolean;
+  originalBase64?: string;
 }
 
-interface SessionMetadata {
+interface SessionData {
   sessionId: string;
-  describe: string;
-  timestamp: string;
-  imageCount: number;
-  thumbnail: string;
-  date: string;
+  describe?: string;
+  images: ImageData[];
+  timestamp?: string;
+  createdAt?: string;
 }
 
-class IndexedDBManager {
-  private dbName = 'AIImageGenerator';
-  private version = 1;
+interface HistoryGroup {
+  date: string;
+  items: HistoryItem[];
+}
+
+interface HistoryItem {
+  id: string;
+  describe: string;
+  thumbnail: string;
+  imageCount: number;
+}
+
+// Lớp quản lý lưu trữ chính
+class StorageManager {
   private db: IDBDatabase | null = null;
+  private isInitialized: boolean = false;
+  private readonly dbName: string = 'AIImageGenerator';
+  private readonly dbVersion: number = 2; // Tăng version để cập nhật schema
+  private pendingSaves: Map<string, any> = new Map();
+  private sessionsCache: any[] | null = null;
+  private lastCacheTime: number = 0;
+  private operationLock: boolean = false;
+  private operationQueue: Array<() => Promise<void>> = [];
+  private readonly DEBUG: boolean = true; // Bật/tắt log debug
 
+  // Constructor
+  constructor() {
+    this.logDebug('StorageManager được khởi tạo');
+  }
+
+  /**
+   * Khởi tạo kết nối đến IndexedDB
+   */
   async init(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, this.version);
-      
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve();
-      };
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        
-        if (!db.objectStoreNames.contains('images')) {
-          const imageStore = db.createObjectStore('images', { keyPath: 'id' });
-          imageStore.createIndex('sessionId', 'sessionId', { unique: false });
-        }
-        
-        if (!db.objectStoreNames.contains('sessions')) {
-          const sessionStore = db.createObjectStore('sessions', { keyPath: 'sessionId' });
-          sessionStore.createIndex('timestamp', 'timestamp', { unique: false });
-        }
-      };
-    });
-  }
-
-  async saveSession(sessionData: {
-    sessionId: string;
-    describe: string;
-    images: Array<{
-      imageBase64: string;
-      prompt: string;
-      claudeResponse?: string;
-      timestamp: string;
-      size: string;
-      quality: string;
-      AdCreativeA?: string;
-      AdCreativeB?: string;
-    }>;
-  }): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    console.log(`🔄 Starting compression for ${sessionData.images.length} images...`);
-    
-    const compressedImages = await Promise.all(
-      sessionData.images.map(async (img, index) => {
-        const compressed = await ImageCompressor.compressImage(img.imageBase64);
-        return { ...img, compressed, index };
-      })
-    );
-    
-    console.log('✅ Compression completed, saving to IndexedDB...');
-
-    const transaction = this.db.transaction(['images', 'sessions'], 'readwrite');
-    const imageStore = transaction.objectStore('images');
-    const sessionStore = transaction.objectStore('sessions');
-
-    for (const { compressed, index, ...img } of compressedImages) {
-      const imageRecord: ImageRecord = {
-        id: `${sessionData.sessionId}-${index}`,
-        sessionId: sessionData.sessionId,
-        imageIndex: index,
-        blob: compressed.blob,
-        prompt: img.prompt,
-        claudeResponse: img.claudeResponse,
-        timestamp: img.timestamp,
-        size: img.size,
-        quality: img.quality,
-        AdCreativeA: img.AdCreativeA,
-        AdCreativeB: img.AdCreativeB,
-      };
-
-      imageStore.add(imageRecord);
-    }
-
-    const sessionMetadata: SessionMetadata = {
-      sessionId: sessionData.sessionId,
-      describe: sessionData.describe,
-      timestamp: sessionData.images[0]?.timestamp || new Date().toISOString(),
-      imageCount: sessionData.images.length,
-      thumbnail: compressedImages[0]?.compressed.thumbnail || '',
-      date: new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }),
-    };
-
-    sessionStore.add(sessionMetadata);
-
-    return new Promise((resolve, reject) => {
-      transaction.oncomplete = () => {
-        console.log(`✅ IndexedDB save successful: ${sessionData.sessionId}`);
-        resolve();
-      };
-      transaction.onerror = () => {
-        console.error('❌ IndexedDB save failed:', transaction.error);
-        reject(transaction.error);
-      };
-    });
-  }
-
-  async getSessionMetadata(): Promise<SessionMetadata[]> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['sessions'], 'readonly');
-      const store = transaction.objectStore('sessions');
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        const sessions = request.result.sort((a, b) => 
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-        resolve(sessions);
-      };
-      
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getSessionImages(sessionId: string): Promise<ImageRecord[]> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['images'], 'readonly');
-      const store = transaction.objectStore('images');
-      const index = store.index('sessionId');
-      const request = index.getAll(sessionId);
-
-      request.onsuccess = () => {
-        const images = request.result.sort((a, b) => a.imageIndex - b.imageIndex);
-        resolve(images);
-      };
-      
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async cleanup(maxSessions: number = 100): Promise<void> {
-    if (!this.db) return;
+    if (this.isInitialized) return;
 
     try {
-      const sessions = await this.getSessionMetadata();
+      this.logDebug('Đang khởi tạo storage...');
       
-      if (sessions.length <= maxSessions) return;
+      return new Promise((resolve, reject) => {
+        // Kiểm tra hỗ trợ IndexedDB
+        if (!window.indexedDB) {
+          this.logDebug('IndexedDB không được hỗ trợ, dùng localStorage');
+          this.isInitialized = true;
+          resolve();
+          return;
+        }
 
-      const sessionsToDelete = sessions.slice(maxSessions);
-      const transaction = this.db.transaction(['images', 'sessions'], 'readwrite');
-      const imageStore = transaction.objectStore('images');
-      const sessionStore = transaction.objectStore('sessions');
+        const request = indexedDB.open(this.dbName, this.dbVersion);
 
-      for (const session of sessionsToDelete) {
-        const imageIndex = imageStore.index('sessionId');
-        const imageRequest = imageIndex.openCursor(IDBKeyRange.only(session.sessionId));
-        
-        imageRequest.onsuccess = (event) => {
-          const cursor = (event.target as IDBRequest).result;
-          if (cursor) {
-            cursor.delete();
-            cursor.continue();
-          }
+        request.onerror = (event) => {
+          console.error('❌ Lỗi IndexedDB:', event);
+          this.isInitialized = true;
+          resolve(); // Vẫn resolve để dùng localStorage fallback
         };
 
-        sessionStore.delete(session.sessionId);
-      }
+        request.onsuccess = (event: any) => {
+          this.db = event.target.result;
+          this.isInitialized = true;
+          
+          // Thiết lập error handler
+          this.db.onerror = (event: any) => {
+            console.error('❌ Lỗi database:', event.target.errorCode);
+          };
+          
+          this.logDebug('✅ IndexedDB khởi tạo thành công');
+          
+          // Thực hiện deduplicate khi khởi động
+          this.deduplicateOnStartup().then(() => {
+            resolve();
+          }).catch(err => {
+            console.warn('⚠️ Lỗi khi deduplicate:', err);
+            resolve(); // Vẫn resolve dù có lỗi
+          });
+        };
 
-      console.log(`🧹 Cleaned up ${sessionsToDelete.length} old sessions`);
-    } catch (error) {
-      console.error('Cleanup failed:', error);
-    }
-  }
-}
-
-interface HistoryDateGroup {
-  date: string;
-  items: Array<{
-    id: string;
-    describe: string;
-    thumbnail: string;
-    imageCount: number;
-    timestamp: string;
-  }>;
-}
-
-class HybridStorageManager {
-  private indexedDB = new IndexedDBManager();
-  private initialized = false;
-  private migrationCompleted = false;
-
-  async init(): Promise<void> {
-    try {
-      await this.indexedDB.init();
-      this.initialized = true;
-      console.log('✅ Storage initialized');
-      
-      // Check migration status
-      const migrationStatus = localStorage.getItem('migration_completed');
-      if (!migrationStatus) {
-        await this.performSafeMigration();
-      }
-      
-    } catch (error) {
-      console.error('❌ Storage initialization failed:', error);
-      throw error;
-    }
-  }
-
-  async saveSession(sessionData: {
-    sessionId: string;
-    describe: string;
-    images: Array<{
-      imageBase64: string;
-      prompt: string;
-      claudeResponse?: string;
-      timestamp: string;
-      size: string;
-      quality: string;
-      AdCreativeA?: string;
-      AdCreativeB?: string;
-    }>;
-  }): Promise<void> {
-    if (!this.initialized) {
-      throw new Error('Storage not initialized');
-    }
-
-    let indexedDBSuccess = false;
-
-    // Try IndexedDB FIRST (primary storage)
-    try {
-      await this.indexedDB.saveSession(sessionData);
-      await this.indexedDB.cleanup();
-      indexedDBSuccess = true;
-      console.log(`✅ Session saved to IndexedDB successfully`);
-    } catch (error) {
-      console.error('❌ IndexedDB save failed:', error);
-    }
-
-    // Try localStorage as backup (with compression)
-    try {
-      await this.saveToLocalStorage(sessionData);
-      console.log(`✅ Session also saved to localStorage backup`);
-    } catch (error) {
-      console.warn('⚠️ localStorage save failed (probably full):', error.message);
-      
-      if (!indexedDBSuccess) {
-        // Both failed - this is bad
-        throw new Error('Both IndexedDB and localStorage failed to save');
-      }
-      
-      // IndexedDB worked, localStorage failed - that's OK
-      console.log('✅ Data saved to IndexedDB (localStorage backup failed but that\'s OK)');
-    }
-
-    if (indexedDBSuccess) {
-      console.log(`💾 Session saved successfully (Primary: IndexedDB)`);
-    } else {
-      console.log(`💾 Session saved successfully (Fallback: localStorage only)`);
-    }
-  }
-
-  async getHistoryForSidebar(): Promise<HistoryDateGroup[]> {
-    let indexedDBData: HistoryDateGroup[] = [];
-    let localStorageData: HistoryDateGroup[] = [];
-
-    // Try IndexedDB first (primary source)
-    try {
-      if (this.initialized) {
-        const sessions = await this.indexedDB.getSessionMetadata();
-        if (sessions && sessions.length > 0) {
-          indexedDBData = this.groupSessionsByDate(sessions);
-          console.log('📊 Loaded from IndexedDB:', sessions.length, 'sessions');
-        }
-      }
-    } catch (error) {
-      console.warn('⚠️ IndexedDB load failed:', error);
-    }
-
-    // Also get localStorage data
-    try {
-      localStorageData = this.getFromLocalStorage();
-      if (localStorageData.length > 0) {
-        console.log('📊 Also found localStorage data:', localStorageData.length, 'groups');
-      }
-    } catch (error) {
-      console.warn('⚠️ localStorage load failed:', error);
-    }
-
-    // Merge data, preferring IndexedDB but including localStorage items not in IndexedDB
-    const mergedData = this.mergeHistoryData(indexedDBData, localStorageData);
-    
-    console.log('📊 Final merged history:', mergedData.length, 'date groups');
-    return mergedData;
-  }
-
-  private mergeHistoryData(indexedDBData: HistoryDateGroup[], localStorageData: HistoryDateGroup[]): HistoryDateGroup[] {
-    if (indexedDBData.length === 0) {
-      return localStorageData;
-    }
-    
-    if (localStorageData.length === 0) {
-      return indexedDBData;
-    }
-
-    // Create a map of existing items from IndexedDB
-    const indexedDBIds = new Set<string>();
-    indexedDBData.forEach(group => {
-      group.items.forEach(item => {
-        indexedDBIds.add(item.id);
-      });
-    });
-
-    // Merge localStorage items that aren't in IndexedDB
-    const merged = [...indexedDBData];
-    
-    localStorageData.forEach(localGroup => {
-      localGroup.items.forEach(localItem => {
-        if (!indexedDBIds.has(localItem.id)) {
-          // Find or create date group
-          let targetGroup = merged.find(g => g.date === localGroup.date);
-          if (!targetGroup) {
-            targetGroup = { date: localGroup.date, items: [] };
-            merged.push(targetGroup);
+        request.onupgradeneeded = (event: any) => {
+          const db = event.target.result;
+          
+          // Xóa object store cũ nếu tồn tại và tạo mới
+          if (db.objectStoreNames.contains('sessions')) {
+            db.deleteObjectStore('sessions');
           }
           
-          targetGroup.items.push(localItem);
-        }
+          // Tạo object store mới với các indexes cần thiết
+          const store = db.createObjectStore('sessions', { keyPath: 'sessionId' });
+          store.createIndex('timestamp', 'timestamp', { unique: false });
+          store.createIndex('createdAt', 'createdAt', { unique: false });
+          this.logDebug('📦 Đã tạo/nâng cấp object store sessions');
+        };
       });
-    });
-
-    // Sort by date
-    return merged.sort((a, b) => 
-      new Date(b.items[0]?.timestamp || 0).getTime() - new Date(a.items[0]?.timestamp || 0).getTime()
-    );
-  }
-
-  async getSessionImages(sessionId: string): Promise<Array<{
-    imageUrl: string;
-    prompt: string;
-    claudeResponse?: string;
-    timestamp: string;
-    size: string;
-    quality: string;
-    AdCreativeA?: string;
-    AdCreativeB?: string;
-  }>> {
-    // Try IndexedDB first (has full quality images)
-    try {
-      if (this.initialized) {
-        const images = await this.indexedDB.getSessionImages(sessionId);
-        if (images && images.length > 0) {
-          console.log('📸 Loaded full-quality images from IndexedDB:', images.length);
-          return images.map((img) => ({
-            imageUrl: URL.createObjectURL(img.blob),
-            prompt: img.prompt,
-            claudeResponse: img.claudeResponse,
-            timestamp: img.timestamp,
-            size: img.size,
-            quality: img.quality,
-            AdCreativeA: img.AdCreativeA,
-            AdCreativeB: img.AdCreativeB,
-          }));
-        }
-      }
     } catch (error) {
-      console.warn('⚠️ IndexedDB session load failed:', error);
-    }
-
-    // Fallback to localStorage (compressed images)
-    console.log('📸 Falling back to localStorage images (compressed quality)');
-    return this.getSessionFromLocalStorage(sessionId);
-  }
-
-  private async performSafeMigration(): Promise<void> {
-    try {
-      console.log('🔄 Starting safe migration...');
-      
-      // Check if there's data to migrate
-      const oldData = localStorage.getItem('Image_Generator_Sessions');
-      const backupData = localStorage.getItem('Image_Generator_Sessions_BACKUP');
-      
-      if (!oldData && !backupData) {
-        console.log('✅ No data to migrate');
-        localStorage.setItem('migration_completed', 'true');
-        return;
-      }
-
-      // Use backup data if original is missing
-      const dataToMigrate = oldData || backupData;
-      if (!dataToMigrate) {
-        console.log('✅ No valid data found for migration');
-        localStorage.setItem('migration_completed', 'true');
-        return;
-      }
-
-      const sessions = JSON.parse(dataToMigrate);
-      let migratedCount = 0;
-      let failedCount = 0;
-
-      for (const dateGroup of sessions) {
-        if (!dateGroup.items) continue;
-        
-        for (const item of dateGroup.items) {
-          if (item.list && item.list.length > 0) {
-            try {
-              await this.indexedDB.saveSession({
-                sessionId: item.id,
-                describe: item.describe || 'Migrated session',
-                images: item.list
-              });
-              migratedCount++;
-              console.log(`✅ Migrated session: ${item.id}`);
-            } catch (error) {
-              failedCount++;
-              console.warn(`⚠️ Failed to migrate session ${item.id}:`, error);
-            }
-          }
-        }
-      }
-
-      // Only mark as completed if migration was successful
-      if (migratedCount > 0) {
-        // Keep original data as backup, don't delete
-        if (oldData) {
-          localStorage.setItem('Image_Generator_Sessions_BACKUP', oldData);
-        }
-        localStorage.setItem('migration_completed', 'true');
-        console.log(`✅ Migration completed: ${migratedCount} sessions migrated, ${failedCount} failed`);
-      } else {
-        console.warn('⚠️ Migration failed, keeping original data');
-      }
-      
-    } catch (error) {
-      console.error('❌ Migration failed:', error);
-      // Don't mark as completed on failure
+      console.error('❌ Lỗi khởi tạo StorageManager:', error);
+      this.isInitialized = true; // Vẫn đánh dấu đã khởi tạo để dùng localStorage
     }
   }
 
-  private async saveToLocalStorage(sessionData: any): Promise<void> {
+  /**
+   * Lưu một session mới hoặc cập nhật session hiện có
+   */
+  async saveSession(sessionData: SessionData): Promise<string> {
+    await this.waitForInit();
+    
     try {
-      // First, try to cleanup localStorage to make space
-      await this.cleanupLocalStorage();
-      
-      const existingData = this.getLocalStorageData();
-      
-      const today = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      let todayGroup = existingData.find((group: any) => group.date === today);
-      
-      if (!todayGroup) {
-        todayGroup = { date: today, items: [] };
-        existingData.unshift(todayGroup);
+      // Đảm bảo có sessionId
+      if (!sessionData.sessionId) {
+        throw new Error('Session ID là bắt buộc');
       }
 
-      // Compress images for localStorage
-      const compressedImages = await Promise.all(
-        sessionData.images.map(async (img: any) => {
-          try {
-            // Create smaller version for localStorage
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d')!;
-            const image = new Image();
-            
-            return new Promise<any>((resolve) => {
-              image.onload = () => {
-                // Very small size for localStorage
-                const maxSize = 200;
-                let { width, height } = image;
-                
-                if (width > height) {
-                  if (width > maxSize) {
-                    height = (height * maxSize) / width;
-                    width = maxSize;
-                  }
-                } else {
-                  if (height > maxSize) {
-                    width = (width * maxSize) / height;
-                    height = maxSize;
-                  }
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(image, 0, 0, width, height);
-                
-                resolve({
-                  ...img,
-                  imageBase64: canvas.toDataURL('image/jpeg', 0.5) // Low quality for space
-                });
-              };
-              
-              image.onerror = () => {
-                // Use original if compression fails
-                resolve(img);
-              };
-              
-              image.src = img.imageBase64;
-            });
-          } catch {
-            return img; // Return original if compression fails
-          }
-        })
-      );
+      this.logDebug(`🔄 Đang lưu session: ${sessionData.sessionId}`);
 
-      const newItem = {
-        id: sessionData.sessionId,
-        isSelected: false,
-        describe: sessionData.describe,
-        list: compressedImages
-      };
+      // Đợi các thao tác khác hoàn thành
+      await this.waitForLock();
+      this.operationLock = true;
 
-      todayGroup.items.unshift(newItem);
-      
-      // Keep only very recent data for localStorage (to avoid quota issues)
-      const limitedData = existingData.slice(0, 5); // Only 5 days
-      
-      // Try to save, if still fails, reduce further
       try {
-        localStorage.setItem('Image_Generator_Sessions', JSON.stringify(limitedData));
-        console.log('✅ Saved to localStorage (compressed)');
-      } catch (quotaError) {
-        console.warn('⚠️ Still quota exceeded, trying with only today\'s data');
+        // Kiểm tra session đã tồn tại chưa
+        const existingSessions = await this.getAllSessionsInternal();
+        const existingSession = existingSessions.find(
+          session => session.sessionId === sessionData.sessionId
+        );
         
-        // Emergency: save only today's data
-        const emergencyData = [todayGroup];
-        localStorage.setItem('Image_Generator_Sessions', JSON.stringify(emergencyData));
-        console.log('✅ Saved to localStorage (emergency mode - today only)');
+        // Chuẩn bị dữ liệu session
+        const now = new Date().toISOString();
+        const session = {
+          sessionId: sessionData.sessionId,
+          describe: sessionData.describe || '',
+          createdAt: existingSession?.createdAt || now,
+          timestamp: now,
+          images: []
+        };
+        
+        // Xử lý và chuẩn hóa images
+        if (sessionData.images && sessionData.images.length > 0) {
+          for (const image of sessionData.images) {
+            // Đảm bảo có đủ dữ liệu cho mỗi ảnh
+            const imageData: ImageData = {
+              imageUrl: image.imageBase64 || image.imageUrl || '',
+              prompt: image.prompt || '',
+              timestamp: image.timestamp || now,
+              size: image.size || 'Square',
+              quality: image.quality || 'Standard'
+            };
+            
+            // Thêm các trường tùy chọn nếu có
+            if (image.claudeResponse) imageData.claudeResponse = image.claudeResponse;
+            if (image.AdCreativeA) imageData.AdCreativeA = image.AdCreativeA;
+            if (image.AdCreativeB) imageData.AdCreativeB = image.AdCreativeB;
+            if (image.targeting) imageData.targeting = image.targeting;
+            if (image.imageName) imageData.imageName = image.imageName;
+            
+            // Bỏ qua ảnh rỗng hoặc ảnh placeholder
+            if (!imageData.imageUrl || 
+                imageData.imageUrl.includes('PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM') ||
+                imageData.imageUrl === 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==') {
+              this.logDebug(`⚠️ Bỏ qua ảnh rỗng hoặc placeholder`);
+              continue;
+            }
+            
+            session.images.push(imageData);
+          }
+        }
+
+        // Kiểm tra nếu không có ảnh nào hợp lệ
+        if (session.images.length === 0) {
+          this.logDebug(`⚠️ Không có ảnh hợp lệ trong session ${sessionData.sessionId}, bỏ qua`);
+          return sessionData.sessionId;
+        }
+        
+        // Lưu vào IndexedDB hoặc localStorage
+        if (this.db) {
+          const tx = this.db.transaction('sessions', 'readwrite');
+          const store = tx.objectStore('sessions');
+          
+          await new Promise<void>((resolve, reject) => {
+            let request;
+            if (existingSession) {
+              request = store.put(session);
+            } else {
+              request = store.add(session);
+            }
+            
+            request.onsuccess = () => resolve();
+            request.onerror = (e: any) => reject(e.target.error);
+            tx.oncomplete = () => resolve();
+            tx.onerror = (e: any) => reject(e.target.error);
+          });
+        } else {
+          // Fallback to localStorage
+          if (existingSession) {
+            const index = existingSessions.findIndex(s => s.sessionId === sessionData.sessionId);
+            if (index !== -1) {
+              existingSessions[index] = session;
+            } else {
+              existingSessions.push(session);
+            }
+          } else {
+            existingSessions.push(session);
+          }
+          
+          localStorage.setItem('Image_Generator_Sessions', JSON.stringify(existingSessions));
+        }
+
+        // Xóa cache để buộc refresh khi đọc lại
+        this.sessionsCache = null;
+        
+        this.logDebug(`✅ Session ${sessionData.sessionId} lưu thành công với ${session.images.length} ảnh`);
+        return sessionData.sessionId;
+      } finally {
+        // Giải phóng lock
+        this.operationLock = false;
+        this.processQueue();
       }
-      
     } catch (error) {
-      console.error('❌ localStorage save failed completely:', error);
+      console.error('❌ Lỗi lưu session:', error);
+      this.operationLock = false;
+      this.processQueue();
       throw error;
     }
   }
 
-  private async cleanupLocalStorage(): Promise<void> {
+  /**
+   * Lấy tất cả sessions (đã deduplicate)
+   */
+  async getAllSessions(): Promise<any[]> {
+    await this.waitForInit();
+    
     try {
-      const data = this.getLocalStorageData();
+      // Đợi thao tác khác hoàn thành
+      await this.waitForLock();
+      this.operationLock = true;
       
-      if (data.length > 7) {
-        // Keep only last 7 days
-        const recentData = data.slice(0, 7);
-        localStorage.setItem('Image_Generator_Sessions', JSON.stringify(recentData));
-        console.log('🧹 Cleaned up localStorage: kept only 7 recent days');
+      try {
+        const sessions = await this.getAllSessionsInternal();
+        return sessions;
+      } finally {
+        this.operationLock = false;
+        this.processQueue();
+      }
+    } catch (error) {
+      console.error('❌ Lỗi lấy sessions:', error);
+      this.operationLock = false;
+      this.processQueue();
+      return [];
+    }
+  }
+
+  /**
+   * Helper nội bộ để lấy tất cả sessions
+   */
+  private async getAllSessionsInternal(): Promise<any[]> {
+    try {
+      // Trả về cache nếu còn mới (dưới 2 giây)
+      if (this.sessionsCache && (Date.now() - this.lastCacheTime < 2000)) {
+        return this.sessionsCache;
+      }
+
+      let sessions = [];
+
+      if (this.db) {
+        const tx = this.db.transaction('sessions', 'readonly');
+        const store = tx.objectStore('sessions');
+        
+        // Lấy tất cả sessions từ IndexedDB
+        sessions = await new Promise<any[]>((resolve, reject) => {
+          const request = store.getAll();
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = (e: any) => reject(e.target.error);
+        });
+      } else {
+        // Fallback to localStorage
+        try {
+          const sessionsJson = localStorage.getItem('Image_Generator_Sessions');
+          if (sessionsJson) {
+            sessions = JSON.parse(sessionsJson);
+          }
+        } catch (parseError) {
+          console.error('❌ Lỗi parse sessions từ localStorage:', parseError);
+        }
+      }
+
+      // Deduplicate và validate sessions
+      const validatedSessions = this.validateAndDeduplicateSessions(sessions);
+      
+      // Cache kết quả
+      this.sessionsCache = validatedSessions;
+      this.lastCacheTime = Date.now();
+
+      return validatedSessions;
+    } catch (error) {
+      console.error('❌ Lỗi lấy sessions nội bộ:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Xác thực và loại bỏ trùng lặp trong danh sách sessions
+   */
+  private validateAndDeduplicateSessions(sessions: any[]): any[] {
+    if (!Array.isArray(sessions)) {
+      this.logDebug('⚠️ Sessions không phải array, trả về array rỗng');
+      return [];
+    }
+    
+    // Lọc bỏ sessions không hợp lệ và trùng lặp
+    const sessionMap = new Map();
+    const validSessions = [];
+    
+    for (const session of sessions) {
+      // Kiểm tra session có hợp lệ không
+      if (!session || !session.sessionId || !session.images) {
+        continue;
       }
       
-      // Also clean up other localStorage keys that might be taking space
-      const keysToClean = [
-        'Image_Generator_Sessions_Fallback',
-        'backup_v1'
-      ];
-      
-      keysToClean.forEach(key => {
-        if (localStorage.getItem(key)) {
-          localStorage.removeItem(key);
-          console.log(`🧹 Removed old localStorage key: ${key}`);
-        }
+      // Lọc bỏ các ảnh không hợp lệ
+      const validImages = (session.images || []).filter((img: any) => {
+        return img && img.imageUrl && 
+               !img.imageUrl.includes('PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM') &&
+               img.imageUrl !== 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==';
       });
       
-    } catch (error) {
-      console.warn('⚠️ localStorage cleanup failed:', error);
-    }
-  }
-
-  private getFromLocalStorage(): HistoryDateGroup[] {
-    try {
-      const data = this.getLocalStorageData();
-      return data.map((group: any) => ({
-        date: group.date,
-        items: group.items.map((item: any) => ({
-          id: item.id,
-          describe: item.describe,
-          thumbnail: item.list && item.list[0] ? item.list[0].imageBase64 : '',
-          imageCount: item.list ? item.list.length : 0,
-          timestamp: item.list && item.list[0] ? item.list[0].timestamp : new Date().toISOString()
-        }))
-      }));
-    } catch (error) {
-      console.error('❌ localStorage load failed:', error);
-      return [];
-    }
-  }
-
-  private getSessionFromLocalStorage(sessionId: string): Array<any> {
-    try {
-      const data = this.getLocalStorageData();
+      // Bỏ qua session không có ảnh hợp lệ
+      if (validImages.length === 0) {
+        continue;
+      }
       
-      for (const group of data) {
-        const item = group.items.find((item: any) => item.id === sessionId);
-        if (item && item.list) {
-          return item.list.map((img: any) => ({
-            imageUrl: img.imageBase64,
-            prompt: img.prompt,
-            claudeResponse: img.claudeResponse,
-            timestamp: img.timestamp,
-            size: img.size,
-            quality: img.quality,
-            AdCreativeA: img.AdCreativeA,
-            AdCreativeB: img.AdCreativeB,
-          }));
+      // Tạo bản sao để cập nhật
+      const updatedSession = {
+        ...session,
+        images: validImages
+      };
+      
+      // Kiểm tra trùng lặp bằng sessionId
+      const existingSession = sessionMap.get(session.sessionId);
+      
+      if (existingSession) {
+        // Nếu session này mới hơn, thay thế session cũ
+        const existingTime = new Date(existingSession.timestamp || existingSession.createdAt || 0).getTime();
+        const currentTime = new Date(session.timestamp || session.createdAt || 0).getTime();
+        
+        if (currentTime > existingTime) {
+          sessionMap.set(session.sessionId, updatedSession);
         }
+      } else {
+        // Nếu chưa có, thêm vào map
+        sessionMap.set(session.sessionId, updatedSession);
       }
-      
-      return [];
-    } catch (error) {
-      console.error('❌ localStorage session load failed:', error);
-      return [];
     }
+    
+    // Chuyển đổi Map thành array
+    for (const session of sessionMap.values()) {
+      validSessions.push(session);
+    }
+    
+    // Sắp xếp theo thời gian (mới nhất trước)
+    validSessions.sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+      const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+    
+    // Cập nhật localStorage nếu cần thiết
+    if (!this.db && validSessions.length !== sessions.length) {
+      this.logDebug(`📝 Cập nhật localStorage với ${validSessions.length} sessions hợp lệ từ ${sessions.length} sessions gốc`);
+      localStorage.setItem('Image_Generator_Sessions', JSON.stringify(validSessions));
+    }
+    
+    return validSessions;
   }
 
-  private getLocalStorageData(): any[] {
+  /**
+   * Lấy dữ liệu lịch sử cho sidebar
+   */
+  async getHistoryForSidebar(): Promise<HistoryGroup[]> {
+    await this.waitForInit();
+    
     try {
-      // Try current storage first
-      let data = localStorage.getItem('Image_Generator_Sessions');
-      if (data) {
-        return JSON.parse(data);
-      }
+      const sessions = await this.getAllSessions();
       
-      // Try backup if current doesn't exist
-      data = localStorage.getItem('Image_Generator_Sessions_BACKUP');
-      if (data) {
-        console.log('📦 Loading from backup storage');
-        // Restore from backup
-        localStorage.setItem('Image_Generator_Sessions', data);
-        return JSON.parse(data);
+      if (!sessions || sessions.length === 0) {
+        return [];
       }
-      
-      return [];
+
+      // Nhóm theo ngày
+      const groupedByDate = this.groupSessionsByDate(sessions);
+      return groupedByDate;
     } catch (error) {
-      console.error('❌ Error reading localStorage:', error);
+      console.error('❌ Lỗi lấy history cho sidebar:', error);
       return [];
     }
   }
 
-  private groupSessionsByDate(sessions: SessionMetadata[]): HistoryDateGroup[] {
-    const groups: { [date: string]: HistoryDateGroup } = {};
+  /**
+   * Nhóm sessions theo ngày
+   */
+  private groupSessionsByDate(sessions: any[]): HistoryGroup[] {
+    const groups: HistoryGroup[] = [];
+    const dateMap = new Map<string, HistoryGroup>();
+    
+    for (const session of sessions) {
+      // Bỏ qua session không có ảnh
+      if (!session.images || session.images.length === 0) {
+        continue;
+      }
+      
+      const timestamp = session.timestamp || session.createdAt;
+      const date = timestamp 
+        ? new Date(timestamp).toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric' 
+          })
+        : 'Unknown Date';
 
-    sessions.forEach(session => {
-      if (!groups[session.date]) {
-        groups[session.date] = {
-          date: session.date,
-          items: []
-        };
+      // Lấy hoặc tạo nhóm cho ngày này
+      let group = dateMap.get(date);
+      if (!group) {
+        group = { date, items: [] };
+        dateMap.set(date, group);
+        groups.push(group);
       }
 
-      groups[session.date].items.push({
+      // Tìm ảnh đầu tiên làm thumbnail
+      const firstImage = session.images[0];
+      const thumbnailImage = firstImage?.imageUrl || '';
+      
+      // Thêm vào nhóm
+      group.items.push({
         id: session.sessionId,
-        describe: session.describe,
-        thumbnail: session.thumbnail,
-        imageCount: session.imageCount,
-        timestamp: session.timestamp
+        describe: session.describe || '',
+        thumbnail: thumbnailImage,
+        imageCount: session.images.length
       });
+    }
+
+    // Sắp xếp nhóm theo ngày (mới nhất trước)
+    groups.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateB - dateA;
     });
 
-    return Object.values(groups).sort((a, b) => 
-      new Date(b.items[0].timestamp).getTime() - new Date(a.items[0].timestamp).getTime()
-    );
+    return groups;
+  }
+
+  /**
+   * Lấy ảnh cho một session cụ thể
+   */
+  async getSessionImages(sessionId: string): Promise<ImageData[]> {
+    await this.waitForInit();
+    
+    try {
+      const sessions = await this.getAllSessions();
+      const session = sessions.find(s => s.sessionId === sessionId);
+
+      if (!session || !session.images || session.images.length === 0) {
+        return [];
+      }
+
+      // Lọc bỏ ảnh không hợp lệ
+      const validImages = session.images.filter((img: ImageData) => {
+        return img && img.imageUrl && 
+               !img.imageUrl.includes('PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM') &&
+               img.imageUrl !== 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==';
+      });
+      
+      if (validImages.length === 0) {
+        this.logDebug(`⚠️ Không tìm thấy ảnh hợp lệ cho session: ${sessionId}`);
+      } else {
+        this.logDebug(`✅ Đã tìm thấy ${validImages.length} ảnh hợp lệ cho session: ${sessionId}`);
+      }
+      
+      return validImages;
+    } catch (error) {
+      console.error(`❌ Lỗi lấy ảnh cho session ${sessionId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Xóa một session
+   */
+  async deleteSession(sessionId: string): Promise<boolean> {
+    await this.waitForInit();
+    
+    try {
+      // Đợi thao tác khác hoàn thành
+      await this.waitForLock();
+      this.operationLock = true;
+      
+      try {
+        if (this.db) {
+          const tx = this.db.transaction('sessions', 'readwrite');
+          const store = tx.objectStore('sessions');
+          
+          await new Promise<void>((resolve, reject) => {
+            const request = store.delete(sessionId);
+            request.onsuccess = () => resolve();
+            request.onerror = (e: any) => reject(e.target.error);
+          });
+        } else {
+          // Xóa từ localStorage
+          const sessions = await this.getAllSessionsInternal();
+          const filteredSessions = sessions.filter(s => s.sessionId !== sessionId);
+          localStorage.setItem('Image_Generator_Sessions', JSON.stringify(filteredSessions));
+        }
+
+        // Xóa cache
+        this.sessionsCache = null;
+        
+        this.logDebug(`✅ Đã xóa session: ${sessionId}`);
+        return true;
+      } finally {
+        this.operationLock = false;
+        this.processQueue();
+      }
+    } catch (error) {
+      console.error(`❌ Lỗi xóa session ${sessionId}:`, error);
+      this.operationLock = false;
+      this.processQueue();
+      return false;
+    }
+  }
+
+  /**
+   * Xóa tất cả sessions
+   */
+  async clearAllSessions(): Promise<boolean> {
+    await this.waitForInit();
+    
+    try {
+      // Đợi thao tác khác hoàn thành
+      await this.waitForLock();
+      this.operationLock = true;
+      
+      try {
+        if (this.db) {
+          const tx = this.db.transaction('sessions', 'readwrite');
+          const store = tx.objectStore('sessions');
+          
+          await new Promise<void>((resolve, reject) => {
+            const request = store.clear();
+            request.onsuccess = () => resolve();
+            request.onerror = (e: any) => reject(e.target.error);
+          });
+        } else {
+          // Xóa từ localStorage
+          localStorage.removeItem('Image_Generator_Sessions');
+          localStorage.removeItem('Image_Generator_Sessions_BACKUP');
+        }
+
+        // Xóa cache
+        this.sessionsCache = null;
+        
+        this.logDebug(`✅ Đã xóa tất cả sessions`);
+        return true;
+      } finally {
+        this.operationLock = false;
+        this.processQueue();
+      }
+    } catch (error) {
+      console.error(`❌ Lỗi xóa tất cả sessions:`, error);
+      this.operationLock = false;
+      this.processQueue();
+      return false;
+    }
+  }
+
+  /**
+   * Thực hiện deduplicate khi khởi động
+   */
+  private async deduplicateOnStartup(): Promise<void> {
+    try {
+      this.logDebug('🧹 Kiểm tra và deduplicate dữ liệu khi khởi động...');
+      
+      let sessions: any[] = [];
+      let isDirty = false;
+      
+      if (this.db) {
+        const tx = this.db.transaction('sessions', 'readonly');
+        const store = tx.objectStore('sessions');
+        
+        sessions = await new Promise<any[]>((resolve, reject) => {
+          const request = store.getAll();
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = (e: any) => reject(e.target.error);
+        });
+      } else {
+        try {
+          const sessionsJson = localStorage.getItem('Image_Generator_Sessions');
+          if (sessionsJson) {
+            sessions = JSON.parse(sessionsJson);
+          }
+        } catch (parseError) {
+          console.error('❌ Lỗi parse sessions từ localStorage:', parseError);
+        }
+      }
+      
+      if (!Array.isArray(sessions) || sessions.length === 0) {
+        return;
+      }
+      
+      // Đếm số session trước khi deduplicate
+      const originalCount = sessions.length;
+      
+      // Lọc sessions không hợp lệ và trùng lặp
+      const sessionMap = new Map();
+      let invalidCount = 0;
+      
+      for (const session of sessions) {
+        // Kiểm tra session có hợp lệ không
+        if (!session || !session.sessionId) {
+          invalidCount++;
+          isDirty = true;
+          continue;
+        }
+        
+        // Lọc bỏ các ảnh không hợp lệ
+        if (session.images && Array.isArray(session.images)) {
+          const originalImageCount = session.images.length;
+          
+          session.images = session.images.filter((img: any) => {
+            return img && img.imageUrl && 
+                  !img.imageUrl.includes('PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM') &&
+                  img.imageUrl !== 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==';
+          });
+          
+          if (session.images.length !== originalImageCount) {
+            isDirty = true;
+          }
+        }
+        
+        // Kiểm tra trùng lặp bằng sessionId
+        const existingSession = sessionMap.get(session.sessionId);
+        
+        if (existingSession) {
+          isDirty = true;
+          
+          // So sánh thời gian để giữ bản mới nhất
+          const existingTime = new Date(existingSession.timestamp || existingSession.createdAt || 0).getTime();
+          const currentTime = new Date(session.timestamp || session.createdAt || 0).getTime();
+          
+          if (currentTime > existingTime) {
+            sessionMap.set(session.sessionId, session);
+          }
+        } else {
+          sessionMap.set(session.sessionId, session);
+        }
+      }
+      
+      // Nếu có thay đổi, cập nhật storage
+      if (isDirty) {
+        // Chuyển đổi Map thành array
+        const deduplicatedSessions = Array.from(sessionMap.values());
+        
+        // Xóa bỏ các session không có ảnh
+        const validSessions = deduplicatedSessions.filter(session => 
+          session.images && Array.isArray(session.images) && session.images.length > 0
+        );
+        
+        // Lưu dữ liệu đã deduplicate
+        if (this.db) {
+          const tx = this.db.transaction('sessions', 'readwrite');
+          const store = tx.objectStore('sessions');
+          
+          // Xóa tất cả sessions hiện có
+          await new Promise<void>((resolve, reject) => {
+            const request = store.clear();
+            request.onsuccess = () => resolve();
+            request.onerror = (e: any) => reject(e.target.error);
+          });
+          
+          // Thêm lại các sessions đã deduplicate
+          for (const session of validSessions) {
+            await new Promise<void>((resolve, reject) => {
+              const request = store.add(session);
+              request.onsuccess = () => resolve();
+              request.onerror = (e: any) => {
+                console.warn(`⚠️ Không thể thêm lại session ${session.sessionId}:`, e.target.error);
+                resolve(); // Tiếp tục dù có lỗi
+              };
+            });
+          }
+        } else {
+          // Cập nhật localStorage
+          localStorage.setItem('Image_Generator_Sessions', JSON.stringify(validSessions));
+        }
+        
+        this.logDebug(`🧹 Deduplicate thành công: ${originalCount} → ${validSessions.length} sessions (loại bỏ ${invalidCount} không hợp lệ, ${originalCount - invalidCount - validSessions.length} trùng lặp)`);
+      } else {
+        this.logDebug(`✅ Không tìm thấy dữ liệu trùng lặp hoặc không hợp lệ`);
+      }
+    } catch (error) {
+      console.error('❌ Lỗi khi deduplicate dữ liệu:', error);
+    }
+  }
+
+  /**
+   * Helper để đợi cho đến khi lock được giải phóng
+   */
+  private async waitForLock(): Promise<void> {
+    if (!this.operationLock) return;
+    
+    return new Promise<void>(resolve => {
+      const operation = async () => {
+        resolve();
+      };
+      
+      this.operationQueue.push(operation);
+    });
+  }
+
+  /**
+   * Xử lý hàng đợi thao tác
+   */
+  private async processQueue(): Promise<void> {
+    if (this.operationQueue.length === 0 || this.operationLock) return;
+    
+    const operation = this.operationQueue.shift();
+    if (operation) {
+      this.operationLock = true;
+      try {
+        await operation();
+      } finally {
+        this.operationLock = false;
+        this.processQueue();
+      }
+    }
+  }
+
+  /**
+   * Đợi cho đến khi khởi tạo hoàn thành
+   */
+  private async waitForInit(): Promise<void> {
+    if (this.isInitialized) return;
+    
+    let attempts = 0;
+    const maxAttempts = 50;
+    const delay = 100;
+    
+    while (!this.isInitialized && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      attempts++;
+    }
+    
+    if (!this.isInitialized) {
+      console.warn('⚠️ Đã đạt số lần thử tối đa khi đợi khởi tạo');
+      this.isInitialized = true; // Đánh dấu đã khởi tạo để không bị treo
+    }
+  }
+
+  /**
+   * Log debug nếu được bật
+   */
+  private logDebug(message: string, ...args: any[]): void {
+    if (this.DEBUG) {
+      console.log(`🔍 [StorageManager] ${message}`, ...args);
+    }
   }
 }
 
+/**
+ * Lớp hỗ trợ nén ảnh
+ */
+class ImageCompressor {
+  /**
+   * Nén ảnh để giảm kích thước lưu trữ
+   */
+  static async compressImage(dataUrl: string, quality = 0.8, maxWidth = 1200): Promise<{blob: Blob, dataUrl: string, width: number, height: number}> {
+    return new Promise((resolve, reject) => {
+      try {
+        // Bỏ qua nếu không phải data URL hợp lệ
+        if (!dataUrl || !dataUrl.startsWith('data:')) {
+          throw new Error('Invalid data URL');
+        }
+        
+        // Bỏ qua nếu là placeholder
+        if (dataUrl.includes('PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM') ||
+            dataUrl === 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==') {
+          throw new Error('Placeholder image detected');
+        }
+        
+        const img = new Image();
+        img.onload = () => {
+          // Tạo canvas
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Thay đổi kích thước nếu cần
+          if (width > maxWidth) {
+            height = Math.floor(height * (maxWidth / width));
+            width = maxWidth;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          // Vẽ và nén
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            throw new Error('Failed to get canvas context');
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Chuyển đổi sang blob
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('Failed to create blob from canvas'));
+              return;
+            }
+            
+            // Lấy cả data URL cho các trường hợp cần thiết
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+            
+            resolve({
+              blob,
+              dataUrl: compressedDataUrl,
+              width,
+              height
+            });
+          }, 'image/jpeg', quality);
+        };
+        
+        img.onerror = () => {
+          reject(new Error('Failed to load image for compression'));
+        };
+        
+        img.src = dataUrl;
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+}
+
+/**
+ * Hỗ trợ di chuyển dữ liệu từ storage cũ
+ */
 class StorageMigration {
-  static async migrateFromOldLocalStorage(hybridStorage: HybridStorageManager): Promise<void> {
-    // This method is now handled internally by HybridStorageManager
-    console.log('⚠️ Migration is now handled automatically by HybridStorageManager');
+  /**
+   * Di chuyển dữ liệu từ localStorage cũ
+   */
+  static async migrateFromOldLocalStorage(storageManager: StorageManager): Promise<boolean> {
+    try {
+      // Kiểm tra nếu đã migrate
+      if (localStorage.getItem('migration_completed') === 'true') {
+        console.log('✅ Migration đã hoàn thành');
+        return true;
+      }
+      
+      console.log('🔄 Bắt đầu di chuyển dữ liệu từ localStorage cũ...');
+      
+      // Lấy dữ liệu từ định dạng cũ
+      const oldDataJson = localStorage.getItem('Image_Generator_Sessions');
+      if (!oldDataJson) {
+        console.log('📭 Không tìm thấy dữ liệu cũ');
+        localStorage.setItem('migration_completed', 'true');
+        return true;
+      }
+      
+      const oldData = JSON.parse(oldDataJson);
+      if (!Array.isArray(oldData) || oldData.length === 0) {
+        console.log('📭 Không tìm thấy dữ liệu cũ hợp lệ');
+        localStorage.setItem('migration_completed', 'true');
+        return true;
+      }
+      
+      console.log(`📊 Tìm thấy ${oldData.length} sessions để di chuyển`);
+      
+      // Deduplicate dữ liệu cũ trước
+      const uniqueIds = new Set();
+      const uniqueOldData = oldData.filter(session => {
+        if (!session.sessionId) return false;
+        if (uniqueIds.has(session.sessionId)) return false;
+        uniqueIds.add(session.sessionId);
+        return true;
+      });
+      
+      console.log(`🧹 Đã deduplicate thành ${uniqueOldData.length} sessions duy nhất`);
+      
+      // Lưu từng session vào storage mới
+      for (const session of uniqueOldData) {
+        await storageManager.saveSession({
+          sessionId: session.sessionId,
+          describe: session.describe || '',
+          images: session.images || []
+        });
+      }
+      
+      // Đánh dấu đã hoàn thành migration
+      localStorage.setItem('migration_completed', 'true');
+      
+      // Tạo backup dữ liệu cũ phòng khi cần
+      localStorage.setItem('Image_Generator_Sessions_BACKUP', oldDataJson);
+      
+      console.log('✅ Migration hoàn thành thành công');
+      return true;
+    } catch (error) {
+      console.error('❌ Lỗi migration:', error);
+      return false;
+    }
   }
 }
 
-const storageManager = new HybridStorageManager();
+// Tạo singleton instance
+const storageManager = new StorageManager();
 
-export {
-  HybridStorageManager,
-  IndexedDBManager,
-  ImageCompressor,
-  StorageMigration,
-  storageManager
-};
+// Export các lớp và singleton
+export { StorageManager, ImageCompressor, StorageMigration, storageManager };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { storageManager } from "./storageUtils";
 
 interface HistoryImage {
@@ -79,33 +79,26 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [hasUnselectedItems, setHasUnselectedItems] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
+  const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
+  const loadingRef = useRef<boolean>(false);
+  const errorShownRef = useRef<boolean>(false);
 
   const loadHistoryData = useCallback(async () => {
+    if (loadingRef.current) return;
+    
+    loadingRef.current = true;
     setIsLoading(true);
+    
     try {
       console.log("🔄 Loading history data...");
 
-      // Get history from new storage system (which has localStorage fallback built-in)
+      // Get history from storage manager
       const historyGroups = await storageManager.getHistoryForSidebar();
 
       if (historyGroups && historyGroups.length > 0) {
-        // Convert to old format for compatibility
-        const convertedData = historyGroups.map((group) => ({
-          date: group.date,
-          items: group.items.map((item) => ({
-            id: item.id,
-            describe: item.describe,
-            isSelected: false,
-            list: [], // Will be loaded on demand
-          })),
-        }));
-
-        setHistoryData(convertedData);
-        console.log(
-          "✅ History loaded successfully:",
-          convertedData.length,
-          "date groups"
-        );
+        console.log("✅ History loaded:", historyGroups.length, "groups with", 
+          historyGroups.reduce((sum, group) => sum + group.items.length, 0), "items");
+        setHistoryData(historyGroups);
       } else {
         console.log("📭 No history data found");
         setHistoryData([]);
@@ -113,14 +106,71 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     } catch (error) {
       console.error("❌ Failed to load history:", error);
       setHistoryData([]);
+      
+      // Show error notification (only once per session)
+      if (!errorShownRef.current) {
+        errorShownRef.current = true;
+        
+        const notification = document.createElement("div");
+        notification.innerHTML = `
+          <div style="
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            background: #f44336; 
+            color: white; 
+            padding: 15px 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          ">
+            <strong>⚠️ Storage Error</strong><br>
+            There was a problem loading your history. Try refreshing the page.
+            <button style="
+              display: block;
+              margin-top: 8px;
+              background: white;
+              color: #f44336;
+              border: none;
+              padding: 5px 10px;
+              border-radius: 4px;
+              cursor: pointer;
+              font-weight: bold;
+            " onclick="localStorage.clear(); window.location.reload();">Reset Storage</button>
+          </div>
+        `;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          if (notification.parentElement) {
+            document.body.removeChild(notification);
+          }
+        }, 10000);
+      }
     } finally {
       setIsLoading(false);
+      loadingRef.current = false;
     }
   }, []);
 
+  // Run emergency fix on first load
   useEffect(() => {
-    loadHistoryData();
-
+    const runEmergencyFix = async () => {
+      try {
+        await storageManager.init();
+        // This is the safest approach - completely rebuild the storage data
+        const fixResult = await storageManager.deduplicateOnStartup();
+        console.log('🚨 Emergency storage fix complete');
+      } catch (error) {
+        console.error('Failed to run emergency fix:', error);
+      } finally {
+        loadHistoryData();
+      }
+    };
+    
+    runEmergencyFix();
+    
     const handleHistoryUpdate = () => {
       console.log("📡 History update event received, reloading...");
       loadHistoryData();
@@ -149,7 +199,11 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   }, [historyData, isItemSelected]);
 
   const handleItemClick = async (item: HistoryItem) => {
-    if (isItemSelected(item)) return;
+    // Check if the item has already been processed to prevent multiple selections
+    if (isItemSelected(item)) {
+      console.log("🔄 Item already selected, skipping:", item.id);
+      return;
+    }
 
     try {
       console.log("🔄 Loading session images for:", item.id);
@@ -158,7 +212,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
       const sessionImages = await storageManager.getSessionImages(item.id);
 
       if (sessionImages && sessionImages.length > 0) {
-        console.log("✅ Loaded session images:", sessionImages.length);
+        console.log("✅ Loaded", sessionImages.length, "images for session:", item.id);
 
         const compatibleItem = {
           ...item,
@@ -169,14 +223,49 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
             timestamp: img.timestamp,
             size: img.size,
             quality: img.quality,
-            AdCreativeA: img.AdCreativeA, // Ensure proper casing
-            AdCreativeB: img.AdCreativeB, // Ensure proper casing
+            AdCreativeA: img.AdCreativeA, 
+            AdCreativeB: img.AdCreativeB,
+            targeting: img.targeting,
+            imageName: img.imageName,
           })),
         };
 
+        // Add this ID to processed set to prevent duplicate processing
+        setProcessedIds(prev => {
+          const updated = new Set(prev);
+          updated.add(item.id);
+          return updated;
+        });
+
         onItemClick(compatibleItem);
       } else {
-        console.warn("⚠️ No images found for session:", item.id);
+        console.warn("⚠️ No valid images found for session:", item.id);
+        
+        // Show notification to user
+        const notification = document.createElement("div");
+        notification.innerHTML = `
+          <div style="
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            background: #ff9800; 
+            color: white; 
+            padding: 15px 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10000;
+          ">
+            <strong>No Images</strong><br>
+            No valid images found in this history item.
+          </div>
+        `;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          if (notification.parentElement) {
+            document.body.removeChild(notification);
+          }
+        }, 3000);
       }
     } catch (error) {
       console.error("❌ Failed to load session images:", error);
@@ -184,7 +273,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   };
 
   const handleSelectAllUnselected = () => {
-    // Đếm các item chưa được chọn
+    // Count unselected items
     let unselectedItems: HistoryItem[] = [];
     
     historyData.forEach(group => {
@@ -201,8 +290,11 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
     unselectedItems.reverse();
     
-    unselectedItems.forEach(item => {
-      handleItemClick(item);
+    // Process them one by one with a small delay to prevent racing conditions
+    unselectedItems.forEach((item, index) => {
+      setTimeout(() => {
+        handleItemClick(item);
+      }, index * 50); // 50ms delay between each item
     });
   };
 
@@ -214,25 +306,20 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setShowClearConfirm(false);
   };
 
-  const handleConfirmClear = () => {
+  const handleConfirmClear = async () => {
     try {
-      // Clear localStorage
-      localStorage.removeItem("Image_Generator_Sessions");
-      localStorage.removeItem("Image_Generator_Sessions_BACKUP");
-      localStorage.removeItem("migration_completed");
-
-      // Clear IndexedDB
-      const dbName = "AIImageGenerator";
-      const deleteRequest = indexedDB.deleteDatabase(dbName);
-      deleteRequest.onsuccess = () => {
-        console.log("✅ IndexedDB cleared");
-      };
-      deleteRequest.onerror = (error) => {
-        console.error("❌ Failed to clear IndexedDB:", error);
-      };
+      setIsLoading(true);
+      
+      // Use storage manager to clear all sessions
+      const result = await storageManager.clearAllSessions();
+      
+      if (!result) {
+        throw new Error("Failed to clear sessions");
+      }
 
       setHistoryData([]);
       setShowClearConfirm(false);
+      setProcessedIds(new Set());
       console.log("✅ All history cleared");
 
       // Show success notification
@@ -292,15 +379,28 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           document.body.removeChild(errorNotification);
         }
       }, 5000);
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  // Force reload when visibility changes
+  useEffect(() => {
+    if (isVisible) {
+      loadHistoryData();
+    }
+  }, [isVisible, loadHistoryData]);
 
   return (
     <div className={`history-sidebar ${isVisible ? "visible" : ""}`}>
       <div className="history-header">
         <div className="history-title-section">
-          <span className="history-period">30-day history</span>
-          {isLoading && <span className="loading-indicator">⏳</span>}
+          <span className="history-period">History</span>
+          {isLoading && (
+            <span className="loading-indicator">
+              <span className="loading-spinner"></span>
+            </span>
+          )}
         </div>
 
         <div className="history-actions">
@@ -375,6 +475,15 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
             {!historyData || historyData.length === 0 ? (
               <div className="history-empty">
                 <p>{isLoading ? "Loading..." : "No history items found"}</p>
+                
+                {!isLoading && (
+                  <button 
+                    className="history-refresh-button"
+                    onClick={loadHistoryData}
+                  >
+                    Refresh
+                  </button>
+                )}
               </div>
             ) : (
               <HistoryDisplay
@@ -395,71 +504,20 @@ const HistoryDisplay: React.FC<{
   historyData: HistoryDateGroup[];
   isItemSelected: (item: HistoryItem) => boolean;
   handleItemClick: (item: HistoryItem) => void;
-}> = ({ historyData, isItemSelected, handleItemClick }) => {
-  const [thumbnailData, setThumbnailData] = useState<any[]>([]);
-
-  useEffect(() => {
-    // Load thumbnail data from storage
-    const loadThumbnails = async () => {
-      try {
-        const thumbnails = await storageManager.getHistoryForSidebar();
-        setThumbnailData(thumbnails);
-      } catch (error) {
-        console.error("Failed to load thumbnails:", error);
-        setThumbnailData([]);
-      }
-    };
-
-    loadThumbnails();
-  }, [historyData]);
-
-  const getThumbnailUrl = (item: HistoryItem): string => {
-    try {
-      for (const group of thumbnailData) {
-        const foundItem = group.items.find(
-          (thumbItem: any) => thumbItem.id === item.id
-        );
-        if (foundItem && foundItem.thumbnail) {
-          return foundItem.thumbnail;
-        }
-      }
-      return "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkltYWdlPC90ZXh0Pjwvc3ZnPg==";
-    } catch {
-      return "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==";
-    }
-  };
-
-  const getImageCount = (item: HistoryItem): number => {
-    try {
-      for (const group of thumbnailData) {
-        const foundItem = group.items.find(
-          (thumbItem: any) => thumbItem.id === item.id
-        );
-        if (foundItem && foundItem.imageCount) {
-          return foundItem.imageCount;
-        }
-      }
-      return 1;
-    } catch {
-      return 1;
-    }
-  };
-
+}> = React.memo(({ historyData, isItemSelected, handleItemClick }) => {
   return (
     <>
       {historyData.map((dateGroup, groupIndex) => (
-        <div key={`date-${groupIndex}`} className="history-date-group">
+        <div key={`date-${groupIndex}-${dateGroup.date}`} className="history-date-group">
           <div className="history-date">{dateGroup.date}</div>
 
           <div className="history-items">
             {dateGroup.items.map((item) => {
               const isItemDisabled = isItemSelected(item);
-              const thumbnailUrl = getThumbnailUrl(item);
-              const imageCount = getImageCount(item);
-
+              
               return (
                 <div
-                  key={item.id}
+                  key={`item-${item.id}`}
                   className={`history-item ${isItemDisabled ? "disabled" : ""}`}
                   onClick={() => !isItemDisabled && handleItemClick(item)}
                   style={{
@@ -467,20 +525,15 @@ const HistoryDisplay: React.FC<{
                     cursor: isItemDisabled ? "default" : "pointer",
                   }}
                 >
-                  <img
-                    src={thumbnailUrl}
+                  <SafeHistoryImage 
+                    src={item.thumbnail}
                     alt={item.describe || "Generated image"}
-                    className="history-image"
-                    loading="lazy"
-                    onError={(e) => {
-                      console.warn("Thumbnail load failed for:", item.id);
-                      (e.target as HTMLImageElement).src =
-                        "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==";
-                    }}
+                    id={item.id}
+                    count={item.imageCount}
                   />
 
-                  {imageCount > 1 && (
-                    <div className="history-item-count">{imageCount}</div>
+                  {item.imageCount > 1 && (
+                    <div className="history-item-count">{item.imageCount}</div>
                   )}
                 </div>
               );
@@ -489,6 +542,60 @@ const HistoryDisplay: React.FC<{
         </div>
       ))}
     </>
+  );
+});
+
+// Enhanced image component for history thumbnails
+const SafeHistoryImage: React.FC<{
+  src: string;
+  alt: string;
+  id: string;
+  count: number;
+}> = ({ src, alt, id, count }) => {
+  const [imageSrc, setImageSrc] = useState<string>(src);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasError, setHasError] = useState<boolean>(false);
+  
+  useEffect(() => {
+    setImageSrc(src);
+    setHasError(false);
+    setIsLoading(false);
+  }, [src]);
+
+  const handleImageError = () => {
+    setIsLoading(false);
+    setHasError(true);
+    setImageSrc("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkltYWdlPC90ZXh0Pjwvc3ZnPg==");
+  };
+
+  const handleImageLoad = () => {
+    setIsLoading(false);
+    setHasError(false);
+  };
+
+  return (
+    <div className="history-image-container">
+      {isLoading && (
+        <div className="history-image-loading">
+          <div className="loading-spinner"></div>
+        </div>
+      )}
+      
+      <img
+        src={imageSrc}
+        alt={alt}
+        className="history-image"
+        loading="lazy"
+        onError={handleImageError}
+        onLoad={handleImageLoad}
+      />
+      
+      {hasError && (
+        <div className="history-image-placeholder">
+          <span>{count}</span>
+        </div>
+      )}
+    </div>
   );
 };
 
