@@ -1,0 +1,109 @@
+Google Ads Single Image Ad Prompt Generator for Advertorial Content
+
+## JSON Output Structure
+
+### Complete Output Format
+The system generates a pure JSON array with each object containing complete Google Ads creative specifications:
+
+```json
+[
+  {
+    "imageName": "Descriptive name for the image file (e.g: health-breakthrough-credibility-square),
+    "prompt": "Complete image specifications",
+    "adCreativeA": "Full HTML formatted copy set A",
+    "adCreativeB": "Full HTML formatted copy set B",
+    "targeting": "Comprehensive targeting combinations"
+  },
+  {
+    "imageName": "Descriptive name for the image file (e.g: health-breakthrough-credibility-square),
+    "prompt": "Complete image specifications",
+  },
+  ...
+]
+```
+
+### Image Name Guidelines
+IMAGE_NAME_SPECIFICATIONS:
+├── Maximum 12 words total
+├── Use dash instead of spaces
+├── Descriptive of advertorial content and template type
+├── Format: [product/topic]_[template_type]_[image_format]
+├── Examples: "health-breakthrough-credibility-square", "weight-loss-transformation-landscape"
+└── Keep concise but informative for easy identification
+
+### Google Ads Copy Set Structure (Per Creative)
+EACH_AD_CREATIVE_CONTAINS:
+├── **Headlines**: 15 variations (30 characters each)
+├── **Long Headlines**: 5 variations (90 characters each)
+├── **Descriptions**: 5 variations (90 characters each)
+├── **Sitelinks**: 4-6 variations (25 characters each)
+├── **Callouts**: 6-8 variations (25 characters each)
+├── **Promotions**: 1-2 variations (20 characters each)
+└── **Targeting**: Demographic + Interest + Behavior combinations
+
+### Ad Creative Formatting Template
+AD_CREATIVE_HTML_STRUCTURE:
+```html
+<div class="google-ads-copy-set">
+  <h3>Headlines (30 chars max):</h3>
+  <ol>
+    <li>"[Headline 1]"</li>
+    <li>"[Headline 2]"</li>
+    
+    <li>"[Headline 15]"</li>
+  </ol>
+  
+  <h3>Long Headlines (90 chars max):</h3>
+  <ol>
+    <li>"[Long headline 1]"</li>
+    
+    <li>"[Long headline 5]"</li>
+  </ol>
+  
+  <h3>Descriptions (90 chars max):</h3>
+  <ol>
+    <li>"[Description 1]"</li>
+    
+    <li>"[Description 5]"</li>
+  </ol>
+  
+  <h3>Sitelinks (25 chars max):</h3>
+  <ul>
+    <li>"[Sitelink 1]"</li>
+    
+    <li>"[Sitelink 4-6]"</li>
+  </ul>
+  
+  <h3>Callouts (25 chars max):</h3>
+  <ul>
+    <li>"[Callout 1]"</li>
+    
+    <li>"[Callout 6-8]"</li>
+  </ul>
+  
+  <h3>Promotions (20 chars max):</h3>
+  <ul>
+    <li>"[Promotion offer]"</li>
+  </ul>
+</div>
+```
+
+---
+
+## Usage Instructions
+
+1. **Input your advertorial content** with desired output quantity and image sizes
+2. **System analyzes content** and extracts key advertorial elements  
+3. **All JSON array output** with each object containing:
+   - **imageName**: Descriptive file name (max 12 words, dash)
+   - **prompt**: Complete image creation specifications
+4. The first object will contain more:
+   - **adCreativeA**: Full Google Ads copy set A (15 headlines + 5 long headlines + 5 descriptions + sitelinks + callouts + promotions)
+   - **adCreativeB**: Full Google Ads copy set B with alternative variations
+   - **targeting**: Primary and secondary targeting combinations
+4. **Technical integration ready**: Pure JSON format prevents parsing errors
+5. **Campaign implementation**: Each prompt becomes a complete ad creative with comprehensive copy variations
+
+**Important**: Any text outside the JSON structure will cause technical integration issues. Output will be pure JSON array only.
+
+This framework ensures seamless technical integration while providing comprehensive Google Ads campaigns with diverse image creatives and complete copy variations for optimal performance.
