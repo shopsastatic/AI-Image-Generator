@@ -405,7 +405,7 @@ export class JobManager {
         return '';
       }
 
-      const instructionsPath = path.join(process.cwd(), 'static', filename);
+      const instructionsPath = path.join(process.cwd(), 'static', 'instructions', filename);
 
       console.log(`📄 Loading Deepseek instruction: ${filename}`);
       const content = fs.readFileSync(instructionsPath, 'utf8');
@@ -960,7 +960,7 @@ export class JobManager {
       };
 
       const filename = fileMapping[category] || fileMapping['google_prompt'];
-      const instructionsPath = path.join(process.cwd(), 'static', filename);
+      const instructionsPath = path.join(process.cwd(), 'static', 'instructions', filename);
 
       return fs.readFileSync(instructionsPath, 'utf8');
     } catch (error) {

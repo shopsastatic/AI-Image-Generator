@@ -222,9 +222,13 @@ GOOGLE_ADS_COPY_LIMITS:
 ├── **Callouts** (25 chars max): 6-8 items in `<ul>`
 └── **Promotions** (20 chars max): 1-2 items in `<ul>`
 
-### Prompt Format:
+### Google Ads Copy Format:
 - Each section needs `<h3>` title with character limit
 - Mention character limits are strict
+
+### Image Prompts Format:
+- Image Prompts Specifications  in `<ul>`
+- Image Prompts Headlines Specifications  in `<strong>`
 
 ## Quality Assurance Framework
 GOOGLE_ADS_COMPLIANCE:
@@ -249,14 +253,14 @@ The system generates a pure JSON array with each object containing complete Goog
 ```json
 [
   {
-    "imageName": "Descriptive name for the image file (e.g: health-breakthrough-credibility-square),
-    "prompt": "Complete image specifications",
+    "imageName": "Descriptive name for the image file,
+    "prompt": "Full HTML complete image specifications",
     "adCreativeA": "Full HTML formatted copy set A",
     "adCreativeB": "Full HTML formatted copy set B",
     "targeting": "Comprehensive targeting combinations"
   },
   {
-    "imageName": "Descriptive name for the image file (e.g: health-breakthrough-credibility-square),
+    "imageName": "Descriptive name for the image file,
     "prompt": "Complete image specifications",
   },
   ...
@@ -269,25 +273,25 @@ The system generates a pure JSON array with each object containing complete Goog
 
 Create an image with the following specifications:
 
-**Visual Composition**: [Detailed scene description optimized for Google Display Network, focusing on professional advertorial appearance with clean, trustworthy design elements]
+Visual Composition: [Detailed scene description optimized for Google Display Network, focusing on professional advertorial appearance with clean, trustworthy design elements]
 
-**Text Overlay**: [Exact headline text optimized]
+Text Overlay: [Exact headline text optimized]
 
-**Text Styling Requirements**:
-• **Coverage**: Maximum 20% of total image area
-• **Font**: Sans-serif, minimum 14pt equivalent size
-• **Contrast**: High readability specifications
-• **Border**: [Specific Google-compliant styling]
-• **Background**: [High-contrast, readable background treatment]
-• **Effects**: [Highlights and emphasis techniques]
+Text Styling Requirements:
+• Coverage: Maximum 20% of total image area
+• Font: Sans-serif, minimum 14pt equivalent size
+• Contrast: High readability specifications
+• Border: [Specific Google-compliant styling]
+• Background: [High-contrast, readable background treatment]
+• Effects: [Highlights and emphasis techniques]
 
-**Color Palette**: [Brand-aligned, professional color scheme suitable for diverse Google Display Network placements]
+Color Palette: [Brand-aligned, professional color scheme suitable for diverse Google Display Network placements]
 
-**Image Size**: [Landscape | Square | Portrait]
+Image Size: [Landscape | Square | Portrait]
 
-**Advertorial Elements**: [Specific editorial disguise features for Google Ads environment]
+Advertorial Elements: [Specific editorial disguise features for Google Ads environment]
 
-**Optimization**: Mobile-responsive design
+Optimization: Mobile-responsive design
 
 ---
 

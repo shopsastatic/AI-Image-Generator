@@ -54,7 +54,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(true);
   const [isHDMode, setIsHDMode] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('deepsearch');
+  const [selectedModel, setSelectedModel] = useState('claude-sonnet');
   const [parentCategory, setParentCategory] = useState('design');
   const [childOption, setChildOption] = useState('modern');
 
@@ -76,7 +76,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   ];
 
   const modelOptions = [
-    { value: 'deepsearch', label: 'DeepSearch' },
+    // { value: 'deepsearch', label: 'DeepSearch' },
     { value: 'claude-sonnet', label: 'Claude Sonnet' }
   ];
 

@@ -1960,6 +1960,10 @@ button {
 }
 
 @media (max-width: 768px) {
+  .image-viewer-left {
+    position: unset;
+  }
+
   .element-default-screen .container-wrapper.shifted {
     width: calc(100% - var(--sidebar-width) - var(--aside-width));
     margin-right: var(--sidebar-width);
@@ -2774,7 +2778,7 @@ button {
 .prompt-text {
   font-size: 14px;
   line-height: 1.6;
-  color: #374151;
+  color: #2d3748;
   margin: 0;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -2783,7 +2787,8 @@ button {
 .html-content {
   font-size: 14px;
   line-height: 1.6;
-  color: #374151;
+  color: #2d3748;
+  white-space: pre;
 }
 
 .html-content strong, .html-content b {

@@ -369,7 +369,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
     pollJob(); // Gọi ngay lần đầu
 
     // Tạo interval mới cho job này và lưu vào refs
-    const interval = setInterval(pollJob, 2000);
+    const interval = setInterval(pollJob, 4000);
     pollingIntervalRefs.current[sessionId] = interval;
 
     // Cập nhật state để React biết về việc thay đổi polling
