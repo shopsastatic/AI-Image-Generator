@@ -19,15 +19,15 @@ EXAMPLE_INPUTS:
 
 ### Single Image Ad Requirements
 GOOGLE_ADS_IMAGE_SPECS:
-├── **Landscape (Recommended)
+├── **Landscape (Recommended)**
 │   ├── Primary placement across Google Display Network
 │   ├── Desktop and mobile optimization
 │   └── Maximum reach potential
-├── **Square
+├── **Square**
 │   ├── Social media placements
 │   ├── Mobile-first optimization
 │   └── Instagram and social network sites
-└── **Portrait
+└── **Portrait**
     ├── Mobile app placements
     ├── Vertical screen optimization
     └── Limited but high-engagement placements
@@ -79,6 +79,9 @@ GOOGLE_OPTIMIZED_TEXT_STYLING:
 ├── High contrast ratios (4.5:1 minimum)
 └── Text coverage: 15-18% of total image area
 
+**Reference Image Integration:**
+- Subtle company logo or product silhouette in background, maintaining professional credibility without overwhelming the editorial appearance
+
 ### Template B: Problem Amplification (Prompt 3)
 OBJECTIVE: Highlight pain points and create urgency for solution
 VISUAL_ELEMENTS:
@@ -115,6 +118,9 @@ TEXT_STYLING_APPROACH:
 ├── Benefit highlighting techniques
 └── Text coverage: 14-17% of total image area
 
+**Reference Image Integration:**
+- Product shown in natural lifestyle context, clear but integrated naturally into the solution narrative, highlighting key benefits or features
+
 ### Template D: Action & Conversion (Prompt 5)
 OBJECTIVE: Drive clicks and conversions with clear CTAs
 VISUAL_ELEMENTS:
@@ -132,6 +138,51 @@ TEXT_STYLING_FOCUS:
 ├── Bold, action-driving typography
 ├── CTA button-style text treatments
 └── Text coverage: 17-20% of total image area
+
+**Reference Image Integration:**
+- Product prominently displayed with clear benefit demonstration, packaging or key features visible, optimized for conversion focus
+
+### Template E: Social Proof & Success Stories (Prompts 6-7)
+OBJECTIVE: Build trust through real testimonials and transformation stories
+VISUAL_ELEMENTS:
+├── Multiple customer testimonial layouts
+├── Before/after transformation graphics (illustrated)
+├── Success statistics and achievement charts
+├── Community and social validation elements
+├── Real-world application scenarios
+├── Trust badges and verification symbols
+└── Lifestyle improvement demonstrations
+
+GOOGLE_OPTIMIZED_TEXT_STYLING:
+├── Trust-building borders (2px, blue/green trust colors)
+├── Warm, authentic backgrounds (75-85% opacity)
+├── Friendly, relatable fonts (humanized typography)
+├── Social proof highlighting techniques
+└── Text coverage: 16-18% of total image area
+
+**Reference Image Integration:**
+- Product shown in real-life success scenarios, customer testimonial context with product naturally included, social proof elements with subtle branding
+
+### Template F: Educational Tutorial & How-To Guide (Prompts 8-9)
+OBJECTIVE: Disguise advertising as valuable educational content
+VISUAL_ELEMENTS:
+├── Step-by-step tutorial layouts
+├── Educational infographic elements  
+├── How-to guide visual sequences
+├── Expert teaching/demonstration scenes
+├── Knowledge-sharing and tip presentations
+├── Tutorial progress indicators
+└── Educational resource aesthetics
+
+GOOGLE_OPTIMIZED_TEXT_STYLING:
+├── Educational borders (1-2px, academic colors)
+├── Clean, instructional backgrounds (80-90% opacity)
+├── Clear, teaching-focused typography
+├── Step-by-step highlighting systems
+└── Text coverage: 14-16% of total image area
+
+**Reference Image Integration:**
+- Product as part of tutorial demonstration, educational context with product as teaching tool, how-to scenarios featuring product usage naturally
 
 ## Google Ads Copywriting Framework
 
@@ -233,6 +284,7 @@ GOOGLE_ADS_COPY_LIMITS:
 └── Use nested <ul> for multi-item specifications
 
 Targeting HTML Formatting Guidelines:
+├── Preserve original opening statement before HTML structure
 ├── Wrap entire targeting in <ul> tags
 ├── Each targeting category in <li><strong>Category:</strong> content</li>
 ├── Primary Targeting: must be in <strong> tags with specific combination
@@ -261,15 +313,15 @@ The system generates a pure JSON array with each object containing complete Goog
 ```json
 [
   {
-    "imageName": "Descriptive name for the image file,
+    "imageName": "Descriptive name for the image file",
     "prompt": "Full HTML complete prompt image specifications",
     "adCreativeA": "Full HTML formatted copy set A",
     "adCreativeB": "Full HTML formatted copy set B",
     "targeting": "Comprehensive targeting combinations"
   },
   {
-    "imageName": "Descriptive name for the image file,
-    "prompt": "Complete image specifications",
+    "imageName": "Descriptive name for the image file",
+    "prompt": "Complete image specifications"
   },
   ...
 ]
@@ -301,6 +353,8 @@ Advertorial Elements: [Specific editorial disguise features for Google Ads envir
 
 Optimization: Mobile-responsive design
 
+Reference Image: [Brief description of what reference image should show - product angle, branding elements, specific features to maintain consistency]
+
 ---
 
 #### Prompt 2: [Template_Type]
@@ -315,6 +369,8 @@ Optimization: Mobile-responsive design
 #### Google Ads Copy Set A:
 
 **Headlines**
+[Content title-related headline variation 1]
+[Content-specific headline based on input title/topic 1]
 [Curiosity-driven headline variation 1]
 [Benefit-focused headline variation 1]
 [Authority-based headline variation 1]
@@ -373,6 +429,8 @@ Optimization: Mobile-responsive design
 #### Google Ads Copy Set B:
 
 **Headlines**
+[Content title-related headline variation 2]
+[Content-specific headline based on input title/topic 2]
 [Alternative curiosity angle 1]
 [Different benefit focus 1]
 [Credibility variation 1]
@@ -417,7 +475,7 @@ Optimization: Mobile-responsive design
 • 30-Day Guarantee
 • Real Results
 • Safe & Natural
-•  Quick Results
+• Quick Results
 • Expert Approved
 • 100% Money Back
 
@@ -435,6 +493,18 @@ IMAGE_NAME_SPECIFICATIONS:
 ├── Format: [product/topic]_[template_type]_[image_format]
 ├── Examples: "health-breakthrough-credibility-square"
 └── Keep concise but informative for easy identification
+
+## Template Priority Ranking for Advertorial Content
+
+### 🎯 Most Effective Templates (Use First):
+1. **Template A (Authority & Credibility)** - Essential foundation
+2. **Template C (Solution Revelation)** - Core advertorial approach
+3. **Template E (Social Proof)** - Trust building through stories
+4. **Template F (Educational Tutorial)** - Natural content disguise
+
+### 🎯 Supporting Templates (Use Second):
+5. **Template D (Action & Conversion)** - Final conversion push
+6. **Template B (Problem Amplification)** - Use sparingly, can be too negative
 
 ## Usage Instructions
 
