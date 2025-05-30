@@ -402,6 +402,408 @@ app.get('/api/system/queue-stream', requireAuth, (req, res) => {
   });
 });
 
+app.post('/api/system/key-rotation', requireAuth, (req, res) => {
+  try {
+    if (jobManager.apiManager && jobManager.apiManager.apiKeys) {
+      const currentIndex = jobManager.apiManager.currentIndex;
+      const totalKeys = jobManager.apiManager.apiKeys.length;
+      
+      if (totalKeys > 1) {
+        // Force rotation to next key
+        jobManager.apiManager.currentIndex = (currentIndex + 1) % totalKeys;
+        
+        console.log(`🔄 Forced key rotation: ${currentIndex} → ${jobManager.apiManager.currentIndex}`);
+        
+        res.json({
+          success: true,
+          message: 'Key rotation forced',
+          rotation: {
+            from: currentIndex,
+            to: jobManager.apiManager.currentIndex,
+            totalKeys: totalKeys
+          }
+        });
+      } else {
+        res.json({
+          success: false,
+          message: 'Only one key available, rotation not applicable'
+        });
+      }
+    } else {
+      res.status(400).json({
+        error: 'No API manager or keys available'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to force key rotation',
+      message: error.message
+    });
+  }
+});
+
+// ✅ ENHANCED: Add HD-specific key management endpoint
+app.get('/api/system/key-health', requireAuth, (req, res) => {
+  try {
+    if (!jobManager.apiManager) {
+      return res.status(400).json({
+        error: 'No API manager initialized'
+      });
+    }
+
+    const keyHealth = jobManager.apiManager.apiKeys.map(key => {
+      const timeSinceLastUsed = key.lastUsed ? Date.now() - key.lastUsed : null;
+      const isHealthy = key.consecutiveErrors < 3 && key.successCount > key.errorCount;
+      
+      return {
+        id: key.id,
+        status: key.status,
+        health: {
+          isHealthy,
+          requestCount: key.requestCount,
+          successCount: key.successCount,
+          errorCount: key.errorCount,
+          consecutiveErrors: key.consecutiveErrors,
+          successRate: key.requestCount > 0 ? Math.round((key.successCount / key.requestCount) * 100) : 0,
+          lastUsed: key.lastUsed,
+          timeSinceLastUsed,
+          rateLimitResetTime: key.rateLimitResetTime
+        },
+        recommendations: []
+      };
+    });
+
+    // Add recommendations
+    keyHealth.forEach(key => {
+      if (key.health.consecutiveErrors >= 3) {
+        key.recommendations.push('Consider rotating to healthier key');
+      }
+      if (key.health.successRate < 50) {
+        key.recommendations.push('Key performance is poor, check credentials');
+      }
+      if (key.status === 'rate_limited') {
+        const resetTime = new Date(key.health.rateLimitResetTime);
+        key.recommendations.push(`Rate limit resets at ${resetTime.toLocaleTimeString()}`);
+      }
+      if (key.status === 'invalid') {
+        key.recommendations.push('Key appears invalid, check API credentials');
+      }
+    });
+
+    res.json({
+      success: true,
+      mode: jobManager.apiManager.config.mode,
+      totalKeys: keyHealth.length,
+      healthyKeys: keyHealth.filter(k => k.health.isHealthy).length,
+      keyHealth,
+      recommendations: {
+        overall: keyHealth.every(k => k.health.isHealthy) 
+          ? 'All keys are healthy' 
+          : 'Some keys need attention',
+        actions: keyHealth.filter(k => !k.health.isHealthy).length > 0
+          ? ['Check unhealthy keys', 'Consider key rotation', 'Monitor error rates']
+          : []
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get key health',
+      message: error.message
+    });
+  }
+});
+
+
+app.post('/api/system/key-reset/:keyId', requireAuth, (req, res) => {
+  try {
+    const { keyId } = req.params;
+    
+    if (!jobManager.apiManager || !jobManager.apiManager.apiKeys) {
+      return res.status(400).json({
+        error: 'No API manager or keys available'
+      });
+    }
+
+    const key = jobManager.apiManager.apiKeys.find(k => k.id === parseInt(keyId));
+    
+    if (!key) {
+      return res.status(404).json({
+        error: `Key ${keyId} not found`
+      });
+    }
+
+    // Reset key status
+    const oldStatus = {
+      status: key.status,
+      consecutiveErrors: key.consecutiveErrors,
+      errorCount: key.errorCount,
+      rateLimitResetTime: key.rateLimitResetTime
+    };
+
+    key.status = 'available';
+    key.consecutiveErrors = 0;
+    key.errorCount = 0;
+    key.rateLimitResetTime = null;
+
+    console.log(`🔄 Reset key ${keyId} status:`, oldStatus, '→', {
+      status: key.status,
+      consecutiveErrors: key.consecutiveErrors,
+      errorCount: key.errorCount
+    });
+
+    res.json({
+      success: true,
+      message: `Key ${keyId} reset successfully`,
+      keyId: parseInt(keyId),
+      resetFrom: oldStatus,
+      resetTo: {
+        status: key.status,
+        consecutiveErrors: key.consecutiveErrors,
+        errorCount: key.errorCount,
+        rateLimitResetTime: key.rateLimitResetTime
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to reset key',
+      message: error.message
+    });
+  }
+});
+
+
+app.post('/api/system/queue-config', requireAuth, (req, res) => {
+  try {
+    const { maxConcurrency, delayBetweenRequests } = req.body;
+    
+    // Validate input
+    if (!maxConcurrency || !delayBetweenRequests) {
+      return res.status(400).json({
+        error: 'Missing required fields: maxConcurrency, delayBetweenRequests'
+      });
+    }
+    
+    if (maxConcurrency < 1 || maxConcurrency > 5) {
+      return res.status(400).json({
+        error: 'maxConcurrency must be between 1 and 5'
+      });
+    }
+    
+    if (delayBetweenRequests < 100 || delayBetweenRequests > 10000) {
+      return res.status(400).json({
+        error: 'delayBetweenRequests must be between 100 and 10000 ms'
+      });
+    }
+
+    // Update queue configuration
+    const stats = jobManager.getStats();
+    
+    // Get current API manager and update its queue config
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      jobManager.apiManager.requestQueue.maxConcurrency = maxConcurrency;
+      jobManager.apiManager.requestQueue.delayBetweenRequests = delayBetweenRequests;
+      
+      console.log(`🔧 Queue config updated:`, {
+        maxConcurrency,
+        delayBetweenRequests,
+        apiMode: stats.api.mode
+      });
+      
+      res.json({
+        success: true,
+        message: 'Queue configuration updated',
+        config: {
+          maxConcurrency,
+          delayBetweenRequests,
+          apiMode: stats.api.mode
+        }
+      });
+    } else {
+      res.status(500).json({
+        error: 'API Manager not initialized or no active queue'
+      });
+    }
+
+  } catch (error) {
+    console.error('Queue config update failed:', error);
+    res.status(500).json({
+      error: 'Failed to update queue configuration',
+      message: error.message
+    });
+  }
+});
+
+
+app.get('/api/system/stats', requireAuth, (req, res) => {
+  try {
+    const stats = jobManager.getStats();
+    
+    // Add detailed queue information
+    let enhancedQueueStats = null;
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      const queueStats = jobManager.apiManager.requestQueue.getStats();
+      enhancedQueueStats = {
+        ...queueStats,
+        // Add performance metrics
+        utilizationRate: queueStats.maxConcurrency > 0 
+          ? Math.round((queueStats.activeRequests / queueStats.maxConcurrency) * 100) 
+          : 0,
+        isIdle: queueStats.activeRequests === 0 && queueStats.queueLength === 0,
+        isConcurrent: queueStats.activeRequests > 1,
+        isBacklogged: queueStats.queueLength > 5
+      };
+    }
+    
+    res.json({
+      success: true,
+      ...stats,
+      api: {
+        ...stats.api,
+        queue: enhancedQueueStats
+      },
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      // Add system performance indicators
+      performance: {
+        memoryUsage: process.memoryUsage(),
+        cpuUsage: process.cpuUsage ? process.cpuUsage() : null
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get system stats',
+      message: error.message
+    });
+  }
+});
+
+// ✅ ADD: Force queue processing endpoint (for debugging)
+app.post('/api/system/queue-process', requireAuth, (req, res) => {
+  try {
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      // Force process queue
+      jobManager.apiManager.requestQueue.processQueue();
+      
+      const queueStats = jobManager.apiManager.requestQueue.getStats();
+      
+      res.json({
+        success: true,
+        message: 'Queue processing triggered',
+        queueStats
+      });
+    } else {
+      res.status(400).json({
+        error: 'No active queue to process'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to process queue',
+      message: error.message
+    });
+  }
+});
+
+// ✅ ADD: Queue debug info endpoint
+app.get('/api/system/queue-debug', requireAuth, (req, res) => {
+  try {
+    const debugInfo = {
+      timestamp: new Date().toISOString(),
+      hasJobManager: !!jobManager,
+      hasApiManager: !!jobManager.apiManager,
+      hasRequestQueue: !!(jobManager.apiManager && jobManager.apiManager.requestQueue),
+      activeJobs: Array.from(jobManager.jobs.values()).map(job => ({
+        id: job.id,
+        status: job.status,
+        progress: job.progress,
+        model: job.selectedModel,
+        hdMode: job.isHDMode,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt
+      }))
+    };
+    
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      const queue = jobManager.apiManager.requestQueue;
+      debugInfo.queueDetails = {
+        ...queue.getStats(),
+        queueItems: queue.queue.map(task => ({
+          id: task.id,
+          retryCount: task.retryCount,
+          maxRetries: task.maxRetries,
+          addedAt: task.addedAt,
+          waitTime: Date.now() - task.addedAt
+        }))
+      };
+    }
+    
+    res.json({
+      success: true,
+      debug: debugInfo
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get debug info',
+      message: error.message
+    });
+  }
+});
+
+// ✅ ADD: Real-time WebSocket-like endpoint using Server-Sent Events
+app.get('/api/system/queue-stream', requireAuth, (req, res) => {
+  // Set headers for Server-Sent Events
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+
+  // Send initial data
+  const sendStats = () => {
+    try {
+      const stats = jobManager.getStats();
+      let queueStats = null;
+      
+      if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+        queueStats = jobManager.apiManager.requestQueue.getStats();
+      }
+      
+      const data = {
+        timestamp: Date.now(),
+        queue: queueStats,
+        jobs: stats.jobs,
+        api: stats.api
+      };
+      
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (error) {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    }
+  };
+
+  // Send stats immediately
+  sendStats();
+
+  // Send stats every second
+  const interval = setInterval(sendStats, 1000);
+
+  // Clean up when client disconnects
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+
+  req.on('end', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
+
 app.get('/api/image-generation/status/:jobId', requireAuth, (req, res) => {
   try {
     const { jobId } = req.params;

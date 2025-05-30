@@ -35,24 +35,47 @@ class RequestQueueManager {
   }
 
   async processQueue() {
-    // Process MULTIPLE tasks up to maxConcurrency
+    // ✅ FIX: Process multiple tasks concurrently up to maxConcurrency
     while (this.activeRequests < this.maxConcurrency && this.queue.length > 0) {
       const task = this.queue.shift();
+      if (!task) break;
+
+      // Check delay only for the first request or if enough time has passed
+      const now = Date.now();
+      const timeSinceLastRequest = now - this.lastRequestTime;
       
-      // ✅ KHÔNG AWAIT - spawn concurrent tasks
-      this.processTask(task); // Runs in parallel
+      if (this.activeRequests === 0 && timeSinceLastRequest < this.delayBetweenRequests) {
+        // Put task back and wait
+        this.queue.unshift(task);
+        const waitTime = this.delayBetweenRequests - timeSinceLastRequest;
+        setTimeout(() => this.processQueue(), waitTime);
+        return;
+      }
+
+      // ✅ FIX: Process task concurrently (don't await here)
+      this.processTask(task);
     }
   }
 
+  // ✅ NEW: Separate method to process individual tasks
   async processTask(task) {
     this.activeRequests++;
+    this.lastRequestTime = Date.now();
     
+    console.log(`🔄 Processing task ${task.id}. Active: ${this.activeRequests}, Queue: ${this.queue.length}`);
+
     try {
       const result = await this.executeWithRetry(task);
       task.resolve(result);
+      console.log(`✅ Task ${task.id} completed successfully`);
+    } catch (error) {
+      console.error(`❌ Task ${task.id} failed after all retries:`, error.message);
+      task.reject(error);
     } finally {
       this.activeRequests--;
-      setImmediate(() => this.processQueue()); // Continue processing immediately
+      
+      // ✅ FIX: Continue processing queue immediately (not with delay)
+      setImmediate(() => this.processQueue());
     }
   }
 
@@ -132,17 +155,27 @@ class APIConfigManager {
 
   getImageConfig(isHDMode) {
     if (isHDMode) {
-      const subKey = process.env.OPENAI_API_SUB_KEY;
-      if (!subKey) {
-        throw new Error('HD Mode requires OPENAI_API_SUB_KEY');
+      // ✅ FIX: Support multiple HD keys with rotation
+      const hdKeys = [
+        process.env.OPENAI_API_SUB_KEY,
+        process.env.OPENAI_API_SUB_KEY_2,
+        process.env.OPENAI_API_SUB_KEY_3,
+        process.env.OPENAI_API_SUB_KEY_4,
+        process.env.OPENAI_API_SUB_KEY_5,
+      ].filter(Boolean);
+
+      if (hdKeys.length === 0) {
+        throw new Error('HD Mode requires at least one OPENAI_API_SUB_KEY');
       }
+
+      console.log(`🔑 HD Mode: Found ${hdKeys.length} keys for rotation`);
 
       return {
         mode: 'unofficial',
         baseURL: 'https://api.piapi.ai/v1/',
         endpoint: 'chat/completions',
         model: 'gpt-4o-image',
-        keys: [subKey]
+        keys: hdKeys
       };
     } else {
       const officialKeys = [
@@ -194,63 +227,66 @@ class APIKeyRotationManager {
   }
 
   getQueueConfigForMode(mode) {
+    const config = {
+      MAX_CONCURRENT_REQUESTS: 30,
+      OFFICIAL: {
+        MAX_CONCURRENT: 30,
+        DELAY_BETWEEN: 1500,
+        MAX_RETRIES: 5,
+      },
+      UNOFFICIAL: {
+        MAX_CONCURRENT: 30, 
+        DELAY_BETWEEN: 2000,
+        MAX_RETRIES: 5,
+      }
+    };
+    
     if (mode === 'unofficial') {
       return {
-        maxConcurrency: 1,
-        delayBetweenRequests: 2000
+        maxConcurrency: config.UNOFFICIAL.MAX_CONCURRENT,
+        delayBetweenRequests: config.UNOFFICIAL.DELAY_BETWEEN
       };
     } else {
       return {
-        maxConcurrency: 2,
-        delayBetweenRequests: 1500
+        maxConcurrency: config.OFFICIAL.MAX_CONCURRENT,
+        delayBetweenRequests: config.OFFICIAL.DELAY_BETWEEN  
       };
     }
   }
 
   initializeKeys() {
-    if (this.config.mode === 'unofficial') {
-      this.apiKeys = [{
-        id: 0,
-        key: this.config.keys[0],
-        status: 'available',
-        lastUsed: null,
-        requestCount: 0,
-        errorCount: 0,
-        successCount: 0,
-        rateLimitResetTime: null,
-        consecutiveErrors: 0,
-        client: new OpenAI({
-          apiKey: this.config.keys[0],
-          baseURL: this.config.baseURL
-        })
-      }];
-    } else {
-      this.apiKeys = this.config.keys.map((key, index) => ({
-        id: index,
-        key: key,
-        status: 'available',
-        lastUsed: null,
-        requestCount: 0,
-        errorCount: 0,
-        successCount: 0,
-        rateLimitResetTime: null,
-        consecutiveErrors: 0,
-        client: new OpenAI({
-          apiKey: key,
-          baseURL: this.config.baseURL
-        })
-      }));
-    }
+    // ✅ FIX: Support multiple keys cho cả HD và Official mode
+    this.apiKeys = this.config.keys.map((key, index) => ({
+      id: index,
+      key: key,
+      status: 'available',
+      lastUsed: null,
+      requestCount: 0,
+      errorCount: 0,
+      successCount: 0,
+      rateLimitResetTime: null,
+      consecutiveErrors: 0,
+      client: new OpenAI({
+        apiKey: key,
+        baseURL: this.config.baseURL
+      })
+    }));
+
+    console.log(`🔧 Initialized ${this.apiKeys.length} API keys for ${this.config.mode} mode`);
   }
 
   async getAvailableKey() {
-    if (this.config.mode === 'unofficial') {
+    // ✅ FIX: Unified key rotation logic for both HD and Official modes
+    
+    // Special handling for single-key scenarios
+    if (this.apiKeys.length === 1) {
       const key = this.apiKeys[0];
       
+      // Check if key is blocked due to consecutive errors
       if (key.consecutiveErrors >= 5) {
         const timeSinceLastError = Date.now() - (key.lastUsed || 0);
-        if (timeSinceLastError < 6000000) {
-          throw new Error('API key temporarily blocked due to consecutive errors');
+        if (timeSinceLastError < (this.config.mode === 'unofficial' ? 120000 : 60000)) {
+          throw new Error(`API key temporarily blocked due to consecutive errors. Mode: ${this.config.mode}`);
         }
         key.consecutiveErrors = 0;
       }
@@ -258,9 +294,12 @@ class APIKeyRotationManager {
       key.status = 'in_use';
       key.lastUsed = Date.now();
       key.requestCount++;
+      
+      console.log(`🔑 Using single ${this.config.mode} key: ${key.id} (requests: ${key.requestCount}, errors: ${key.consecutiveErrors})`);
       return key;
     }
 
+    // ✅ Multi-key rotation logic (works for both modes)
     let attempts = 0;
     const maxAttempts = this.apiKeys.length * 2;
 
@@ -272,7 +311,10 @@ class APIKeyRotationManager {
         keyInfo.lastUsed = Date.now();
         keyInfo.requestCount++;
 
-        this.currentIndex = (this.currentIndex + 1) % this.apiKeys.length;
+        const nextIndex = (this.currentIndex + 1) % this.apiKeys.length;
+        console.log(`🔄 ${this.config.mode} key rotation: ${this.currentIndex} → ${nextIndex} (${keyInfo.requestCount} reqs, ${keyInfo.consecutiveErrors} errs)`);
+        
+        this.currentIndex = nextIndex;
         return keyInfo;
       }
 
@@ -284,37 +326,52 @@ class APIKeyRotationManager {
       }
     }
 
+    // Fallback: use least recently used key
     const lruKey = this.getLeastRecentlyUsedKey();
     lruKey.status = 'in_use';
     lruKey.lastUsed = Date.now();
     lruKey.requestCount++;
+    
+    console.log(`🔄 ${this.config.mode} fallback to LRU key: ${lruKey.id}`);
     return lruKey;
   }
 
   isKeyAvailable(keyInfo) {
     const now = Date.now();
+    
+    // ✅ Different thresholds for HD vs Official mode
+    const errorThreshold = this.config.mode === 'unofficial' ? 3 : 5;
+    const errorBlockDuration = this.config.mode === 'unofficial' ? 300000 : 180000; // 5min vs 3min
+    const rateLimitDuration = this.config.mode === 'unofficial' ? 900000 : 600000; // 15min vs 10min
 
-    if (keyInfo.consecutiveErrors >= 3) {
+    // Check consecutive errors
+    if (keyInfo.consecutiveErrors >= errorThreshold) {
       const timeSinceLastError = now - (keyInfo.lastUsed || 0);
-      if (timeSinceLastError < 180000) {
+      if (timeSinceLastError < errorBlockDuration) {
         return false;
       }
       keyInfo.consecutiveErrors = 0;
+      keyInfo.status = 'available';
     }
 
-    if (keyInfo.errorCount >= 5) {
-      if (now - (keyInfo.lastUsed || 0) < 300000) {
+    // Check total error count
+    if (keyInfo.errorCount >= (errorThreshold + 2)) {
+      if (now - (keyInfo.lastUsed || 0) < errorBlockDuration) {
         return false;
       }
       keyInfo.errorCount = Math.max(0, keyInfo.errorCount - 1);
     }
 
+    // Check rate limit
     if (keyInfo.rateLimitResetTime && now < keyInfo.rateLimitResetTime) {
       return false;
     }
 
+    // Check if key is in use for too long
+    const inUseTimeout = this.config.mode === 'unofficial' ? 120000 : 90000; // 2min vs 1.5min
+    
     return keyInfo.status === 'available' ||
-      (keyInfo.status === 'in_use' && now - (keyInfo.lastUsed || 0) > 90000);
+      (keyInfo.status === 'in_use' && now - (keyInfo.lastUsed || 0) > inUseTimeout);
   }
 
   getLeastRecentlyUsedKey() {
@@ -335,19 +392,38 @@ class APIKeyRotationManager {
       keyInfo.successCount++;
       keyInfo.consecutiveErrors = 0;
       keyInfo.errorCount = Math.max(0, keyInfo.errorCount - 1);
+      
+      console.log(`✅ ${this.config.mode} key ${keyInfo.id} success (${keyInfo.successCount}/${keyInfo.requestCount})`);
     } else {
       keyInfo.errorCount++;
       keyInfo.consecutiveErrors++;
 
-      if (error && error.response?.status === 429) {
+      const status = error?.response?.status || error?.status;
+      
+      if (status === 429) {
         keyInfo.status = 'rate_limited';
-        keyInfo.rateLimitResetTime = Date.now() + 600000;
-      } else if (error && error.response?.status >= 500) {
+        // ✅ HD mode gets longer rate limit timeout
+        const rateLimitDuration = this.config.mode === 'unofficial' ? 900000 : 600000; // 15min vs 10min
+        keyInfo.rateLimitResetTime = Date.now() + rateLimitDuration;
+        
+        console.log(`🚫 ${this.config.mode} key ${keyInfo.id} rate limited for ${rateLimitDuration/60000}min`);
+      } else if (status >= 500) {
         keyInfo.status = 'error';
-      } else if (error && error.response?.status === 401) {
+        console.log(`💥 ${this.config.mode} key ${keyInfo.id} server error (consecutive: ${keyInfo.consecutiveErrors})`);
+      } else if (status === 401 || status === 403) {
         keyInfo.status = 'invalid';
-        keyInfo.rateLimitResetTime = Date.now() + 3600000;
+        // ✅ HD keys get longer invalid timeout due to potential account issues
+        const invalidDuration = this.config.mode === 'unofficial' ? 7200000 : 3600000; // 2hr vs 1hr
+        keyInfo.rateLimitResetTime = Date.now() + invalidDuration;
+        
+        console.log(`🔑 ${this.config.mode} key ${keyInfo.id} invalid/expired for ${invalidDuration/3600000}hr`);
+      } else {
+        console.log(`❌ ${this.config.mode} key ${keyInfo.id} error ${status}: ${error?.message || 'Unknown'}`);
       }
+      
+      // ✅ Log key health for monitoring
+      const successRate = keyInfo.requestCount > 0 ? Math.round((keyInfo.successCount / keyInfo.requestCount) * 100) : 0;
+      console.log(`📊 ${this.config.mode} key ${keyInfo.id} health: ${successRate}% success, ${keyInfo.consecutiveErrors} consecutive errors`);
     }
   }
 

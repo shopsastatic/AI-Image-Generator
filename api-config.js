@@ -2,7 +2,7 @@
 export const API_RATE_LIMITS = {
   // 🔄 Queue Management Settings
   QUEUE: {
-    MAX_CONCURRENT_REQUESTS: 4, 
+    MAX_CONCURRENT_REQUESTS: 30, 
     DELAY_BETWEEN_REQUESTS: 1500,
     MAX_QUEUE_SIZE: 50,
     REQUEST_TIMEOUT: 6000000,
@@ -22,7 +22,7 @@ export const API_RATE_LIMITS = {
 
   // 🔄 API Key Management
   KEYS: {
-    CONSECUTIVE_ERROR_THRESHOLD: 20,    // Số lỗi liên tiếp trước khi block key
+    CONSECUTIVE_ERROR_THRESHOLD: 30,    // Số lỗi liên tiếp trước khi block key
     ERROR_BLOCK_DURATION: 600000000,       // Thời gian block key khi có lỗi liên tiếp (ms)
     RATE_LIMIT_BLOCK_DURATION: 600000, // Thời gian block khi bị rate limit (ms)
     INVALID_KEY_BLOCK_DURATION: 3600000, // Thời gian block khi key invalid (ms)
@@ -32,12 +32,12 @@ export const API_RATE_LIMITS = {
   // 🔄 Different settings for HD vs Normal mode
   MODE_SPECIFIC: {
     OFFICIAL: {
-      MAX_CONCURRENT: 4,
+      MAX_CONCURRENT: 30,
       DELAY_BETWEEN: 1000,
       MAX_RETRIES: 3,
     },
     UNOFFICIAL: {
-      MAX_CONCURRENT: 4,
+      MAX_CONCURRENT: 30,
       DELAY_BETWEEN: 2000,
       MAX_RETRIES: 5,
     }
