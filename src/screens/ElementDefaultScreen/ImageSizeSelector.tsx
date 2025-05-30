@@ -364,7 +364,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                     <span>Auto</span>
                   </button>
 
-                  <button
+                  {/* <button
                     onClick={toggleHDMode}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                       isHDMode 
@@ -374,7 +374,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                   >
                     <Zap className="w-3 h-3" />
                     <span>HD</span>
-                  </button>
+                  </button> */}
                 </div>
               </div>
 
