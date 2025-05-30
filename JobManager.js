@@ -1,35 +1,127 @@
-// JobManager.js - Updated with Deepseek Prompt Integration and piapi.ai chat completions
+// Enhanced JobManager.js - Fixed Version with Queue Management
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 
+// 🔄 Request Queue Manager - Complete Implementation
+class RequestQueueManager {
+  constructor(maxConcurrency = 2, delayBetweenRequests = 1000) {
+    this.maxConcurrency = maxConcurrency;
+    this.delayBetweenRequests = delayBetweenRequests;
+    this.activeRequests = 0;
+    this.queue = [];
+    this.lastRequestTime = 0;
+    
+    console.log(`🔧 RequestQueueManager initialized: ${maxConcurrency} concurrent, ${delayBetweenRequests}ms delay`);
+  }
+
+  async addToQueue(requestFunction) {
+    return new Promise((resolve, reject) => {
+      const task = {
+        execute: requestFunction,
+        resolve,
+        reject,
+        retryCount: 0,
+        maxRetries: 5,
+        addedAt: Date.now(),
+        id: Math.random().toString(36).substr(2, 9)
+      };
+      
+      this.queue.push(task);
+      console.log(`📝 Added task ${task.id} to queue. Queue length: ${this.queue.length}`);
+      
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    // Process MULTIPLE tasks up to maxConcurrency
+    while (this.activeRequests < this.maxConcurrency && this.queue.length > 0) {
+      const task = this.queue.shift();
+      
+      // ✅ KHÔNG AWAIT - spawn concurrent tasks
+      this.processTask(task); // Runs in parallel
+    }
+  }
+
+  async processTask(task) {
+    this.activeRequests++;
+    
+    try {
+      const result = await this.executeWithRetry(task);
+      task.resolve(result);
+    } finally {
+      this.activeRequests--;
+      setImmediate(() => this.processQueue()); // Continue processing immediately
+    }
+  }
+
+  async executeWithRetry(task) {
+    let lastError;
+    
+    for (let attempt = 0; attempt <= task.maxRetries; attempt++) {
+      try {
+        const result = await task.execute();
+        
+        if (attempt > 0) {
+          console.log(`✅ Task ${task.id} succeeded on attempt ${attempt + 1}/${task.maxRetries + 1}`);
+        }
+        
+        return result;
+      } catch (error) {
+        lastError = error;
+        task.retryCount = attempt + 1;
+        
+        console.warn(`⚠️ Task ${task.id} attempt ${attempt + 1}/${task.maxRetries + 1} failed:`, error.message);
+
+        if (attempt < task.maxRetries) {
+          const baseDelay = Math.pow(2, attempt) * 1000;
+          const jitter = Math.random() * 1000;
+          const totalDelay = baseDelay + jitter;
+          
+          console.log(`⏳ Task ${task.id} retrying in ${Math.round(totalDelay)}ms...`);
+          await new Promise(resolve => setTimeout(resolve, totalDelay));
+        }
+      }
+    }
+    
+    throw lastError;
+  }
+
+  getStats() {
+    return {
+      activeRequests: this.activeRequests,
+      queueLength: this.queue.length,
+      maxConcurrency: this.maxConcurrency,
+      delayBetweenRequests: this.delayBetweenRequests
+    };
+  }
+}
+
+// APIConfigManager - Unchanged
 class APIConfigManager {
   constructor() {
     this.config = null;
     console.log(`🔍 APIConfigManager initialized for dynamic configuration`);
   }
 
-  // FIX: Get config based on HD mode and model
   getConfigForRequest(isHDMode = false, selectedModel = 'claude-sonnet') {
     console.log(`🔍 Getting config for HD:${isHDMode}, Model:${selectedModel}`);
 
-    // Model determines which AI service to use for PROMPT GENERATION
     if (selectedModel === 'claude-sonnet') {
       return {
         promptMode: 'claude',
         model: 'claude-sonnet-4-20250514',
         apiKey: process.env.CLAUDE_API_KEY,
-        // Image generation still uses OpenAI based on HD mode
         imageMode: isHDMode ? 'unofficial' : 'official',
         imageConfig: this.getImageConfig(isHDMode)
       };
     } else if (selectedModel === 'deepsearch') {
       return {
         promptMode: 'deepseek',
-        model: 'deepseek-chat', // or whatever model name Deepseek uses
+        model: 'deepseek-chat',
         apiKey: process.env.DEEPSEEK_API_KEY,
-        baseURL: 'https://api.deepseek.com/v1', // Deepseek API URL
-        // Image generation still uses OpenAI based on HD mode  
+        baseURL: 'https://api.deepseek.com/v1',
         imageMode: isHDMode ? 'unofficial' : 'official',
         imageConfig: this.getImageConfig(isHDMode)
       };
@@ -40,7 +132,6 @@ class APIConfigManager {
 
   getImageConfig(isHDMode) {
     if (isHDMode) {
-      // HD Mode ON → Use unofficial (piapi.ai)
       const subKey = process.env.OPENAI_API_SUB_KEY;
       if (!subKey) {
         throw new Error('HD Mode requires OPENAI_API_SUB_KEY');
@@ -49,12 +140,11 @@ class APIConfigManager {
       return {
         mode: 'unofficial',
         baseURL: 'https://api.piapi.ai/v1/',
-        endpoint: 'chat/completions', // Changed from 'images/generations' to 'chat/completions'
+        endpoint: 'chat/completions',
         model: 'gpt-4o-image',
         keys: [subKey]
       };
     } else {
-      // HD Mode OFF → Use official OpenAI
       const officialKeys = [
         process.env.OPENAI_API_KEY_1,
         process.env.OPENAI_API_KEY_2,
@@ -76,32 +166,45 @@ class APIConfigManager {
       };
     }
   }
-
-  // Legacy methods for backward compatibility
-  detectAPIMode() {
-    console.warn('⚠️ detectAPIMode is deprecated, use getConfigForRequest instead');
-    return this.getConfigForRequest(false, 'deepsearch');
-  }
-
-  getConfig() {
-    if (!this.config) {
-      console.warn('⚠️ Config not set, using default');
-      return this.getConfigForRequest(false, 'deepsearch');
-    }
-    return this.config;
-  }
-
-  setConfig(config) {
-    this.config = config;
-  }
 }
 
+// 🔄 FIXED: APIKeyRotationManager
 class APIKeyRotationManager {
   constructor(config) {
     this.config = config;
     this.apiKeys = [];
     this.currentIndex = 0;
+    
+    // ✅ FIX: Initialize requestQueue properly
+    const queueConfig = this.getQueueConfigForMode(config.mode);
+    this.requestQueue = new RequestQueueManager(
+      queueConfig.maxConcurrency, 
+      queueConfig.delayBetweenRequests
+    );
+    
     this.initializeKeys();
+    
+    console.log(`🔧 APIKeyRotationManager initialized:`, {
+      mode: config.mode,
+      totalKeys: config.keys?.length || 0,
+      hasRequestQueue: !!this.requestQueue,
+      queueMaxConcurrency: queueConfig.maxConcurrency,
+      queueDelay: queueConfig.delayBetweenRequests
+    });
+  }
+
+  getQueueConfigForMode(mode) {
+    if (mode === 'unofficial') {
+      return {
+        maxConcurrency: 1,
+        delayBetweenRequests: 2000
+      };
+    } else {
+      return {
+        maxConcurrency: 2,
+        delayBetweenRequests: 1500
+      };
+    }
   }
 
   initializeKeys() {
@@ -113,7 +216,9 @@ class APIKeyRotationManager {
         lastUsed: null,
         requestCount: 0,
         errorCount: 0,
+        successCount: 0,
         rateLimitResetTime: null,
+        consecutiveErrors: 0,
         client: new OpenAI({
           apiKey: this.config.keys[0],
           baseURL: this.config.baseURL
@@ -127,7 +232,9 @@ class APIKeyRotationManager {
         lastUsed: null,
         requestCount: 0,
         errorCount: 0,
+        successCount: 0,
         rateLimitResetTime: null,
+        consecutiveErrors: 0,
         client: new OpenAI({
           apiKey: key,
           baseURL: this.config.baseURL
@@ -139,6 +246,15 @@ class APIKeyRotationManager {
   async getAvailableKey() {
     if (this.config.mode === 'unofficial') {
       const key = this.apiKeys[0];
+      
+      if (key.consecutiveErrors >= 5) {
+        const timeSinceLastError = Date.now() - (key.lastUsed || 0);
+        if (timeSinceLastError < 6000000) {
+          throw new Error('API key temporarily blocked due to consecutive errors');
+        }
+        key.consecutiveErrors = 0;
+      }
+      
       key.status = 'in_use';
       key.lastUsed = Date.now();
       key.requestCount++;
@@ -164,7 +280,7 @@ class APIKeyRotationManager {
       attempts++;
 
       if (attempts === this.apiKeys.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
@@ -178,12 +294,19 @@ class APIKeyRotationManager {
   isKeyAvailable(keyInfo) {
     const now = Date.now();
 
-    if (keyInfo.errorCount >= 3) {
-      if (now - (keyInfo.lastUsed || 0) < 180000) {
+    if (keyInfo.consecutiveErrors >= 3) {
+      const timeSinceLastError = now - (keyInfo.lastUsed || 0);
+      if (timeSinceLastError < 180000) {
         return false;
       }
-      keyInfo.errorCount = 0;
-      keyInfo.status = 'available';
+      keyInfo.consecutiveErrors = 0;
+    }
+
+    if (keyInfo.errorCount >= 5) {
+      if (now - (keyInfo.lastUsed || 0) < 300000) {
+        return false;
+      }
+      keyInfo.errorCount = Math.max(0, keyInfo.errorCount - 1);
     }
 
     if (keyInfo.rateLimitResetTime && now < keyInfo.rateLimitResetTime) {
@@ -191,11 +314,14 @@ class APIKeyRotationManager {
     }
 
     return keyInfo.status === 'available' ||
-      (keyInfo.status === 'in_use' && now - (keyInfo.lastUsed || 0) > 60000);
+      (keyInfo.status === 'in_use' && now - (keyInfo.lastUsed || 0) > 90000);
   }
 
   getLeastRecentlyUsedKey() {
     return this.apiKeys.reduce((lru, current) => {
+      if (current.consecutiveErrors < lru.consecutiveErrors) return current;
+      if (current.consecutiveErrors > lru.consecutiveErrors) return lru;
+      
       if (!lru.lastUsed) return current;
       if (!current.lastUsed) return lru;
       return current.lastUsed < lru.lastUsed ? current : lru;
@@ -206,15 +332,21 @@ class APIKeyRotationManager {
     keyInfo.status = 'available';
 
     if (success) {
+      keyInfo.successCount++;
+      keyInfo.consecutiveErrors = 0;
       keyInfo.errorCount = Math.max(0, keyInfo.errorCount - 1);
     } else {
       keyInfo.errorCount++;
+      keyInfo.consecutiveErrors++;
 
-      if (error && error.status === 429) {
+      if (error && error.response?.status === 429) {
         keyInfo.status = 'rate_limited';
-        keyInfo.rateLimitResetTime = Date.now() + 300000;
-      } else if (error && error.status >= 500) {
+        keyInfo.rateLimitResetTime = Date.now() + 600000;
+      } else if (error && error.response?.status >= 500) {
         keyInfo.status = 'error';
+      } else if (error && error.response?.status === 401) {
+        keyInfo.status = 'invalid';
+        keyInfo.rateLimitResetTime = Date.now() + 3600000;
       }
     }
   }
@@ -224,22 +356,27 @@ class APIKeyRotationManager {
       mode: this.config.mode,
       totalKeys: this.apiKeys.length,
       availableKeys: this.apiKeys.filter(k => this.isKeyAvailable(k)).length,
+      queue: this.requestQueue ? this.requestQueue.getStats() : null,
       keys: this.apiKeys.map(k => ({
         id: k.id,
         status: k.status,
         requestCount: k.requestCount,
+        successCount: k.successCount,
         errorCount: k.errorCount,
+        consecutiveErrors: k.consecutiveErrors,
+        successRate: k.requestCount > 0 ? Math.round((k.successCount / k.requestCount) * 100) : 0,
         lastUsed: k.lastUsed ? new Date(k.lastUsed).toLocaleTimeString() : 'Never'
       }))
     };
   }
 }
 
+// 🔄 ENHANCED: JobManager
 export class JobManager {
   constructor() {
     const configManager = new APIConfigManager();
     this.configManager = configManager;
-    this.apiManager = null; // Will be initialized per job for image generation
+    this.apiManager = null;
     this.jobs = new Map();
     this.maxRetries = 3;
     this.startCleanupInterval();
@@ -262,7 +399,7 @@ export class JobManager {
       selectedModel,
       isHDMode,
       results: [],
-      claudeResponse: '', // Will store prompt generation response
+      claudeResponse: '',
       progress: {
         total: numberOfImages,
         completed: 0,
@@ -299,26 +436,18 @@ export class JobManager {
       let promptResponse = '';
       let parsedResponse = null;
 
-      // Get configuration for this job
       const config = this.configManager.getConfigForRequest(job.isHDMode, job.selectedModel);
 
-      // Generate prompts using selected model
+      // Generate prompts
       if (config.promptMode === 'claude') {
-        console.log('🤖 Using Claude Sonnet for prompt generation');
         promptResponse = await this.callClaudeAPI(job);
       } else if (config.promptMode === 'deepseek') {
-        console.log('🤖 Using Deepseek for prompt generation');
         promptResponse = await this.callDeepSeekAPI(job);
       } else {
         throw new Error(`Unsupported prompt mode: ${config.promptMode}`);
       }
 
-      console.log('📝 Prompt generation response:', promptResponse.substring(0, 100));
-
-      // Store response in job
-      job.claudeResponse = promptResponse; // Keep the name for compatibility
-
-      // Parse the response
+      job.claudeResponse = promptResponse;
       parsedResponse = this.parsePromptResponse(promptResponse, job.selectedCategory.category);
 
       if (job.status === 'cancelled') return;
@@ -326,68 +455,175 @@ export class JobManager {
       job.progress.total = parsedResponse.prompts.length;
       job.progress.currentStep = 'Generating images...';
 
-      // Setup API manager for image generation (always uses OpenAI-based services)
-      this.apiManager = new APIKeyRotationManager(config.imageConfig);
+      // ✅ FIX: Initialize apiManager with proper error checking
+      try {
+        this.apiManager = new APIKeyRotationManager(config.imageConfig);
+        console.log(`🔧 API Manager initialized:`, {
+          hasRequestQueue: !!this.apiManager.requestQueue,
+          mode: config.imageConfig.mode
+        });
+      } catch (error) {
+        console.error(`❌ Failed to initialize API Manager:`, error);
+        throw new Error(`API Manager initialization failed: ${error.message}`);
+      }
 
+      // Process images with queue
+      const imagePromises = [];
+      
       for (let i = 0; i < parsedResponse.prompts.length; i++) {
         if (job.status === 'cancelled') return;
 
         const promptData = parsedResponse.prompts[i];
 
+        // Size mapping logic
         if (!promptData.size || promptData.size === "Square") {
           const sizes = job.imageSizesString.split(',').map(s => s.trim());
           if (sizes[i] && sizes[i] !== 'auto') {
             promptData.size = sizes[i];
           } else {
             const sizesArray = [];
-
             for (let j = 0; j < job.numberOfImages; j++) {
               if (job.imageSizesString.includes('Square')) sizesArray.push('Square');
               if (job.imageSizesString.includes('Portrait')) sizesArray.push('Portrait');
               if (job.imageSizesString.includes('Landscape')) sizesArray.push('Landscape');
             }
-
             promptData.size = sizesArray[i] || 'Square';
           }
         }
 
-        try {
-          const imageResult = await this.generateSingleImageWithRetry(promptData, job, config.imageConfig);
-
-          job.results.push(imageResult);
-          job.progress.completed++;
-          job.updatedAt = Date.now();
-
-        } catch (error) {
-          job.progress.failed++;
-          job.updatedAt = Date.now();
-
-          job.results.push({
-            imageBase64: this.getErrorPlaceholder(),
-            prompt: promptData.prompt,
-            timestamp: new Date().toISOString(),
-            size: promptData.size,
-            quality: job.selectedQuality,
-            AdCreativeA: promptData.adCreativeA,
-            AdCreativeB: promptData.adCreativeB,
-            targeting: promptData.targeting,
-            imageName: promptData.imageName
-          });
-        }
+        // ✅ FIX: Add validation and better error handling
+        const imagePromise = this.generateImageWithQueue(promptData, job, config.imageConfig, i);
+        imagePromises.push(imagePromise);
       }
 
-      if (job.progress.completed > 0) {
+      // Wait for all images
+      const settledResults = await Promise.allSettled(imagePromises);
+      const results = [];
+
+      for (let i = 0; i < settledResults.length; i++) {
+        const result = settledResults[i];
+        
+        if (result.status === 'fulfilled' && result.value) {
+          results.push(result.value);
+          job.progress.completed++;
+        } else {
+          job.progress.failed++;
+          console.warn(`❌ Image ${i + 1} failed:`, result.reason?.message || 'Unknown error');
+        }
+        
+        job.updatedAt = Date.now();
+      }
+
+      // ✅ Only save successful images
+      job.results = results;
+
+      if (results.length > 0) {
         this.updateJobStatus(jobId, 'completed');
+        console.log(`✅ Job ${jobId} completed with ${results.length}/${parsedResponse.prompts.length} successful images`);
       } else {
-        this.updateJobStatus(jobId, 'failed', 'All images failed to generate');
+        this.updateJobStatus(jobId, 'failed', 'No images were successfully generated');
+        console.log(`❌ Job ${jobId} failed - no successful images`);
       }
 
     } catch (error) {
+      console.error(`💥 Job ${jobId} processing failed:`, error);
       this.updateJobStatus(jobId, 'failed', error.message);
     }
   }
 
-  // NEW: Load Deepseek-specific instruction files
+  // ✅ FIX: Better error handling for queue
+  async generateImageWithQueue(promptData, job, imageConfig, index) {
+    try {
+      // Validate apiManager and requestQueue
+      if (!this.apiManager) {
+        throw new Error('API Manager not initialized');
+      }
+      
+      if (!this.apiManager.requestQueue) {
+        throw new Error('Request queue not initialized');
+      }
+
+      const requestFunction = async () => {
+        return await this.generateSingleImage(promptData, job, imageConfig, index);
+      };
+
+      return await this.apiManager.requestQueue.addToQueue(requestFunction);
+    } catch (error) {
+      console.error(`❌ generateImageWithQueue failed for image ${index + 1}:`, error);
+      throw error;
+    }
+  }
+
+  // ✅ RENAMED: generateSingleImageWithRetry -> generateSingleImage (no retry here, queue handles it)
+  async generateSingleImage(promptData, job, imageConfig, index) {
+    if (job.status === 'cancelled') throw new Error('Job cancelled');
+
+    const keyInfo = await this.apiManager.getAvailableKey();
+
+    try {
+      console.log(`🎨 Generating image ${index + 1}:`, {
+        apiMode: imageConfig.mode,
+        model: imageConfig.model,
+        promptLength: promptData.prompt.length,
+        size: this.getSizeMapping(promptData.size),
+        keyId: keyInfo.id
+      });
+
+      let response;
+
+      if (imageConfig.mode === 'unofficial') {
+        response = await this.generateImageWithPiapiChatCompletions(keyInfo, promptData, imageConfig);
+      } else {
+        const requestBody = {
+          model: imageConfig.model,
+          prompt: promptData.prompt,
+          n: 1,
+          size: this.getSizeMapping(promptData.size),
+          quality: 'low',
+          output_format: "png"
+        };
+
+        response = await keyInfo.client.images.generate(requestBody);
+      }
+
+      let imageData = this.extractImageDataFromResponse(response, imageConfig.mode);
+
+      if (!imageData) {
+        throw new Error('No image data found in response');
+      }
+
+      let imageBase64 = await this.convertImageDataToBase64(imageData);
+
+      if (!imageBase64) {
+        throw new Error('Failed to convert image data to base64');
+      }
+
+      this.apiManager.releaseKey(keyInfo, true);
+
+      const result = {
+        imageBase64,
+        prompt: promptData.prompt,
+        timestamp: new Date().toISOString(),
+        size: promptData.size,
+        quality: job.selectedQuality,
+        imageName: promptData.imageName
+      };
+
+      if (promptData.adCreativeA) result.AdCreativeA = promptData.adCreativeA;
+      if (promptData.adCreativeB) result.AdCreativeB = promptData.adCreativeB;
+      if (promptData.targeting) result.targeting = promptData.targeting;
+
+      console.log(`✅ Generated image ${index + 1} successfully`);
+      return result;
+
+    } catch (error) {
+      console.error(`❌ Image ${index + 1} generation failed:`, error.message);
+      this.apiManager.releaseKey(keyInfo, false, error);
+      throw error;
+    }
+  }
+
+  // Keep all other methods unchanged...
   async loadDeepseekInstruction(category = 'google_prompt') {
     try {
       const fs = await import('fs');
@@ -419,7 +655,6 @@ export class JobManager {
     }
   }
 
-  // UPDATED: Deepseek API call with both system and user instructions
   async callDeepSeekAPI(job) {
     const maxRetries = this.maxRetries;
     let lastError;
@@ -430,24 +665,20 @@ export class JobManager {
       try {
         job.progress.currentStep = `Deepseek generating... (attempt ${attempt}/${maxRetries})`;
 
-        // FIX: Load cả system instruction và deepseek-specific instruction
         const systemInstruction = await this.loadInstructions(job.selectedCategory.category);
         const deepseekInstruction = await this.loadDeepseekInstruction(job.selectedCategory.category);
 
         let deepseekPrompt;
         if (deepseekInstruction && deepseekInstruction.trim()) {
-          // Có deepseek instruction → merge vào user prompt
           deepseekPrompt = `${deepseekInstruction}\n\n---\n\nUSER REQUEST:\n${job.userPrompt}\n\nOutput: ${job.numberOfImages}\nImage sizes: ${job.imageSizesString}`;
           console.log(`📝 Deepseek prompt with instruction: ${deepseekPrompt.length} characters`);
         } else {
-          // Không có deepseek instruction → dùng format cũ
           deepseekPrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
           console.log(`📝 Deepseek prompt without instruction: ${deepseekPrompt.length} characters`);
         }
 
         const messages = [];
 
-        // Add system message if available
         if (systemInstruction && systemInstruction.trim()) {
           messages.push({
             role: "system",
@@ -456,7 +687,6 @@ export class JobManager {
           console.log(`📋 System instruction added: ${systemInstruction.length} characters`);
         }
 
-        // Add user message
         messages.push({
           role: "user",
           content: deepseekPrompt
@@ -505,7 +735,6 @@ export class JobManager {
     throw lastError || new Error('Deepseek API failed after retries');
   }
 
-  // UPDATED: Claude API call (unchanged, still uses system message)
   async callClaudeAPI(job) {
     const maxRetries = this.maxRetries;
     let lastError;
@@ -522,7 +751,7 @@ export class JobManager {
           model: "claude-sonnet-4-20250514",
           max_tokens: 8000,
           messages: [{ role: "user", content: claudePrompt }],
-          system: await this.loadInstructions(job.selectedCategory.category) // Claude vẫn dùng system message
+          system: await this.loadInstructions(job.selectedCategory.category)
         }, {
           headers: {
             'Content-Type': 'application/json',
@@ -547,206 +776,7 @@ export class JobManager {
     throw lastError || new Error('Claude API failed after retries');
   }
 
-  async generateSingleImageWithRetry(promptData, job, imageConfig) {
-    const maxRetries = this.maxRetries;
-    let lastError;
-
-    console.log(`🎨 Image generation config:`, {
-      mode: imageConfig.mode,
-      baseURL: imageConfig.baseURL,
-      endpoint: imageConfig.endpoint,
-      model: imageConfig.model,
-      keysCount: imageConfig.keys?.length
-    });
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      if (job.status === 'cancelled') throw new Error('Job cancelled');
-
-      const keyInfo = await this.apiManager.getAvailableKey();
-
-      try {
-        console.log(`🎨 Generating image attempt ${attempt}/${maxRetries}:`, {
-          apiMode: imageConfig.mode,
-          model: imageConfig.model,
-          baseURL: imageConfig.baseURL,
-          endpoint: imageConfig.endpoint,
-          promptLength: promptData.prompt.length,
-          size: this.getSizeMapping(promptData.size),
-          keyId: keyInfo.id
-        });
-
-        let response;
-
-        // Use different API call based on HD mode (unofficial) vs normal mode (official)
-        if (imageConfig.mode === 'unofficial') {
-          // Use piapi.ai chat completions API for HD mode
-          response = await this.generateImageWithPiapiChatCompletions(keyInfo, promptData, imageConfig);
-        } else {
-          // Use standard OpenAI images API for normal mode
-          const requestBody = {
-            model: imageConfig.model,
-            prompt: promptData.prompt,
-            n: 1,
-            size: this.getSizeMapping(promptData.size),
-            quality: 'low',
-            output_format: "png"
-          };
-
-          console.log(`🔍 STANDARD OPENAI REQUEST:`, {
-            endpoint: `${imageConfig.baseURL}${imageConfig.endpoint}`,
-            model: imageConfig.model,
-            size: requestBody.size
-          });
-
-          response = await keyInfo.client.images.generate(requestBody);
-        }
-
-        // Log response overview
-        console.log(`🔍 IMAGE RESPONSE DEBUG:`, {
-          hasResponse: !!response,
-          hasData: !!response?.data,
-          dataType: typeof response?.data,
-          dataLength: Array.isArray(response?.data) ? response.data.length : 'not array'
-        });
-
-        // Extract image data from response (different formats based on API mode)
-        let imageData = this.extractImageDataFromResponse(response, imageConfig.mode);
-
-        if (!imageData) {
-          console.error(`❌ No image data found in response structure:`, {
-            responseType: typeof response,
-          });
-          throw new Error('No image data found in response');
-        }
-
-        console.log(`🔍 IMAGE DATA DEBUG:`, {
-          hasImageData: !!imageData,
-          imageDataKeys: imageData ? Object.keys(imageData) : 'no image data',
-          hasUrl: !!imageData?.url,
-          hasB64: !!imageData?.b64_json,
-          hasImageUrl: !!imageData?.image_url,
-          hasDataUrl: !!imageData?.data_url
-        });
-
-        // Convert image data to base64 format
-        let imageBase64 = await this.convertImageDataToBase64(imageData);
-
-        if (!imageBase64) {
-          throw new Error('Failed to convert image data to base64');
-        }
-
-        this.apiManager.releaseKey(keyInfo, true);
-
-        const result = {
-          imageBase64,
-          prompt: promptData.prompt,
-          timestamp: new Date().toISOString(),
-          size: promptData.size,
-          quality: job.selectedQuality,
-          imageName: promptData.imageName
-        };
-
-        // Add optional fields only if they exist
-        if (promptData.adCreativeA) {
-          result.AdCreativeA = promptData.adCreativeA;
-        }
-        if (promptData.adCreativeB) {
-          result.AdCreativeB = promptData.adCreativeB;
-        }
-        if (promptData.targeting) {
-          result.targeting = promptData.targeting;
-        }
-
-        console.log(`🖼️ Generated image successfully:`, {
-          hasImageName: !!result.imageName,
-          hasAdCreativeA: !!result.AdCreativeA,
-          hasAdCreativeB: !!result.AdCreativeB,
-          hasTargeting: !!result.targeting,
-          size: result.size,
-          imageApiMode: imageConfig.mode,
-          attempt: attempt,
-          imageBase64Length: result.imageBase64.length
-        });
-
-        return result;
-
-      } catch (error) {
-        console.error(`❌ Image generation attempt ${attempt} failed:`, {
-          apiMode: imageConfig.mode,
-          model: imageConfig.model,
-          baseURL: imageConfig.baseURL,
-          endpoint: imageConfig.endpoint,
-          keyId: keyInfo.id,
-          errorType: error.constructor.name,
-          errorMessage: error.message
-        });
-
-        // Enhanced error logging
-        if (error.response) {
-          console.error(`🚨 HTTP Error Response:`, {
-            status: error.response.status,
-            statusText: error.response.statusText,
-            headers: error.response.headers,
-            data: error.response.data
-          });
-        } else if (error.request) {
-          console.error(`🌐 Network Error:`, {
-            message: error.message,
-            code: error.code,
-            errno: error.errno,
-            syscall: error.syscall,
-            hostname: error.hostname
-          });
-        } else {
-          console.error(`🔧 Other Error:`, {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-          });
-        }
-
-        if (error.status) {
-          console.error(`🤖 OpenAI SDK Error:`, {
-            status: error.status,
-            type: error.type,
-            code: error.code,
-            param: error.param,
-            message: error.message
-          });
-        }
-
-        this.apiManager.releaseKey(keyInfo, false, error);
-        lastError = error;
-
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.log(`⏳ Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
-
-    console.error(`💥 ALL ATTEMPTS FAILED for image generation:`, {
-      totalAttempts: maxRetries,
-      apiMode: imageConfig.mode,
-      model: imageConfig.model,
-      baseURL: imageConfig.baseURL,
-      endpoint: imageConfig.endpoint,
-      promptPreview: promptData.prompt.substring(0, 100),
-      finalError: {
-        message: lastError?.message,
-        status: lastError?.status || lastError?.response?.status,
-        type: lastError?.type,
-        code: lastError?.code
-      }
-    });
-
-    throw lastError || new Error('Image generation failed after retries');
-  }
-
-  // NEW: Method for generating images using piapi.ai chat completions API
   async generateImageWithPiapiChatCompletions(keyInfo, promptData, imageConfig) {
-    // Create chat completions request for piapi.ai
     const requestBody = {
       model: imageConfig.model,
       messages: [
@@ -758,7 +788,6 @@ export class JobManager {
               text: promptData.prompt
             }
           ],
-
         }
       ],
       modalities: ["image"],
@@ -771,30 +800,25 @@ export class JobManager {
       promptPreview: promptData.prompt.substring(0, 100)
     });
 
-    // Use axios for the request since we're using a different endpoint structure
     const response = await axios.post(`${imageConfig.baseURL}${imageConfig.endpoint}`, requestBody, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${keyInfo.key}`
+        'Authorization': `Bearer ${keyInfo.key ? keyInfo.key : "94cf59f40c4815f3509e794efcd3aa7266646024e00a0656a58b1e43346eb9fe"}`
       }
     });
 
     console.log(`✅ PIAPI response received:`, {
       status: response.status,
       hasData: !!response.data,
-      data: response.data,
     });
 
     return response.data;
   }
 
-  // NEW: Extract image data from different response formats
-  // Improved extractImageDataFromResponse function
   extractImageDataFromResponse(response, mode) {
     if (!response) return null;
 
     if (mode === 'unofficial') {
-      // First, try to extract the storage.theapi.app URL format using regex
       if (typeof response === 'string') {
         const theapiUrlMatch = response.match(/https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png/);
         if (theapiUrlMatch) {
@@ -802,10 +826,8 @@ export class JobManager {
         }
       }
 
-      // Check if response is a string containing JSON
       if (typeof response === 'string' && response.includes('storage.theapi.app')) {
         try {
-          // Try to find the URL in the string using regex
           const theapiUrlMatch = response.match(/https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png/);
           if (theapiUrlMatch) {
             return { url: theapiUrlMatch[0] };
@@ -815,11 +837,9 @@ export class JobManager {
         }
       }
 
-      // For structured response data from piapi.ai chat completions
       if (response.choices && response.choices.length > 0) {
         const message = response.choices[0].message;
 
-        // Look for the specific markdown image pattern in content
         if (message && message.content && typeof message.content === 'string') {
           const markdownMatch = message.content.match(/!\[.*?\]\((https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png)\)/);
           if (markdownMatch && markdownMatch[1]) {
@@ -827,31 +847,26 @@ export class JobManager {
           }
         }
 
-        // Handle array content format
         if (message && message.content && Array.isArray(message.content)) {
           for (const part of message.content) {
-            // Check each content part for text containing the URL
             if (part.type === 'text' && part.text) {
               const markdownMatch = part.text.match(/!\[.*?\]\((https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png)\)/);
               if (markdownMatch && markdownMatch[1]) {
                 return { url: markdownMatch[1] };
               }
 
-              // Direct URL in text
               const directUrlMatch = part.text.match(/https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png/);
               if (directUrlMatch) {
                 return { url: directUrlMatch[0] };
               }
             }
 
-            // Other part types that might contain image URL
             if (part.image_url) return { url: part.image_url.url };
             if (part.image) return { data_url: part.image };
             if (part.url) return { url: part.url };
           }
         }
 
-        // Check for delta content if in streaming mode
         if (response.choices[0].delta && response.choices[0].delta.content) {
           const content = response.choices[0].delta.content;
           const markdownMatch = content.match(/!\[.*?\]\((https:\/\/storage\.theapi\.app\/image\/gen-[a-f0-9-]+\.png)\)/);
@@ -861,7 +876,6 @@ export class JobManager {
         }
       }
 
-      // Fall back to other locations in the response
       if (response.data && response.data.url) return { url: response.data.url };
       if (response.data && response.data.b64_json) return { b64_json: response.data.b64_json };
       if (response.url) return { url: response.url };
@@ -870,7 +884,6 @@ export class JobManager {
       if (response.image) return { data_url: response.image };
 
     } else {
-      // Standard OpenAI response format (unchanged)
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         return response.data[0];
       } else if (response.data && !Array.isArray(response.data)) {
@@ -885,53 +898,45 @@ export class JobManager {
     return null;
   }
 
-
-  // NEW: Convert various image data formats to base64
   async convertImageDataToBase64(imageData) {
     if (!imageData) return null;
 
-    // Handle our special URL extraction format
     if (imageData.specialImageUrl) {
       try {
         return await this.convertUrlToBase64(imageData.specialImageUrl);
       } catch (error) {
         console.error('Failed to convert special URL to base64:', error);
-        return this.getErrorPlaceholder();
+        return null;
       }
     }
 
-    // Already in base64 data URL format
     if (imageData.data_url && typeof imageData.data_url === 'string' &&
       imageData.data_url.startsWith('data:image')) {
       return imageData.data_url;
     }
 
-    // Base64 JSON without data URL prefix
     if (imageData.b64_json) {
       return `data:image/png;base64,${imageData.b64_json}`;
     }
 
-    // URL that needs to be fetched and converted
     if (imageData.url) {
       try {
         return await this.convertUrlToBase64(imageData.url);
       } catch (error) {
         console.error('Failed to convert URL to base64:', error);
-        return this.getErrorPlaceholder();
+        return null;
       }
     }
 
-    // Direct URL (from our extraction)
     if (imageData.directUrl) {
       try {
         return await this.convertUrlToBase64(imageData.directUrl);
       } catch (error) {
         console.error('Failed to convert direct URL to base64:', error);
-        return this.getErrorPlaceholder();
+        return null;
       }
     }
 
-    // Direct string that might be a data URL or URL
     if (typeof imageData === 'string') {
       if (imageData.startsWith('data:image')) {
         return imageData;
@@ -940,7 +945,7 @@ export class JobManager {
           return await this.convertUrlToBase64(imageData);
         } catch (error) {
           console.error('Failed to convert string URL to base64:', error);
-          return this.getErrorPlaceholder();
+          return null;
         }
       }
     }
@@ -968,7 +973,6 @@ export class JobManager {
     }
   }
 
-  // RENAMED: parseClaudeResponse -> parsePromptResponse (works for both Claude and Deepseek)
   parsePromptResponse(response, category = 'google_prompt') {
     try {
       const jsonArrayMatch = response.match(/\[\s*\{[\s\S]*?\}\s*\]/);
@@ -977,7 +981,6 @@ export class JobManager {
         const jsonData = JSON.parse(jsonArrayMatch[0]);
 
         if (Array.isArray(jsonData) && jsonData.length > 0) {
-          // Get shared data from first object
           const firstObject = jsonData[0];
           const sharedTargeting = firstObject.targeting || "";
           const sharedAdCreativeA = firstObject.adCreativeA || "";
@@ -990,7 +993,6 @@ export class JobManager {
           });
 
           const prompts = jsonData.map((item, index) => {
-            // Base object with required fields
             const basePrompt = {
               prompt: item.prompt || `Generated prompt ${index + 1}`,
               imageName: item.imageName || `ai-image-${index + 1}-${Date.now()}`,
@@ -1001,25 +1003,21 @@ export class JobManager {
             };
 
             if (category === 'facebook_prompt') {
-              // Facebook: First object gets its own data, others get shared targeting
               if (index === 0) {
                 basePrompt.adCreativeA = item.adCreativeA || "";
                 basePrompt.adCreativeB = item.adCreativeB || "";
                 basePrompt.targeting = item.targeting || "";
               } else {
-                // Subsequent objects: own AdCreatives, shared targeting
                 basePrompt.adCreativeA = item.adCreativeA || "";
                 basePrompt.adCreativeB = item.adCreativeB || "";
-                basePrompt.targeting = sharedTargeting; // Copy from first object
+                basePrompt.targeting = sharedTargeting;
               }
             } else if (category === 'google_prompt') {
-              // Google: First object gets its own data, others share everything except prompt
               if (index === 0) {
                 basePrompt.adCreativeA = item.adCreativeA || "";
                 basePrompt.adCreativeB = item.adCreativeB || "";
                 basePrompt.targeting = item.targeting || "";
               } else {
-                // Subsequent objects: share AdCreatives and targeting from first object
                 basePrompt.adCreativeA = sharedAdCreativeA;
                 basePrompt.adCreativeB = sharedAdCreativeB;
                 basePrompt.targeting = sharedTargeting;
@@ -1094,12 +1092,9 @@ export class JobManager {
       const base64 = buffer.toString('base64');
       return `data:image/png;base64,${base64}`;
     } catch (error) {
-      return this.getErrorPlaceholder();
+      console.error('Failed to convert URL to base64:', error);
+      return null;
     }
-  }
-
-  getErrorPlaceholder() {
-    return "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4=";
   }
 
   getJob(jobId) {

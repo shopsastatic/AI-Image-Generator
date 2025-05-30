@@ -174,6 +174,234 @@ app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/system/queue-config', requireAuth, (req, res) => {
+  try {
+    const { maxConcurrency, delayBetweenRequests } = req.body;
+    
+    // Validate input
+    if (!maxConcurrency || !delayBetweenRequests) {
+      return res.status(400).json({
+        error: 'Missing required fields: maxConcurrency, delayBetweenRequests'
+      });
+    }
+    
+    if (maxConcurrency < 1 || maxConcurrency > 5) {
+      return res.status(400).json({
+        error: 'maxConcurrency must be between 1 and 5'
+      });
+    }
+    
+    if (delayBetweenRequests < 100 || delayBetweenRequests > 10000) {
+      return res.status(400).json({
+        error: 'delayBetweenRequests must be between 100 and 10000 ms'
+      });
+    }
+
+    // Update queue configuration
+    const stats = jobManager.getStats();
+    
+    // Get current API manager and update its queue config
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      jobManager.apiManager.requestQueue.maxConcurrency = maxConcurrency;
+      jobManager.apiManager.requestQueue.delayBetweenRequests = delayBetweenRequests;
+      
+      console.log(`🔧 Queue config updated:`, {
+        maxConcurrency,
+        delayBetweenRequests,
+        apiMode: stats.api.mode
+      });
+      
+      res.json({
+        success: true,
+        message: 'Queue configuration updated',
+        config: {
+          maxConcurrency,
+          delayBetweenRequests,
+          apiMode: stats.api.mode
+        }
+      });
+    } else {
+      res.status(500).json({
+        error: 'API Manager not initialized or no active queue'
+      });
+    }
+
+  } catch (error) {
+    console.error('Queue config update failed:', error);
+    res.status(500).json({
+      error: 'Failed to update queue configuration',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/system/stats', requireAuth, (req, res) => {
+  try {
+    const stats = jobManager.getStats();
+    
+    // Add detailed queue information
+    let enhancedQueueStats = null;
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      const queueStats = jobManager.apiManager.requestQueue.getStats();
+      enhancedQueueStats = {
+        ...queueStats,
+        // Add performance metrics
+        utilizationRate: queueStats.maxConcurrency > 0 
+          ? Math.round((queueStats.activeRequests / queueStats.maxConcurrency) * 100) 
+          : 0,
+        isIdle: queueStats.activeRequests === 0 && queueStats.queueLength === 0,
+        isConcurrent: queueStats.activeRequests > 1,
+        isBacklogged: queueStats.queueLength > 5
+      };
+    }
+    
+    res.json({
+      success: true,
+      ...stats,
+      api: {
+        ...stats.api,
+        queue: enhancedQueueStats
+      },
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      // Add system performance indicators
+      performance: {
+        memoryUsage: process.memoryUsage(),
+        cpuUsage: process.cpuUsage ? process.cpuUsage() : null
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get system stats',
+      message: error.message
+    });
+  }
+});
+
+
+app.post('/api/system/queue-process', requireAuth, (req, res) => {
+  try {
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      // Force process queue
+      jobManager.apiManager.requestQueue.processQueue();
+      
+      const queueStats = jobManager.apiManager.requestQueue.getStats();
+      
+      res.json({
+        success: true,
+        message: 'Queue processing triggered',
+        queueStats
+      });
+    } else {
+      res.status(400).json({
+        error: 'No active queue to process'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to process queue',
+      message: error.message
+    });
+  }
+});
+
+
+app.get('/api/system/queue-debug', requireAuth, (req, res) => {
+  try {
+    const debugInfo = {
+      timestamp: new Date().toISOString(),
+      hasJobManager: !!jobManager,
+      hasApiManager: !!jobManager.apiManager,
+      hasRequestQueue: !!(jobManager.apiManager && jobManager.apiManager.requestQueue),
+      activeJobs: Array.from(jobManager.jobs.values()).map(job => ({
+        id: job.id,
+        status: job.status,
+        progress: job.progress,
+        model: job.selectedModel,
+        hdMode: job.isHDMode,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt
+      }))
+    };
+    
+    if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+      const queue = jobManager.apiManager.requestQueue;
+      debugInfo.queueDetails = {
+        ...queue.getStats(),
+        queueItems: queue.queue.map(task => ({
+          id: task.id,
+          retryCount: task.retryCount,
+          maxRetries: task.maxRetries,
+          addedAt: task.addedAt,
+          waitTime: Date.now() - task.addedAt
+        }))
+      };
+    }
+    
+    res.json({
+      success: true,
+      debug: debugInfo
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get debug info',
+      message: error.message
+    });
+  }
+});
+
+
+app.get('/api/system/queue-stream', requireAuth, (req, res) => {
+  // Set headers for Server-Sent Events
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+
+  // Send initial data
+  const sendStats = () => {
+    try {
+      const stats = jobManager.getStats();
+      let queueStats = null;
+      
+      if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
+        queueStats = jobManager.apiManager.requestQueue.getStats();
+      }
+      
+      const data = {
+        timestamp: Date.now(),
+        queue: queueStats,
+        jobs: stats.jobs,
+        api: stats.api
+      };
+      
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (error) {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    }
+  };
+
+  // Send stats immediately
+  sendStats();
+
+  // Send stats every second
+  const interval = setInterval(sendStats, 1000);
+
+  // Clean up when client disconnects
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+
+  req.on('end', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
 app.get('/api/image-generation/status/:jobId', requireAuth, (req, res) => {
   try {
     const { jobId } = req.params;

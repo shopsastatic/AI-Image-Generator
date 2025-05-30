@@ -473,178 +473,224 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   // FIX: Complete rewrite of processJobResults
   const processJobResults = async (jobData: any, sessionId: string) => {
-    try {
-      const { results, claudeResponse } = jobData;
+  try {
+    const { results, claudeResponse } = jobData;
 
-      console.log("🔄 Processing job results for session:", sessionId);
-      console.log(
-        "📝 Claude response received:",
-        claudeResponse ? "YES" : "NO"
-      );
+    console.log("🔄 Processing job results for session:", sessionId);
+    console.log("📝 Claude response received:", claudeResponse ? "YES" : "NO");
+    console.log("📊 Total results received:", results?.length || 0);
 
-      // Tìm prompt từ loading session
-      const loadingSession = loadingSessions.find(
-        (session) => session.sessionId === sessionId
-      );
-      const promptFromLoadingSession = loadingSession?.prompt || "";
+    // Tìm prompt từ loading session
+    const loadingSession = loadingSessions.find(
+      (session) => session.sessionId === sessionId
+    );
+    const promptFromLoadingSession = loadingSession?.prompt || "";
 
-      // Fix: Attach Claude response to each image
-      const successfulImages = results
-        .filter(
-          (img: any) =>
-            img.imageBase64 &&
-            img.imageBase64.startsWith("data:") &&
-            !img.imageBase64.includes(
-              "PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM"
-            )
-        )
-        .map((img: any) => ({
-          ...img,
-          claudeResponse: claudeResponse, // Use claudeResponse from server
-        }));
-
-      if (successfulImages.length === 0) {
-        throw new Error("No images were successfully generated");
-      }
-
-      // Fix: Better handling of describe - use fallback if currentLoadingPrompt is empty
-      let describeToUse = promptFromLoadingSession;
-      if (!describeToUse || describeToUse.trim() === "") {
-        // Fallback: try to get from jobData or use a default
-        describeToUse =
-          jobData.originalPrompt || jobData.userPrompt || "Generated images";
-        console.log(
-          "⚠️ PROCESS DEBUG - prompt is empty, using fallback:",
-          describeToUse
-        );
-      }
-
-      console.log("🔍 PROCESS DEBUG - Final describe to use:", describeToUse);
-
-      // Fix: Ensure describe is ALWAYS the user's original input
-      const sessionData = {
-        sessionId: sessionId,
-        describe: describeToUse, // Use the corrected describe
-        images: successfulImages,
-      };
-
-      try {
-        await storageManager.saveSession(sessionData);
-        console.log("✅ Session saved with describe:", describeToUse);
-      } catch (storageError) {
-        console.error("Storage save failed:", storageError);
-        showNotification(
-          "error",
-          "Storage Full!",
-          "Your images were generated but couldn't be saved due to storage limits."
-        );
-      }
-
-      // Convert images to blob URLs for display
-      const convertedImages = await Promise.all(
-        successfulImages.map(async (img: any) => {
-          try {
-            const compressed = await ImageCompressor.compressImage(
-              img.imageBase64
-            );
-            const blobUrl = URL.createObjectURL(compressed.blob);
-
-            return {
-              ...img,
-              imageBase64: blobUrl,
-              originalBase64: img.imageBase64,
-              isBlob: true,
-              claudeResponse: img.claudeResponse,
-            };
-          } catch (error) {
-            console.warn("Failed to convert to blob, using base64:", error);
-            return {
-              ...img,
-              isBlob: false,
-              claudeResponse: img.claudeResponse,
-            };
-          }
-        })
-      );
-
-      // Create new session
-      const newSession = {
-        sessionId: sessionId,
-        clickedAt: Date.now(),
-        currentImageIndex: 0,
-        describe: describeToUse,
-        list: convertedImages,
-      };
-
-      // Update selectedSessions
-      setSelectedSessions((prevSessions) => {
-        const existingIndex = prevSessions.findIndex(
-          (s) => s.sessionId === sessionId
-        );
-
-        if (existingIndex !== -1) {
-          console.log("🔄 Updating existing session:", sessionId);
-          const updatedSessions = [...prevSessions];
-          updatedSessions[existingIndex] = newSession;
-          return updatedSessions;
+    // ✅ FIX: Filter chỉ lấy những ảnh thành công và hợp lệ
+    const successfulImages = results
+      .filter((img: any) => {
+        // Kiểm tra có imageBase64 và là data URL hợp lệ
+        if (!img.imageBase64 || !img.imageBase64.startsWith("data:")) {
+          console.log("❌ Rejected: Invalid imageBase64 format");
+          return false;
         }
 
-        console.log("➕ Adding new session:", sessionId);
-        return [newSession, ...prevSessions];
-      });
+        // Loại bỏ placeholder errors
+        if (img.imageBase64.includes("PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM")) {
+          console.log("❌ Rejected: Error placeholder detected");
+          return false;
+        }
 
-      // Add image to selectedImages without replacing loading items
-      if (convertedImages.length > 0) {
-        setSelectedImages((prevImages) => {
-          // Create image object
-          const firstImageObj = {
-            imageUrl: convertedImages[0].imageBase64,
-            clickedAt: Date.now(),
-            prompt: convertedImages[0].prompt,
-            size: convertedImages[0].size,
-            quality: convertedImages[0].quality,
-            sessionId: sessionId,
-            imageIndex: 0,
-            claudeResponse: convertedImages[0].claudeResponse,
-            AdCreativeA: convertedImages[0].AdCreativeA,
-            AdCreativeB: convertedImages[0].AdCreativeB,
-            targeting: convertedImages[0].targeting,
-            imageName: convertedImages[0].imageName,
+        // Loại bỏ specific error placeholder
+        if (img.imageBase64 === "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4=") {
+          console.log("❌ Rejected: Specific error placeholder");
+          return false;
+        }
+
+        // Kiểm tra kích thước tối thiểu (optional)
+        if (img.imageBase64.length < 1000) {
+          console.log("❌ Rejected: Image data too small");
+          return false;
+        }
+
+        console.log("✅ Accepted: Valid image");
+        return true;
+      })
+      .map((img: any) => ({
+        ...img,
+        claudeResponse: claudeResponse, // Attach Claude response
+      }));
+
+    console.log(`📈 Filtered results: ${successfulImages.length}/${results?.length || 0} successful images`);
+
+    // ✅ FIX: Chỉ tiếp tục nếu có ít nhất 1 ảnh thành công
+    if (successfulImages.length === 0) {
+      console.warn("⚠️ No successful images to save for session:", sessionId);
+      
+      // Hiển thị notification cho user
+      showNotification(
+        "warning", 
+        "Generation Failed!", 
+        "All images failed to generate. Please try again with a different prompt."
+      );
+      
+      // Không tạo session, chỉ remove loading session
+      removeLoadingSession(sessionId);
+      return;
+    }
+
+    // Determine describe
+    let describeToUse = promptFromLoadingSession;
+    if (!describeToUse || describeToUse.trim() === "") {
+      describeToUse =
+        jobData.originalPrompt || jobData.userPrompt || "Generated images";
+      console.log("⚠️ Using fallback describe:", describeToUse);
+    }
+
+    console.log("🔍 Final describe to use:", describeToUse);
+
+    // Create session data with only successful images
+    const sessionData = {
+      sessionId: sessionId,
+      describe: describeToUse,
+      images: successfulImages,
+    };
+
+    // Save to storage
+    try {
+      await storageManager.saveSession(sessionData);
+      console.log(`✅ Session saved with ${successfulImages.length} successful images`);
+      
+      // Show success notification with count
+      showNotification(
+        "success", 
+        "Images Generated!", 
+        `Successfully generated ${successfulImages.length} image${successfulImages.length > 1 ? 's' : ''}`
+      );
+    } catch (storageError) {
+      console.error("Storage save failed:", storageError);
+      showNotification(
+        "error",
+        "Storage Full!",
+        "Your images were generated but couldn't be saved due to storage limits."
+      );
+    }
+
+    // Convert images to blob URLs for display
+    const convertedImages = await Promise.all(
+      successfulImages.map(async (img: any) => {
+        try {
+          const compressed = await ImageCompressor.compressImage(
+            img.imageBase64
+          );
+          const blobUrl = URL.createObjectURL(compressed.blob);
+
+          return {
+            ...img,
+            imageBase64: blobUrl,
+            originalBase64: img.imageBase64,
+            isBlob: true,
+            claudeResponse: img.claudeResponse,
           };
+        } catch (error) {
+          console.warn("Failed to convert to blob, using base64:", error);
+          return {
+            ...img,
+            isBlob: false,
+            claudeResponse: img.claudeResponse,
+          };
+        }
+      })
+    );
 
-          // Remove any existing images from this session
-          const filteredImages = prevImages.filter(
-            (img) => img.sessionId !== sessionId
-          );
+    // Create new session for UI
+    const newSession = {
+      sessionId: sessionId,
+      clickedAt: Date.now(),
+      currentImageIndex: 0,
+      describe: describeToUse,
+      list: convertedImages,
+    };
 
-          // Add new image at the beginning, right after any loading items
-          const loadingItems = filteredImages.filter((img) =>
-            loadingSessions.some(
-              (session) => session.sessionId === img.sessionId
-            )
-          );
+    // Update selectedSessions
+    setSelectedSessions((prevSessions) => {
+      const existingIndex = prevSessions.findIndex(
+        (s) => s.sessionId === sessionId
+      );
 
-          const regularItems = filteredImages.filter(
-            (img) =>
-              !loadingSessions.some(
-                (session) => session.sessionId === img.sessionId
-              )
-          );
-
-          return [...loadingItems, firstImageObj, ...regularItems].slice(
-            0,
-            gridItemCount
-          );
-        });
+      if (existingIndex !== -1) {
+        console.log("🔄 Updating existing session:", sessionId);
+        const updatedSessions = [...prevSessions];
+        updatedSessions[existingIndex] = newSession;
+        return updatedSessions;
       }
 
-      window.dispatchEvent(new Event("historyUpdated"));
-      console.log("✅ Job results processed successfully");
-    } catch (error) {
-      console.error("Error processing job results:", error);
-      throw error;
+      console.log("➕ Adding new session:", sessionId);
+      return [newSession, ...prevSessions];
+    });
+
+    // Add first image to selectedImages if exists
+    if (convertedImages.length > 0) {
+      setSelectedImages((prevImages) => {
+        const firstImageObj = {
+          imageUrl: convertedImages[0].imageBase64,
+          clickedAt: Date.now(),
+          prompt: convertedImages[0].prompt,
+          size: convertedImages[0].size,
+          quality: convertedImages[0].quality,
+          sessionId: sessionId,
+          imageIndex: 0,
+          claudeResponse: convertedImages[0].claudeResponse,
+          AdCreativeA: convertedImages[0].AdCreativeA,
+          AdCreativeB: convertedImages[0].AdCreativeB,
+          targeting: convertedImages[0].targeting,
+          imageName: convertedImages[0].imageName,
+        };
+
+        // Remove any existing images from this session
+        const filteredImages = prevImages.filter(
+          (img) => img.sessionId !== sessionId
+        );
+
+        // Add new image at the beginning, right after any loading items
+        const loadingItems = filteredImages.filter((img) =>
+          loadingSessions.some(
+            (session) => session.sessionId === img.sessionId
+          )
+        );
+
+        const regularItems = filteredImages.filter(
+          (img) =>
+            !loadingSessions.some(
+              (session) => session.sessionId === img.sessionId
+            )
+        );
+
+        return [...loadingItems, firstImageObj, ...regularItems].slice(
+          0,
+          gridItemCount
+        );
+      });
     }
-  };
+
+    window.dispatchEvent(new Event("historyUpdated"));
+    console.log(`✅ Job results processed successfully: ${successfulImages.length} images saved`);
+    
+  } catch (error) {
+    console.error("Error processing job results:", error);
+    
+    // Show error notification
+    showNotification(
+      "error",
+      "Processing Error!",
+      "Failed to process generated images. Please try again."
+    );
+    
+    // Remove loading session on error
+    removeLoadingSession(sessionId);
+    throw error;
+  }
+};
 
   const cleanupBlobUrls = () => {
     // Clean up blob URLs in selectedImages
@@ -1803,51 +1849,63 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const showNotification = (type: string, title: string, message: string) => {
     const notification = document.createElement("div");
+    
+    // Different colors for different types
+    const colors = {
+      error: { bg: "#ff6b6b", text: "white" },
+      warning: { bg: "#f39c12", text: "white" },
+      success: { bg: "#4CAF50", text: "white" },
+      info: { bg: "#3498db", text: "white" }
+    };
+    
+    const color = colors[type as keyof typeof colors] || colors.info;
+    
     notification.innerHTML = `
       <div style="
         position: fixed; 
         top: 20px; 
         right: 20px; 
-        background: ${
-          type === "error"
-            ? "#ff6b6b"
-            : type === "warning"
-            ? "#f39c12"
-            : "#4CAF50"
-        }; 
-        color: white; 
+        background: ${color.bg}; 
+        color: ${color.text}; 
         padding: 15px 20px; 
         border-radius: 8px; 
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         z-index: 10000;
-        max-width: 300px;
+        max-width: 350px;
+        font-family: Arial, sans-serif;
       ">
-        <strong>${title}</strong><br>
-        ${message}<br>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <strong style="font-size: 16px;">${title}</strong>
+          ${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : type === 'error' ? '❌' : 'ℹ️'}
+        </div>
+        <div style="font-size: 14px; line-height: 1.4; margin-bottom: 12px;">
+          ${message}
+        </div>
         <button onclick="this.parentElement.parentElement.remove()" style="
           background: white; 
-          color: ${
-            type === "error"
-              ? "#ff6b6b"
-              : type === "warning"
-              ? "#f39c12"
-              : "#4CAF50"
-          }; 
+          color: ${color.bg}; 
           border: none; 
-          padding: 5px 10px; 
-          border-radius: 4px; 
-          margin-top: 8px;
+          padding: 6px 12px; 
+          border-radius: 4px;
           cursor: pointer;
-        ">OK</button>
+          font-weight: bold;
+          font-size: 12px;
+          transition: opacity 0.2s;
+        " onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+          OK
+        </button>
       </div>
     `;
+    
     document.body.appendChild(notification);
 
+    // Auto remove after delay
+    const autoRemoveDelay = type === 'error' ? 8000 : type === 'warning' ? 6000 : 4000;
     setTimeout(() => {
       if (notification.parentElement) {
         document.body.removeChild(notification);
       }
-    }, 3000);
+    }, autoRemoveDelay);
   };
 
   const SafeImage: React.FC<{
