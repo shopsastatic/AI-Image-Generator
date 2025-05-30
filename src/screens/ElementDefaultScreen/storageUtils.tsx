@@ -401,6 +401,9 @@ class StorageManager {
   /**
    * Lấy dữ liệu lịch sử cho sidebar
    */
+  /**
+   * Lấy dữ liệu lịch sử cho sidebar
+   */
   async getHistoryForSidebar(): Promise<HistoryGroup[]> {
     await this.waitForInit();
     
@@ -418,6 +421,68 @@ class StorageManager {
       console.error('❌ Lỗi lấy history cho sidebar:', error);
       return [];
     }
+  }
+
+  /**
+   * Nhóm sessions theo ngày
+   */
+  private groupSessionsByDate(sessions: any[]): HistoryGroup[] {
+    const groups: HistoryGroup[] = [];
+    const dateMap = new Map<string, HistoryGroup>();
+    
+    for (const session of sessions) {
+      // Bỏ qua session không có ảnh
+      if (!session.images || session.images.length === 0) {
+        continue;
+      }
+      
+      const timestamp = session.timestamp || session.createdAt;
+      const date = timestamp 
+        ? new Date(timestamp).toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric' 
+          })
+        : 'Unknown Date';
+
+      // Lấy hoặc tạo nhóm cho ngày này
+      let group = dateMap.get(date);
+      if (!group) {
+        group = { date, items: [] };
+        dateMap.set(date, group);
+        groups.push(group);
+      }
+
+      // Tìm ảnh đầu tiên làm thumbnail
+      const firstImage = session.images[0];
+      const thumbnailImage = firstImage?.imageUrl || '';
+      
+      // Thêm vào nhóm - Không cần chuyển đổi thành blob URL ở đây
+      // Việc chuyển đổi sẽ được thực hiện trong component SafeHistoryImage
+      group.items.push({
+        id: session.sessionId,
+        describe: session.describe || '',
+        thumbnail: thumbnailImage,
+        imageCount: session.images.length
+      });
+    }
+
+    // Sắp xếp nhóm theo ngày (mới nhất trước)
+    groups.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateB - dateA;
+    });
+
+    // Sắp xếp items trong mỗi nhóm (mới nhất trước)
+    groups.forEach(group => {
+      group.items.sort((a, b) => {
+        // Mặc định có thể so sánh theo ID vì chúng chứa timestamp
+        return b.id.localeCompare(a.id);
+      });
+    });
+
+    return groups;
   }
 
   /**

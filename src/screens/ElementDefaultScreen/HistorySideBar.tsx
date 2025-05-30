@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { storageManager } from "./storageUtils";
+import { storageManager, ImageCompressor } from "./storageUtils";
 
 interface HistoryImage {
   imageBase64: string;
@@ -82,6 +82,29 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
   const loadingRef = useRef<boolean>(false);
   const errorShownRef = useRef<boolean>(false);
+  const [thumbnailBlobUrls, setThumbnailBlobUrls] = useState<string[]>([]);
+
+   useEffect(() => {
+    return () => {
+      // Cleanup all tracked blob URLs
+      thumbnailBlobUrls.forEach(url => {
+        try {
+          if (url && url.startsWith('blob:')) {
+            URL.revokeObjectURL(url);
+            console.log('🧹 Revoked thumbnail blob URL during cleanup');
+          }
+        } catch (e) {
+          console.warn('Failed to revoke blob URL:', e);
+        }
+      });
+    };
+  }, [thumbnailBlobUrls]);
+
+  const registerBlobUrl = useCallback((url: string) => {
+    if (url && url.startsWith('blob:')) {
+      setThumbnailBlobUrls(prev => [...prev, url]);
+    }
+  }, []);
 
   const loadHistoryData = useCallback(async () => {
     if (loadingRef.current) return;
@@ -198,7 +221,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setHasUnselectedItems(anyUnselectedItems);
   }, [historyData, isItemSelected]);
 
-  const handleItemClick = async (item: HistoryItem) => {
+ const handleItemClick = async (item: HistoryItem) => {
     // Check if the item has already been processed to prevent multiple selections
     if (isItemSelected(item)) {
       console.log("🔄 Item already selected, skipping:", item.id);
@@ -214,20 +237,68 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
       if (sessionImages && sessionImages.length > 0) {
         console.log("✅ Loaded", sessionImages.length, "images for session:", item.id);
 
+        // Convert base64 images to blob URLs
+        const convertedImages = await Promise.all(
+          sessionImages.map(async (img) => {
+            try {
+              // Check if the image is a base64 string
+              if (img.imageUrl && typeof img.imageUrl === 'string' && img.imageUrl.startsWith('data:')) {
+                console.log("🔄 Converting base64 to blob for history item");
+                const compressed = await ImageCompressor.compressImage(img.imageUrl);
+                const blobUrl = URL.createObjectURL(compressed.blob);
+                
+                return {
+                  imageBase64: blobUrl,
+                  originalBase64: img.imageUrl,
+                  isBlob: true,
+                  prompt: img.prompt || '',
+                  claudeResponse: img.claudeResponse || '',
+                  timestamp: img.timestamp || new Date().toISOString(),
+                  size: img.size || 'Square',
+                  quality: img.quality || 'Standard',
+                  AdCreativeA: img.AdCreativeA || '', 
+                  AdCreativeB: img.AdCreativeB || '',
+                  targeting: img.targeting || '',
+                  imageName: img.imageName || '',
+                };
+              } else {
+                // Not a base64 image or already a blob
+                return {
+                  imageBase64: img.imageUrl,
+                  isBlob: false,
+                  prompt: img.prompt || '',
+                  claudeResponse: img.claudeResponse || '',
+                  timestamp: img.timestamp || new Date().toISOString(),
+                  size: img.size || 'Square',
+                  quality: img.quality || 'Standard',
+                  AdCreativeA: img.AdCreativeA || '', 
+                  AdCreativeB: img.AdCreativeB || '',
+                  targeting: img.targeting || '',
+                  imageName: img.imageName || '',
+                };
+              }
+            } catch (error) {
+              console.warn("⚠️ Failed to convert to blob, using original:", error);
+              return {
+                imageBase64: img.imageUrl,
+                isBlob: false,
+                prompt: img.prompt || '',
+                claudeResponse: img.claudeResponse || '',
+                timestamp: img.timestamp || new Date().toISOString(),
+                size: img.size || 'Square',
+                quality: img.quality || 'Standard',
+                AdCreativeA: img.AdCreativeA || '', 
+                AdCreativeB: img.AdCreativeB || '',
+                targeting: img.targeting || '',
+                imageName: img.imageName || '',
+              };
+            }
+          })
+        );
+
         const compatibleItem = {
           ...item,
-          list: sessionImages.map((img) => ({
-            imageBase64: img.imageUrl,
-            prompt: img.prompt,
-            claudeResponse: img.claudeResponse,
-            timestamp: img.timestamp,
-            size: img.size,
-            quality: img.quality,
-            AdCreativeA: img.AdCreativeA, 
-            AdCreativeB: img.AdCreativeB,
-            targeting: img.targeting,
-            imageName: img.imageName,
-          })),
+          list: convertedImages,
         };
 
         // Add this ID to processed set to prevent duplicate processing
@@ -235,6 +306,12 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           const updated = new Set(prev);
           updated.add(item.id);
           return updated;
+        });
+
+        console.log("✅ Converted images for history item:", {
+          sessionId: item.id,
+          imageCount: convertedImages.length,
+          blobCount: convertedImages.filter(img => img.isBlob).length
         });
 
         onItemClick(compatibleItem);
@@ -546,6 +623,7 @@ const HistoryDisplay: React.FC<{
 });
 
 // Enhanced image component for history thumbnails
+// Enhanced image component for history thumbnails
 const SafeHistoryImage: React.FC<{
   src: string;
   alt: string;
@@ -553,13 +631,70 @@ const SafeHistoryImage: React.FC<{
   count: number;
 }> = ({ src, alt, id, count }) => {
   const [imageSrc, setImageSrc] = useState<string>(src);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
+  const [isBlobUrl, setIsBlobUrl] = useState<boolean>(false);
   
+  // Convert base64 to blob on mount and when src changes
   useEffect(() => {
-    setImageSrc(src);
-    setHasError(false);
-    setIsLoading(false);
+    let isMounted = true;
+    setIsLoading(true);
+    
+    // Skip if not a base64 string or already a blob URL
+    if (!src || !src.startsWith('data:') || src.startsWith('blob:')) {
+      setImageSrc(src);
+      setIsLoading(false);
+      return;
+    }
+    
+    // Convert base64 to blob
+    const convertToBlob = async () => {
+      try {
+        // Create blob from base64
+        const parts = src.split(';base64,');
+        if (parts.length !== 2) {
+          throw new Error('Invalid base64 format');
+        }
+        
+        const contentType = parts[0].split(':')[1] || 'image/jpeg';
+        const raw = window.atob(parts[1]);
+        const rawLength = raw.length;
+        
+        // Convert string to ArrayBuffer
+        const uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        
+        // Create blob and blob URL
+        const blob = new Blob([uInt8Array], { type: contentType });
+        const blobUrl = URL.createObjectURL(blob);
+        
+        if (isMounted) {
+          setImageSrc(blobUrl);
+          setIsBlobUrl(true);
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.warn("Failed to convert thumbnail to blob:", error);
+        if (isMounted) {
+          // Fallback to original
+          setImageSrc(src);
+          setIsLoading(false);
+        }
+      }
+    };
+    
+    convertToBlob();
+    
+    // Cleanup
+    return () => {
+      isMounted = false;
+      // Revoke blob URL if created
+      if (isBlobUrl && imageSrc && imageSrc.startsWith('blob:')) {
+        URL.revokeObjectURL(imageSrc);
+      }
+    };
   }, [src]);
 
   const handleImageError = () => {
