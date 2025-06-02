@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Plus,
   Minus,
@@ -38,8 +38,13 @@ interface CategoryOption {
   label: string;
 }
 
-interface ChildOptions {
-  [key: string]: CategoryOption[];
+// ✅ NEW: Interface for dynamic subcategories
+interface SubcategoryOption {
+  id: string;
+  value: string;
+  label: string;
+  category: string;
+  status: "active" | "inactive";
 }
 
 const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
@@ -56,7 +61,11 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const [isHDMode, setIsHDMode] = useState(false);
   const [selectedModel, setSelectedModel] = useState("claude-sonnet");
   const [parentCategory, setParentCategory] = useState("google_prompt");
-  const [childOption, setChildOption] = useState("shopping-image-generator");
+  const [childOption, setChildOption] = useState("");
+
+  // ✅ NEW: States for dynamic subcategories
+  const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
+  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -76,38 +85,91 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   ];
 
   const modelOptions = [
-    // { value: 'deepsearch', label: 'DeepSearch' },
     { value: "claude-sonnet", label: "Claude Sonnet" },
   ];
 
-  const childOptions: ChildOptions = {
-    google_prompt: [
-      { value: "shopping-image-generator", label: "Shopping Image Generator" },
-      { value: "search-visual-generator", label: "Search Visual Generator" },
-      { value: "display-banner-generator", label: "Display Banner Generator" },
-      {
-        value: "retargeting-image-generator",
-        label: "Retargeting Image Generator",
-      },
-      {
-        value: "youtube-thumbnail-generator",
-        label: "YouTube Thumbnail Generator",
-      },
-    ],
-    facebook_prompt: [
-      { value: "carousel-image-generator", label: "Carousel Image Generator" },
-      { value: "story-template-generator", label: "Story Template Generator" },
-      {
-        value: "video-thumbnail-generator",
-        label: "Video Thumbnail Generator",
-      },
-      {
-        value: "lead-form-visual-generator",
-        label: "Lead Form Visual Generator",
-      },
-      { value: "collection-ad-generator", label: "Collection Ad Generator" },
-    ],
+  // ✅ FIXED: Simplified fetch function
+  const fetchSubcategories = async () => {
+    try {
+      setLoadingSubcategories(true);
+      console.log("🔄 ImageSizeSelector: Fetching subcategories from API...");
+
+      const response = await fetch("/api/subcategories");
+      const data = await response.json();
+
+      if (data.success) {
+        setSubcategories(data.subcategories);
+        console.log(
+          `📊 ImageSizeSelector: Loaded ${data.subcategories.length} subcategories from API`
+        );
+      } else {
+        console.error(
+          "ImageSizeSelector: Failed to fetch subcategories:",
+          data.error
+        );
+        setSubcategories([]);
+      }
+    } catch (error) {
+      console.error("ImageSizeSelector: Error fetching subcategories:", error);
+      setSubcategories([]);
+    } finally {
+      setLoadingSubcategories(false);
+    }
   };
+
+  // ✅ NEW: Helper function to convert category display names to API format
+  const getCategoryKey = (displayCategory: string): string => {
+    const categoryMap: { [key: string]: string } = {
+      google_prompt: "google-ads",
+      facebook_prompt: "facebook-ads",
+    };
+    return categoryMap[displayCategory] || displayCategory;
+  };
+
+  // ✅ NEW: Helper function to get active subcategories for a category
+  const getActiveSubcategoriesForCategory = (
+    category: string,
+    subcategoriesList?: SubcategoryOption[]
+  ): SubcategoryOption[] => {
+    // const list = subcategoriesList || subcategories;
+    const list = [];
+    return list.filter(
+      (sub) =>
+        sub.category === getCategoryKey(category) && sub.status === "active"
+    );
+  };
+
+  // ✅ Load subcategories on component mount
+  useEffect(() => {
+    fetchSubcategories();
+  }, []);
+
+  // ✅ FIXED: Simplified useEffect for updating childOption
+  useEffect(() => {
+    const categoryKey = getCategoryKey(parentCategory);
+    const availableOptions = getActiveSubcategoriesForCategory(categoryKey);
+
+    if (availableOptions.length > 0) {
+      const currentOptionValid = availableOptions.some(
+        (opt) => opt.value === childOption
+      );
+      if (!currentOptionValid) {
+        const newChildOption = availableOptions[0].value;
+        setChildOption(newChildOption);
+        // ✅ FIXED: Single callback without race condition
+        if (onCategoryChange) {
+          onCategoryChange(parentCategory, newChildOption);
+        }
+      }
+    } else {
+      if (childOption !== "") {
+        setChildOption("");
+        if (onCategoryChange) {
+          onCategoryChange(parentCategory, "");
+        }
+      }
+    }
+  }, [parentCategory, subcategories]);
 
   const generateRandomDistribution = (total: number) => {
     if (total <= 0) return { Square: 0, Portrait: 0, Landscape: 0 };
@@ -221,11 +283,16 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
 
   const handleParentCategoryChange = (newCategory: string) => {
     setParentCategory(newCategory);
-    const availableOptions = childOptions[newCategory] || [];
+
+    // Get available subcategories for new category
+    const categoryKey = getCategoryKey(newCategory);
+    const availableOptions = getActiveSubcategoriesForCategory(categoryKey);
+
     if (availableOptions.length > 0) {
-      setChildOption(availableOptions[0].value);
+      // const newChildOption = availableOptions[0].value;
+      setChildOption(newChildOption);
       if (onCategoryChange) {
-        onCategoryChange(newCategory, availableOptions[0].value);
+        onCategoryChange(newCategory, newChildOption);
       }
     } else {
       setChildOption("");
@@ -349,18 +416,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <strong className="text-gray-700">Setting</strong>
-                  {/* <span className="text-xs text-gray-600">Model</span>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => handleModelChange(e.target.value)}
-                    className="px-2 py-1 text-xs bg-white border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                  >
-                    {modelOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select> */}
                 </div>
 
                 {/* Mode Toggles */}
@@ -426,7 +481,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               </div>
             </div>
 
-            {/* Category Selection Row */}
+            {/* ✅ UPDATED: Dynamic Category Selection Row */}
             <div className="flex items-center space-x-2 p-3 border-b border-gray-200 bg-gray-25">
               <select
                 value={parentCategory}
@@ -443,26 +498,33 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               <select
                 value={childOption}
                 onChange={(e) => handleChildOptionChange(e.target.value)}
-                disabled={
-                  !childOptions[parentCategory] ||
-                  childOptions[parentCategory].length === 0
-                }
+                disabled={loadingSubcategories || !getActiveSubcategoriesForCategory(parentCategory).length}
                 className={`flex-1 px-2 py-1.5 text-xs bg-white border max-w-[50%] border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 ${
-                  !childOptions[parentCategory] ||
-                  childOptions[parentCategory].length === 0
+                  loadingSubcategories
                     ? "opacity-50 cursor-not-allowed bg-gray-50"
                     : ""
                 }`}
               >
-                {!childOptions[parentCategory] ||
-                childOptions[parentCategory].length === 0 ? (
-                  <option value="">No options</option>
+                {loadingSubcategories ? (
+                  <option value="">Loading...</option>
                 ) : (
-                  childOptions[parentCategory].map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))
+                  <>
+                    {getActiveSubcategoriesForCategory(parentCategory)
+                      .length === 0 ? (
+                      <option value="">No options</option>
+                    ) : (
+                      <>
+                        <option value="">Select subcategory...</option>
+                        {getActiveSubcategoriesForCategory(parentCategory).map(
+                          (option) => (
+                            <option key={option.id} value={option.value}>
+                              {option.label}
+                            </option>
+                          )
+                        )}
+                      </>
+                    )}
+                  </>
                 )}
               </select>
             </div>
@@ -572,6 +634,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                   </button>
                 </div>
               )}
+
             </div>
           </div>
         )}

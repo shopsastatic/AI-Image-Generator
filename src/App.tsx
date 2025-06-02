@@ -16,14 +16,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 };
 
 const router = createBrowserRouter([
-  {
-    path: "/*",
-    element: (
-      <ProtectedRoute>
-        <ElementDefaultScreen />
-      </ProtectedRoute>
-    ),
-  },
+  // ✅ IMPORTANT: Route cụ thể phải đặt TRƯỚC route catch-all
   {
     path: "/project-management",
     element: (
@@ -69,6 +62,24 @@ const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <ElementWDefaultWrapper />
+      </ProtectedRoute>
+    ),
+  },
+  // ✅ FIX: Thay đổi từ "/*" thành "/" và đặt cuối cùng
+  {
+    path: "/",
+    element: (
+      <ProtectedRoute>
+        <ElementDefaultScreen />
+      </ProtectedRoute>
+    ),
+  },
+  // ✅ OPTIONAL: Thêm 404 route nếu cần
+  {
+    path: "*", // Catch-all cho 404
+    element: (
+      <ProtectedRoute>
+        <ElementDefaultScreen />
       </ProtectedRoute>
     ),
   },

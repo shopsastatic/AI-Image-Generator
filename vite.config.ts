@@ -33,6 +33,18 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
+      watch: {
+        ignored: [
+          '**/node_modules/**',
+          '**/dist/**',
+          '**/static/instructions/**',
+          '**/static/subcategories.json',
+          '**/server.js',
+          '**/JobManager.js',
+          '**/InstructionsManager.js',
+          '**/*.log'
+        ]
+      }
     },
     publicDir: "./static",
     base: "./",

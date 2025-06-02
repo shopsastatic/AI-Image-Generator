@@ -1,0 +1,92 @@
+[
+  {
+    "id": "1",
+    "value": "shopping-image-generator",
+    "label": "Shopping Image Generator",
+    "category": "google-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "2",
+    "value": "search-visual-generator",
+    "label": "Search Visual Generator",
+    "category": "google-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "3",
+    "value": "display-banner-generator",
+    "label": "Display Banner Generator",
+    "category": "google-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "4",
+    "value": "retargeting-image-generator",
+    "label": "Retargeting Image Generator",
+    "category": "google-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "5",
+    "value": "youtube-thumbnail-generator",
+    "label": "YouTube Thumbnail Generator",
+    "category": "google-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "6",
+    "value": "carousel-image-generator",
+    "label": "Carousel Image Generator",
+    "category": "facebook-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "7",
+    "value": "story-template-generator",
+    "label": "Story Template Generator",
+    "category": "facebook-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "8",
+    "value": "video-thumbnail-generator",
+    "label": "Video Thumbnail Generator",
+    "category": "facebook-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "9",
+    "value": "lead-form-visual-generator",
+    "label": "Lead Form Visual Generator",
+    "category": "facebook-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "10",
+    "value": "collection-ad-generator",
+    "label": "Collection Ad Generator",
+    "category": "facebook-ads",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  }
+]

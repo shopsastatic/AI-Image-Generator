@@ -10,8 +10,15 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ✅ FIX: NOW we can use __dirname safely  
+const subcategoriesFilePath = path.join(__dirname, 'static', 'subcategories.json');
+
 // Load environment variables FIRST
 dotenv.config();
+
 
 // Now import and create JobManager AFTER env vars are loaded
 import { createJobManager } from './JobManager.js';
@@ -28,9 +35,6 @@ const instructionsManager = createInstructionsManager();
 
 const app = express();
 const port = process.env.PORT || 3001;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const frontendBuildPath = path.join(__dirname, 'dist');
 app.use(express.static(frontendBuildPath));
@@ -77,7 +81,7 @@ if (process.env.LOGIN_PASSWORD_HASH && process.env.LOGIN_PASSWORD_SALT) {
   authCredentials = {
     salt: salt,
     hashedPassword: hashedPassword,
-    email: process.env.LOGIN_EMAIL || 'admin@aiimage.com'  
+    email: process.env.LOGIN_EMAIL || 'admin@aiimage.com'
   };
 }
 
@@ -179,20 +183,20 @@ app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
 app.post('/api/system/queue-config', requireAuth, (req, res) => {
   try {
     const { maxConcurrency, delayBetweenRequests } = req.body;
-    
+
     // Validate input
     if (!maxConcurrency || !delayBetweenRequests) {
       return res.status(400).json({
         error: 'Missing required fields: maxConcurrency, delayBetweenRequests'
       });
     }
-    
+
     if (maxConcurrency < 1 || maxConcurrency > 5) {
       return res.status(400).json({
         error: 'maxConcurrency must be between 1 and 5'
       });
     }
-    
+
     if (delayBetweenRequests < 100 || delayBetweenRequests > 10000) {
       return res.status(400).json({
         error: 'delayBetweenRequests must be between 100 and 10000 ms'
@@ -201,18 +205,18 @@ app.post('/api/system/queue-config', requireAuth, (req, res) => {
 
     // Update queue configuration
     const stats = jobManager.getStats();
-    
+
     // Get current API manager and update its queue config
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
       jobManager.apiManager.requestQueue.maxConcurrency = maxConcurrency;
       jobManager.apiManager.requestQueue.delayBetweenRequests = delayBetweenRequests;
-      
+
       console.log(`🔧 Queue config updated:`, {
         maxConcurrency,
         delayBetweenRequests,
         apiMode: stats.api.mode
       });
-      
+
       res.json({
         success: true,
         message: 'Queue configuration updated',
@@ -241,22 +245,22 @@ app.get('/api/system/stats', requireAuth, (req, res) => {
   try {
     const jobStats = jobManager.getStats();
     const instructionsStats = instructionsManager.getStats();
-    
+
     // Add detailed queue information
     let enhancedQueueStats = null;
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
       const queueStats = jobManager.apiManager.requestQueue.getStats();
       enhancedQueueStats = {
         ...queueStats,
-        utilizationRate: queueStats.maxConcurrency > 0 
-          ? Math.round((queueStats.activeRequests / queueStats.maxConcurrency) * 100) 
+        utilizationRate: queueStats.maxConcurrency > 0
+          ? Math.round((queueStats.activeRequests / queueStats.maxConcurrency) * 100)
           : 0,
         isIdle: queueStats.activeRequests === 0 && queueStats.queueLength === 0,
         isConcurrent: queueStats.activeRequests > 1,
         isBacklogged: queueStats.queueLength > 5
       };
     }
-    
+
     res.json({
       success: true,
       ...jobStats,
@@ -286,9 +290,9 @@ app.post('/api/system/queue-process', requireAuth, (req, res) => {
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
       // Force process queue
       jobManager.apiManager.requestQueue.processQueue();
-      
+
       const queueStats = jobManager.apiManager.requestQueue.getStats();
-      
+
       res.json({
         success: true,
         message: 'Queue processing triggered',
@@ -325,7 +329,7 @@ app.get('/api/system/queue-debug', requireAuth, (req, res) => {
         updatedAt: job.updatedAt
       }))
     };
-    
+
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
       const queue = jobManager.apiManager.requestQueue;
       debugInfo.queueDetails = {
@@ -339,7 +343,7 @@ app.get('/api/system/queue-debug', requireAuth, (req, res) => {
         }))
       };
     }
-    
+
     res.json({
       success: true,
       debug: debugInfo
@@ -368,18 +372,18 @@ app.get('/api/system/queue-stream', requireAuth, (req, res) => {
     try {
       const stats = jobManager.getStats();
       let queueStats = null;
-      
+
       if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
         queueStats = jobManager.apiManager.requestQueue.getStats();
       }
-      
+
       const data = {
         timestamp: Date.now(),
         queue: queueStats,
         jobs: stats.jobs,
         api: stats.api
       };
-      
+
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     } catch (error) {
       res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
@@ -409,13 +413,13 @@ app.post('/api/system/key-rotation', requireAuth, (req, res) => {
     if (jobManager.apiManager && jobManager.apiManager.apiKeys) {
       const currentIndex = jobManager.apiManager.currentIndex;
       const totalKeys = jobManager.apiManager.apiKeys.length;
-      
+
       if (totalKeys > 1) {
         // Force rotation to next key
         jobManager.apiManager.currentIndex = (currentIndex + 1) % totalKeys;
-        
+
         console.log(`🔄 Forced key rotation: ${currentIndex} → ${jobManager.apiManager.currentIndex}`);
-        
+
         res.json({
           success: true,
           message: 'Key rotation forced',
@@ -456,7 +460,7 @@ app.get('/api/system/key-health', requireAuth, (req, res) => {
     const keyHealth = jobManager.apiManager.apiKeys.map(key => {
       const timeSinceLastUsed = key.lastUsed ? Date.now() - key.lastUsed : null;
       const isHealthy = key.consecutiveErrors < 3 && key.successCount > key.errorCount;
-      
+
       return {
         id: key.id,
         status: key.status,
@@ -499,8 +503,8 @@ app.get('/api/system/key-health', requireAuth, (req, res) => {
       healthyKeys: keyHealth.filter(k => k.health.isHealthy).length,
       keyHealth,
       recommendations: {
-        overall: keyHealth.every(k => k.health.isHealthy) 
-          ? 'All keys are healthy' 
+        overall: keyHealth.every(k => k.health.isHealthy)
+          ? 'All keys are healthy'
           : 'Some keys need attention',
         actions: keyHealth.filter(k => !k.health.isHealthy).length > 0
           ? ['Check unhealthy keys', 'Consider key rotation', 'Monitor error rates']
@@ -520,7 +524,7 @@ app.get('/api/system/key-health', requireAuth, (req, res) => {
 app.post('/api/system/key-reset/:keyId', requireAuth, (req, res) => {
   try {
     const { keyId } = req.params;
-    
+
     if (!jobManager.apiManager || !jobManager.apiManager.apiKeys) {
       return res.status(400).json({
         error: 'No API manager or keys available'
@@ -528,7 +532,7 @@ app.post('/api/system/key-reset/:keyId', requireAuth, (req, res) => {
     }
 
     const key = jobManager.apiManager.apiKeys.find(k => k.id === parseInt(keyId));
-    
+
     if (!key) {
       return res.status(404).json({
         error: `Key ${keyId} not found`
@@ -579,20 +583,20 @@ app.post('/api/system/key-reset/:keyId', requireAuth, (req, res) => {
 app.post('/api/system/queue-config', requireAuth, (req, res) => {
   try {
     const { maxConcurrency, delayBetweenRequests } = req.body;
-    
+
     // Validate input
     if (!maxConcurrency || !delayBetweenRequests) {
       return res.status(400).json({
         error: 'Missing required fields: maxConcurrency, delayBetweenRequests'
       });
     }
-    
+
     if (maxConcurrency < 1 || maxConcurrency > 5) {
       return res.status(400).json({
         error: 'maxConcurrency must be between 1 and 5'
       });
     }
-    
+
     if (delayBetweenRequests < 100 || delayBetweenRequests > 10000) {
       return res.status(400).json({
         error: 'delayBetweenRequests must be between 100 and 10000 ms'
@@ -601,18 +605,18 @@ app.post('/api/system/queue-config', requireAuth, (req, res) => {
 
     // Update queue configuration
     const stats = jobManager.getStats();
-    
+
     // Get current API manager and update its queue config
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
       jobManager.apiManager.requestQueue.maxConcurrency = maxConcurrency;
       jobManager.apiManager.requestQueue.delayBetweenRequests = delayBetweenRequests;
-      
+
       console.log(`🔧 Queue config updated:`, {
         maxConcurrency,
         delayBetweenRequests,
         apiMode: stats.api.mode
       });
-      
+
       res.json({
         success: true,
         message: 'Queue configuration updated',
@@ -641,7 +645,7 @@ app.post('/api/system/queue-config', requireAuth, (req, res) => {
 app.get('/api/system/stats', requireAuth, (req, res) => {
   try {
     const stats = jobManager.getStats();
-    
+
     // Add detailed queue information
     let enhancedQueueStats = null;
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
@@ -649,15 +653,15 @@ app.get('/api/system/stats', requireAuth, (req, res) => {
       enhancedQueueStats = {
         ...queueStats,
         // Add performance metrics
-        utilizationRate: queueStats.maxConcurrency > 0 
-          ? Math.round((queueStats.activeRequests / queueStats.maxConcurrency) * 100) 
+        utilizationRate: queueStats.maxConcurrency > 0
+          ? Math.round((queueStats.activeRequests / queueStats.maxConcurrency) * 100)
           : 0,
         isIdle: queueStats.activeRequests === 0 && queueStats.queueLength === 0,
         isConcurrent: queueStats.activeRequests > 1,
         isBacklogged: queueStats.queueLength > 5
       };
     }
-    
+
     res.json({
       success: true,
       ...stats,
@@ -687,9 +691,9 @@ app.post('/api/system/queue-process', requireAuth, (req, res) => {
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
       // Force process queue
       jobManager.apiManager.requestQueue.processQueue();
-      
+
       const queueStats = jobManager.apiManager.requestQueue.getStats();
-      
+
       res.json({
         success: true,
         message: 'Queue processing triggered',
@@ -726,7 +730,7 @@ app.get('/api/system/queue-debug', requireAuth, (req, res) => {
         updatedAt: job.updatedAt
       }))
     };
-    
+
     if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
       const queue = jobManager.apiManager.requestQueue;
       debugInfo.queueDetails = {
@@ -740,7 +744,7 @@ app.get('/api/system/queue-debug', requireAuth, (req, res) => {
         }))
       };
     }
-    
+
     res.json({
       success: true,
       debug: debugInfo
@@ -769,18 +773,18 @@ app.get('/api/system/queue-stream', requireAuth, (req, res) => {
     try {
       const stats = jobManager.getStats();
       let queueStats = null;
-      
+
       if (jobManager.apiManager && jobManager.apiManager.requestQueue) {
         queueStats = jobManager.apiManager.requestQueue.getStats();
       }
-      
+
       const data = {
         timestamp: Date.now(),
         queue: queueStats,
         jobs: stats.jobs,
         api: stats.api
       };
-      
+
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     } catch (error) {
       res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
@@ -900,7 +904,7 @@ app.get('/api/image-generation/results/:jobId', requireAuth, (req, res) => {
 app.get('/api/system/stats', requireAuth, (req, res) => {
   try {
     const stats = jobManager.getStats();
-    
+
     res.json({
       success: true,
       ...stats,
@@ -1149,7 +1153,7 @@ app.get('/api/health', (req, res) => {
   try {
     const systemStats = jobManager.getStats();
     const instructionsStats = instructionsManager.getStats();
-    
+
     res.json({
       status: 'OK',
       timestamp: new Date().toISOString(),
@@ -1178,9 +1182,9 @@ app.get('/api/health', (req, res) => {
 app.get('/api/instructions/projects', requireAuth, (req, res) => {
   try {
     const projects = instructionsManager.getAllProjects();
-    
+
     console.log(`📊 Retrieved ${projects.length} instruction projects`);
-    
+
     res.json({
       success: true,
       projects: projects,
@@ -1201,9 +1205,9 @@ app.get('/api/instructions/projects/category/:category', requireAuth, (req, res)
   try {
     const { category } = req.params;
     const projects = instructionsManager.getProjectsByCategory(category);
-    
+
     console.log(`📊 Retrieved ${projects.length} projects for category: ${category}`);
-    
+
     res.json({
       success: true,
       projects: projects,
@@ -1266,7 +1270,7 @@ app.post('/api/instructions/projects', requireAuth, (req, res) => {
       'google_prompt': 'google-ads',
       'facebook_prompt': 'facebook-ads'
     };
-    
+
     const normalizedCategory = categoryMap[category] || category;
 
     if (!validCategories.includes(category) && !validCategories.includes(normalizedCategory)) {
@@ -1315,7 +1319,7 @@ app.post('/api/instructions/projects', requireAuth, (req, res) => {
 
     if (result.success) {
       console.log(`✅ Project ${result.isUpdate ? 'updated' : 'created'}: ${result.filename}`);
-      
+
       res.json({
         success: true,
         message: result.message,
@@ -1339,7 +1343,7 @@ app.post('/api/instructions/projects', requireAuth, (req, res) => {
           conflictingProject: result.conflictingProject,
           suggestions: [
             'Change the category (Google Ads ↔ Facebook Ads)',
-            'Change the instruction type (User Prompt ↔ System Prompt)', 
+            'Change the instruction type (User Prompt ↔ System Prompt)',
             'Change the target model (Universal ↔ DeepSeek)',
             'Add or modify the subcategory'
           ]
@@ -1366,7 +1370,7 @@ app.get('/api/instructions/projects/:filename', requireAuth, (req, res) => {
   try {
     const { filename } = req.params;
     const project = instructionsManager.getProject(filename);
-    
+
     if (project) {
       res.json({
         success: true,
@@ -1408,7 +1412,7 @@ app.patch('/api/instructions/projects/:filename/status', requireAuth, (req, res)
 
     if (result.success) {
       console.log(`✅ Project status updated: ${filename} → ${status}`);
-      
+
       res.json({
         success: true,
         message: 'Project status updated successfully',
@@ -1450,7 +1454,7 @@ app.delete('/api/instructions/projects/:filename', requireAuth, (req, res) => {
 
     if (result.success) {
       console.log(`✅ Project deleted successfully: ${filename}`);
-      
+
       res.json({
         success: true,
         message: 'Project deleted successfully',
@@ -1502,9 +1506,9 @@ app.get('/api/instructions/content/:filename', requireAuth, async (req, res) => 
 app.get('/api/instructions/stats', requireAuth, (req, res) => {
   try {
     const stats = instructionsManager.getStats();
-    
+
     console.log('📊 Instructions stats requested:', stats);
-    
+
     res.json({
       success: true,
       stats: stats,
@@ -1513,7 +1517,7 @@ app.get('/api/instructions/stats', requireAuth, (req, res) => {
   } catch (error) {
     console.error('Failed to get instructions stats:', error);
     res.status(500).json({
-      error: 'Failed to get instructions stats', 
+      error: 'Failed to get instructions stats',
       message: error.message
     });
   }
@@ -1569,10 +1573,10 @@ app.post('/api/instructions/preview-filename', requireAuth, (req, res) => {
 app.post('/api/instructions/backup', requireAuth, (req, res) => {
   try {
     const result = instructionsManager.backupRegistry();
-    
+
     if (result.success) {
       console.log(`📦 Registry backed up: ${result.backupPath}`);
-      
+
       res.json({
         success: true,
         message: 'Registry backed up successfully',
@@ -1597,10 +1601,10 @@ app.post('/api/instructions/backup', requireAuth, (req, res) => {
 app.post('/api/instructions/reload', requireAuth, (req, res) => {
   try {
     console.log('🔄 Reloading instructions registry...');
-    
+
     const registry = instructionsManager.reloadRegistry();
     const projectCount = Object.keys(registry).length;
-    
+
     res.json({
       success: true,
       message: 'Registry reloaded successfully',
@@ -1615,6 +1619,661 @@ app.post('/api/instructions/reload', requireAuth, (req, res) => {
   }
 });
 
+const loadSubcategories = () => {
+  try {
+    if (!fs.existsSync(subcategoriesFilePath)) {
+      // Create default subcategories file
+      const defaultSubcategories = [
+        // Google Ads subcategories
+        {
+          id: "1",
+          value: "shopping-image-generator",
+          label: "Shopping Image Generator",
+          category: "google-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "2",
+          value: "search-visual-generator",
+          label: "Search Visual Generator",
+          category: "google-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "3",
+          value: "display-banner-generator",
+          label: "Display Banner Generator",
+          category: "google-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "4",
+          value: "retargeting-image-generator",
+          label: "Retargeting Image Generator",
+          category: "google-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "5",
+          value: "youtube-thumbnail-generator",
+          label: "YouTube Thumbnail Generator",
+          category: "google-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        // Facebook Ads subcategories
+        {
+          id: "6",
+          value: "carousel-image-generator",
+          label: "Carousel Image Generator",
+          category: "facebook-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "7",
+          value: "story-template-generator",
+          label: "Story Template Generator",
+          category: "facebook-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "8",
+          value: "video-thumbnail-generator",
+          label: "Video Thumbnail Generator",
+          category: "facebook-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "9",
+          value: "lead-form-visual-generator",
+          label: "Lead Form Visual Generator",
+          category: "facebook-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "10",
+          value: "collection-ad-generator",
+          label: "Collection Ad Generator",
+          category: "facebook-ads",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+      ];
+
+      fs.writeFileSync(subcategoriesFilePath, JSON.stringify(defaultSubcategories, null, 2));
+      console.log('📁 Created default subcategories file');
+      return defaultSubcategories;
+    }
+
+    const data = fs.readFileSync(subcategoriesFilePath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error loading subcategories:', error);
+    return [];
+  }
+};
+
+// ✅ Helper function to save subcategories
+const saveSubcategories = (subcategories) => {
+  try {
+    fs.writeFileSync(subcategoriesFilePath, JSON.stringify(subcategories, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Error saving subcategories:', error);
+    return false;
+  }
+};
+
+// ✅ Generate unique ID for subcategories
+const generateSubcategoryId = (subcategories) => {
+  const maxId = subcategories.reduce((max, sub) => {
+    const numId = parseInt(sub.id);
+    return numId > max ? numId : max;
+  }, 0);
+  return (maxId + 1).toString();
+};
+
+// ✅ GET /api/subcategories - Get all subcategories
+app.get('/api/subcategories', requireAuth, (req, res) => {
+  try {
+    const subcategories = loadSubcategories();
+
+    console.log(`📊 Retrieved ${subcategories.length} subcategories`);
+
+    res.json({
+      success: true,
+      subcategories: subcategories,
+      total: subcategories.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Failed to get subcategories:', error);
+    res.status(500).json({
+      error: 'Failed to get subcategories',
+      message: error.message
+    });
+  }
+});
+
+// ✅ GET /api/subcategories/category/:category - Get subcategories by category
+app.get('/api/subcategories/category/:category', requireAuth, (req, res) => {
+  try {
+    const { category } = req.params;
+    const { status } = req.query; // Optional filter by status
+
+    const allSubcategories = loadSubcategories();
+    let filtered = allSubcategories.filter(sub => sub.category === category);
+
+    // Filter by status if provided
+    if (status) {
+      filtered = filtered.filter(sub => sub.status === status);
+    }
+
+    console.log(`📊 Retrieved ${filtered.length} subcategories for category: ${category}`);
+
+    res.json({
+      success: true,
+      subcategories: filtered,
+      category: category,
+      total: filtered.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Failed to get subcategories by category:', error);
+    res.status(500).json({
+      error: 'Failed to get subcategories by category',
+      message: error.message
+    });
+  }
+});
+
+// ✅ POST /api/subcategories - Create or update subcategory
+app.post('/api/subcategories', requireAuth, (req, res) => {
+  try {
+    const {
+      id, // For updates
+      value,
+      label,
+      category,
+      status = 'active'
+    } = req.body;
+
+    console.log(`📝 ${id ? 'Updating' : 'Creating'} subcategory:`, {
+      id,
+      value,
+      label,
+      category,
+      status
+    });
+
+    // ✅ Validate required fields
+    if (!value || !label || !category) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['value', 'label', 'category'],
+        received: { value: !!value, label: !!label, category: !!category }
+      });
+    }
+
+    // ✅ Validate category
+    const validCategories = ['google-ads', 'facebook-ads'];
+    if (!validCategories.includes(category)) {
+      return res.status(400).json({
+        error: 'Invalid category',
+        validCategories: validCategories,
+        received: category
+      });
+    }
+
+    // ✅ Validate status
+    const validStatuses = ['active', 'inactive'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: 'Invalid status',
+        validStatuses: validStatuses,
+        received: status
+      });
+    }
+
+    // ✅ Validate value format (lowercase with hyphens)
+    const valuePattern = /^[a-z0-9-]+$/;
+    if (!valuePattern.test(value)) {
+      return res.status(400).json({
+        error: 'Invalid value format',
+        message: 'Value must contain only lowercase letters, numbers, and hyphens',
+        received: value
+      });
+    }
+
+    const subcategories = loadSubcategories();
+
+    // ✅ Check for conflicts (duplicate value within same category)
+    const existingIndex = subcategories.findIndex(sub =>
+      sub.value === value &&
+      sub.category === category &&
+      sub.id !== id // Exclude current item for updates
+    );
+
+    if (existingIndex !== -1) {
+      return res.status(409).json({
+        error: 'Duplicate subcategory',
+        message: `A subcategory with value "${value}" already exists in ${category}`,
+        conflicting: subcategories[existingIndex]
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    if (id) {
+      // ✅ Update existing subcategory
+      const updateIndex = subcategories.findIndex(sub => sub.id === id);
+
+      if (updateIndex === -1) {
+        return res.status(404).json({
+          error: 'Subcategory not found',
+          id: id
+        });
+      }
+
+      subcategories[updateIndex] = {
+        ...subcategories[updateIndex],
+        value,
+        label,
+        category,
+        status,
+        lastModified: now
+      };
+
+      console.log(`✅ Updated subcategory: ${id}`);
+    } else {
+      // ✅ Create new subcategory
+      const newId = generateSubcategoryId(subcategories);
+
+      const newSubcategory = {
+        id: newId,
+        value,
+        label,
+        category,
+        status,
+        createdAt: now,
+        lastModified: now
+      };
+
+      subcategories.push(newSubcategory);
+      console.log(`✅ Created subcategory: ${newId}`);
+    }
+
+    // ✅ Save to file
+    if (saveSubcategories(subcategories)) {
+      res.json({
+        success: true,
+        message: id ? 'Subcategory updated successfully' : 'Subcategory created successfully',
+        subcategory: {
+          value,
+          label,
+          category,
+          status
+        }
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to save subcategory',
+        message: 'Could not write to subcategories file'
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to create/update subcategory:', error);
+    res.status(500).json({
+      error: 'Failed to create/update subcategory',
+      message: error.message
+    });
+  }
+});
+
+// ✅ GET /api/subcategories/:id - Get specific subcategory
+app.get('/api/subcategories/:id', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const subcategories = loadSubcategories();
+
+    const subcategory = subcategories.find(sub => sub.id === id);
+
+    if (subcategory) {
+      res.json({
+        success: true,
+        subcategory: subcategory
+      });
+    } else {
+      res.status(404).json({
+        error: 'Subcategory not found',
+        id: id
+      });
+    }
+  } catch (error) {
+    console.error('Failed to get subcategory:', error);
+    res.status(500).json({
+      error: 'Failed to get subcategory',
+      message: error.message
+    });
+  }
+});
+
+// ✅ PATCH /api/subcategories/:id/status - Update subcategory status
+app.patch('/api/subcategories/:id/status', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    console.log(`🔄 Updating subcategory status: ${id} → ${status}`);
+
+    const validStatuses = ['active', 'inactive'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: 'Invalid status',
+        validStatuses: validStatuses,
+        received: status
+      });
+    }
+
+    const subcategories = loadSubcategories();
+    const updateIndex = subcategories.findIndex(sub => sub.id === id);
+
+    if (updateIndex === -1) {
+      return res.status(404).json({
+        error: 'Subcategory not found',
+        id: id
+      });
+    }
+
+    subcategories[updateIndex].status = status;
+    subcategories[updateIndex].lastModified = new Date().toISOString();
+
+    if (saveSubcategories(subcategories)) {
+      console.log(`✅ Subcategory status updated: ${id} → ${status}`);
+
+      res.json({
+        success: true,
+        message: 'Subcategory status updated successfully',
+        id: id,
+        status: status
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to save subcategory status update'
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to update subcategory status:', error);
+    res.status(500).json({
+      error: 'Failed to update subcategory status',
+      message: error.message
+    });
+  }
+});
+
+// ✅ DELETE /api/subcategories/:id - Delete subcategory
+app.delete('/api/subcategories/:id', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🗑️ Deleting subcategory: ${id}`);
+
+    const subcategories = loadSubcategories();
+    const deleteIndex = subcategories.findIndex(sub => sub.id === id);
+
+    if (deleteIndex === -1) {
+      return res.status(404).json({
+        error: 'Subcategory not found',
+        id: id
+      });
+    }
+
+    // ✅ Check if subcategory is being used by any projects
+    const projects = instructionsManager.getAllProjects();
+    const usedByProjects = projects.filter(project => project.subcategory === subcategories[deleteIndex].value);
+
+    if (usedByProjects.length > 0) {
+      return res.status(409).json({
+        error: 'Cannot delete subcategory',
+        message: `This subcategory is being used by ${usedByProjects.length} project(s)`,
+        usedByProjects: usedByProjects.map(p => ({
+          filename: p.filename,
+          project: p.project
+        }))
+      });
+    }
+
+    // Remove from array
+    const deletedSubcategory = subcategories.splice(deleteIndex, 1)[0];
+
+    if (saveSubcategories(subcategories)) {
+      console.log(`✅ Subcategory deleted successfully: ${id}`);
+
+      res.json({
+        success: true,
+        message: 'Subcategory deleted successfully',
+        deletedSubcategory: deletedSubcategory
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to save after subcategory deletion'
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to delete subcategory:', error);
+    res.status(500).json({
+      error: 'Failed to delete subcategory',
+      message: error.message
+    });
+  }
+});
+
+// ✅ GET /api/subcategories/stats - Get subcategories statistics
+app.get('/api/subcategories/stats', requireAuth, (req, res) => {
+  try {
+    const subcategories = loadSubcategories();
+
+    const stats = {
+      total: subcategories.length,
+      active: subcategories.filter(sub => sub.status === 'active').length,
+      inactive: subcategories.filter(sub => sub.status === 'inactive').length,
+      byCategory: subcategories.reduce((acc, sub) => {
+        acc[sub.category] = (acc[sub.category] || 0) + 1;
+        return acc;
+      }, {}),
+      byStatus: subcategories.reduce((acc, sub) => {
+        acc[sub.status] = (acc[sub.status] || 0) + 1;
+        return acc;
+      }, {})
+    };
+
+    console.log('📊 Subcategories stats requested:', stats);
+
+    res.json({
+      success: true,
+      stats: stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Failed to get subcategories stats:', error);
+    res.status(500).json({
+      error: 'Failed to get subcategories stats',
+      message: error.message
+    });
+  }
+});
+
+// ✅ POST /api/subcategories/import - Import subcategories from JSON
+app.post('/api/subcategories/import', requireAuth, (req, res) => {
+  try {
+    const { subcategories: importData, overwrite = false } = req.body;
+
+    if (!Array.isArray(importData)) {
+      return res.status(400).json({
+        error: 'Invalid import data',
+        message: 'Expected an array of subcategories'
+      });
+    }
+
+    const existingSubcategories = loadSubcategories();
+    let imported = 0;
+    let skipped = 0;
+    let errors = [];
+
+    const validCategories = ['google-ads', 'facebook-ads'];
+    const validStatuses = ['active', 'inactive'];
+
+    for (const item of importData) {
+      // Validate required fields
+      if (!item.value || !item.label || !item.category) {
+        errors.push(`Skipped item: missing required fields (value, label, category)`);
+        skipped++;
+        continue;
+      }
+
+      // Validate category and status
+      if (!validCategories.includes(item.category)) {
+        errors.push(`Skipped "${item.value}": invalid category "${item.category}"`);
+        skipped++;
+        continue;
+      }
+
+      if (item.status && !validStatuses.includes(item.status)) {
+        errors.push(`Skipped "${item.value}": invalid status "${item.status}"`);
+        skipped++;
+        continue;
+      }
+
+      // Check for existing
+      const existingIndex = existingSubcategories.findIndex(sub =>
+        sub.value === item.value && sub.category === item.category
+      );
+
+      if (existingIndex !== -1 && !overwrite) {
+        errors.push(`Skipped "${item.value}": already exists in ${item.category}`);
+        skipped++;
+        continue;
+      }
+
+      const now = new Date().toISOString();
+
+      if (existingIndex !== -1 && overwrite) {
+        // Update existing
+        existingSubcategories[existingIndex] = {
+          ...existingSubcategories[existingIndex],
+          label: item.label,
+          status: item.status || 'active',
+          lastModified: now
+        };
+      } else {
+        // Add new
+        const newId = generateSubcategoryId(existingSubcategories);
+        existingSubcategories.push({
+          id: newId,
+          value: item.value,
+          label: item.label,
+          category: item.category,
+          status: item.status || 'active',
+          createdAt: now,
+          lastModified: now
+        });
+      }
+
+      imported++;
+    }
+
+    if (saveSubcategories(existingSubcategories)) {
+      res.json({
+        success: true,
+        message: `Import completed: ${imported} imported, ${skipped} skipped`,
+        summary: {
+          imported,
+          skipped,
+          total: importData.length
+        },
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to save imported subcategories'
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to import subcategories:', error);
+    res.status(500).json({
+      error: 'Failed to import subcategories',
+      message: error.message
+    });
+  }
+});
+
+// ✅ GET /api/subcategories/export - Export subcategories as JSON
+app.get('/api/subcategories/export', requireAuth, (req, res) => {
+  try {
+    const { category, status } = req.query;
+
+    let subcategories = loadSubcategories();
+
+    // Apply filters if provided
+    if (category) {
+      subcategories = subcategories.filter(sub => sub.category === category);
+    }
+
+    if (status) {
+      subcategories = subcategories.filter(sub => sub.status === status);
+    }
+
+    // Remove internal IDs for clean export
+    const exportData = subcategories.map(sub => ({
+      value: sub.value,
+      label: sub.label,
+      category: sub.category,
+      status: sub.status,
+      createdAt: sub.createdAt,
+      lastModified: sub.lastModified
+    }));
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="subcategories-export-${Date.now()}.json"`);
+
+    res.json({
+      exportedAt: new Date().toISOString(),
+      totalCount: exportData.length,
+      filters: { category, status },
+      subcategories: exportData
+    });
+
+  } catch (error) {
+    console.error('Failed to export subcategories:', error);
+    res.status(500).json({
+      error: 'Failed to export subcategories',
+      message: error.message
+    });
+  }
+});
+
 app.get('/*', (req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(frontendBuildPath, 'index.html'));
@@ -1624,14 +2283,14 @@ app.get('/*', (req, res) => {
 app.listen(port, () => {
   console.log(`🚀 Server running at http://localhost:${port}`);
   console.log(`🔄 Polling-based image generation system active`);
-  
+
   const initialJobStats = jobManager.getStats();
   const initialInstructionsStats = instructionsManager.getStats();
-  
+
   console.log(`🤖 API Mode: ${initialJobStats.api.mode}`);
   console.log(`🔑 Available Keys: ${initialJobStats.api.availableKeys}/${initialJobStats.api.totalKeys}`);
   console.log(`📚 Instructions Projects: ${initialInstructionsStats.total} (${initialInstructionsStats.active} active)`);
-  
+
   console.log(`📡 API Endpoints:`);
   console.log(`   Image Generation:`);
   console.log(`     POST /api/image-generation/submit`);
