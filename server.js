@@ -15,6 +15,7 @@ dotenv.config();
 
 // Now import and create JobManager AFTER env vars are loaded
 import { createJobManager } from './JobManager.js';
+import { getInstructionsManager, createInstructionsManager } from './InstructionsManager.js';
 
 console.log('🔍 Environment variables loaded:');
 console.log('OPENAI_API_KEY_1:', process.env.OPENAI_API_KEY_1 ? 'SET' : 'NOT SET');
@@ -23,6 +24,7 @@ console.log('CLAUDE_API_KEY:', process.env.CLAUDE_API_KEY ? 'SET' : 'NOT SET');
 
 // Create JobManager instance after environment variables are loaded
 const jobManager = createJobManager();
+const instructionsManager = createInstructionsManager();
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -237,7 +239,8 @@ app.post('/api/system/queue-config', requireAuth, (req, res) => {
 
 app.get('/api/system/stats', requireAuth, (req, res) => {
   try {
-    const stats = jobManager.getStats();
+    const jobStats = jobManager.getStats();
+    const instructionsStats = instructionsManager.getStats();
     
     // Add detailed queue information
     let enhancedQueueStats = null;
@@ -245,7 +248,6 @@ app.get('/api/system/stats', requireAuth, (req, res) => {
       const queueStats = jobManager.apiManager.requestQueue.getStats();
       enhancedQueueStats = {
         ...queueStats,
-        // Add performance metrics
         utilizationRate: queueStats.maxConcurrency > 0 
           ? Math.round((queueStats.activeRequests / queueStats.maxConcurrency) * 100) 
           : 0,
@@ -257,14 +259,14 @@ app.get('/api/system/stats', requireAuth, (req, res) => {
     
     res.json({
       success: true,
-      ...stats,
+      ...jobStats,
       api: {
-        ...stats.api,
+        ...jobStats.api,
         queue: enhancedQueueStats
       },
+      instructions: instructionsStats, // ✅ NEW: Instructions stats
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      // Add system performance indicators
       performance: {
         memoryUsage: process.memoryUsage(),
         cpuUsage: process.cpuUsage ? process.cpuUsage() : null
@@ -1144,19 +1146,473 @@ app.get('/api/proxy-image-direct', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  const systemStats = jobManager.getStats();
-  
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    auth_configured: !!authCredentials,
-    uptime: process.uptime(),
-    job_system: {
-      active_jobs: systemStats.jobs.processing + systemStats.jobs.pending,
-      api_mode: systemStats.api.mode,
-      available_keys: systemStats.api.availableKeys
+  try {
+    const systemStats = jobManager.getStats();
+    const instructionsStats = instructionsManager.getStats();
+    
+    res.json({
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      auth_configured: !!authCredentials,
+      uptime: process.uptime(),
+      job_system: {
+        active_jobs: systemStats.jobs.processing + systemStats.jobs.pending,
+        api_mode: systemStats.api.mode,
+        available_keys: systemStats.api.availableKeys
+      },
+      instructions_system: {
+        total_projects: instructionsStats.total,
+        active_projects: instructionsStats.active,
+        categories: Object.keys(instructionsStats.byCategory)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      message: error.message
+    });
+  }
+});
+
+
+app.get('/api/instructions/projects', requireAuth, (req, res) => {
+  try {
+    const projects = instructionsManager.getAllProjects();
+    
+    console.log(`📊 Retrieved ${projects.length} instruction projects`);
+    
+    res.json({
+      success: true,
+      projects: projects,
+      total: projects.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Failed to get instruction projects:', error);
+    res.status(500).json({
+      error: 'Failed to get instruction projects',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Get projects by category
+app.get('/api/instructions/projects/category/:category', requireAuth, (req, res) => {
+  try {
+    const { category } = req.params;
+    const projects = instructionsManager.getProjectsByCategory(category);
+    
+    console.log(`📊 Retrieved ${projects.length} projects for category: ${category}`);
+    
+    res.json({
+      success: true,
+      projects: projects,
+      category: category,
+      total: projects.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Failed to get projects by category:', error);
+    res.status(500).json({
+      error: 'Failed to get projects by category',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Create or update instruction project
+app.post('/api/instructions/projects', requireAuth, (req, res) => {
+  try {
+    const {
+      name,
+      instructions,
+      category,
+      subcategory = '',
+      targetModel = 'universal',
+      instructionType = 'user',
+      status = 'active',
+      originalFilename = null, // ✅ NEW: For edit mode
+      allowOverwrite = false   // ✅ NEW: Force overwrite flag
+    } = req.body;
+
+    console.log('📝 Creating/updating instruction project:', {
+      name,
+      category,
+      subcategory,
+      targetModel,
+      instructionType,
+      status,
+      originalFilename,
+      allowOverwrite
+    });
+
+    // ✅ Validate required fields
+    if (!name || !instructions || !category) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['name', 'instructions', 'category'],
+        received: { name: !!name, instructions: !!instructions, category: !!category }
+      });
     }
-  });
+
+    // ✅ Validate enums
+    const validCategories = ['google-ads', 'facebook-ads', 'google_prompt', 'facebook_prompt'];
+    const validModels = ['universal', 'deepseek'];
+    const validInstructionTypes = ['user', 'system'];
+    const validStatuses = ['active', 'inactive', 'paused'];
+
+    // Convert category format if needed
+    const categoryMap = {
+      'google_prompt': 'google-ads',
+      'facebook_prompt': 'facebook-ads'
+    };
+    
+    const normalizedCategory = categoryMap[category] || category;
+
+    if (!validCategories.includes(category) && !validCategories.includes(normalizedCategory)) {
+      return res.status(400).json({
+        error: 'Invalid category',
+        validCategories: ['google-ads', 'facebook-ads', 'google_prompt', 'facebook_prompt'],
+        received: category
+      });
+    }
+
+    if (!validModels.includes(targetModel)) {
+      return res.status(400).json({
+        error: 'Invalid target model',
+        validModels: validModels,
+        received: targetModel
+      });
+    }
+
+    if (!validInstructionTypes.includes(instructionType)) {
+      return res.status(400).json({
+        error: 'Invalid instruction type',
+        validTypes: validInstructionTypes,
+        received: instructionType
+      });
+    }
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: 'Invalid status',
+        validStatuses: validStatuses,
+        received: status
+      });
+    }
+
+    // ✅ Create/update project
+    const result = instructionsManager.createOrUpdateProject({
+      name,
+      instructions,
+      category: normalizedCategory,
+      subcategory: subcategory || '',
+      targetModel,
+      instructionType,
+      status,
+      originalFilename // ✅ Pass for edit mode detection
+    }, allowOverwrite);
+
+    if (result.success) {
+      console.log(`✅ Project ${result.isUpdate ? 'updated' : 'created'}: ${result.filename}`);
+      
+      res.json({
+        success: true,
+        message: result.message,
+        filename: result.filename,
+        isUpdate: result.isUpdate,
+        project: {
+          name,
+          category: normalizedCategory,
+          subcategory,
+          targetModel,
+          instructionType,
+          status
+        }
+      });
+    } else {
+      // ✅ NEW: Handle conflicts with detailed error info
+      if (result.conflictingProject) {
+        res.status(409).json({ // 409 Conflict
+          error: result.error,
+          type: 'CONFIGURATION_CONFLICT',
+          conflictingProject: result.conflictingProject,
+          suggestions: [
+            'Change the category (Google Ads ↔ Facebook Ads)',
+            'Change the instruction type (User Prompt ↔ System Prompt)', 
+            'Change the target model (Universal ↔ DeepSeek)',
+            'Add or modify the subcategory'
+          ]
+        });
+      } else {
+        res.status(500).json({
+          error: 'Failed to create/update project',
+          message: result.error
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error('Failed to create/update instruction project:', error);
+    res.status(500).json({
+      error: 'Failed to create/update instruction project',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Get specific project by filename
+app.get('/api/instructions/projects/:filename', requireAuth, (req, res) => {
+  try {
+    const { filename } = req.params;
+    const project = instructionsManager.getProject(filename);
+    
+    if (project) {
+      res.json({
+        success: true,
+        project: project
+      });
+    } else {
+      res.status(404).json({
+        error: 'Project not found',
+        filename: filename
+      });
+    }
+  } catch (error) {
+    console.error('Failed to get project:', error);
+    res.status(500).json({
+      error: 'Failed to get project',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Update project status
+app.patch('/api/instructions/projects/:filename/status', requireAuth, (req, res) => {
+  try {
+    const { filename } = req.params;
+    const { status } = req.body;
+
+    console.log(`🔄 Updating project status: ${filename} → ${status}`);
+
+    const validStatuses = ['active', 'inactive', 'paused'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: 'Invalid status',
+        validStatuses: validStatuses,
+        received: status
+      });
+    }
+
+    const result = instructionsManager.updateProjectStatus(filename, status);
+
+    if (result.success) {
+      console.log(`✅ Project status updated: ${filename} → ${status}`);
+      
+      res.json({
+        success: true,
+        message: 'Project status updated successfully',
+        filename: filename,
+        status: status
+      });
+    } else {
+      res.status(404).json({
+        error: 'Project not found',
+        filename: filename
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to update project status:', error);
+    res.status(500).json({
+      error: 'Failed to update project status',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Delete instruction project
+app.delete('/api/instructions/projects/:filename', requireAuth, (req, res) => {
+  try {
+    const { filename } = req.params;
+
+    console.log(`🗑️ Deleting instruction project: ${filename}`);
+
+    // Check if project exists first
+    if (!instructionsManager.projectExists(filename)) {
+      return res.status(404).json({
+        error: 'Project not found',
+        filename: filename
+      });
+    }
+
+    const result = instructionsManager.deleteProject(filename);
+
+    if (result.success) {
+      console.log(`✅ Project deleted successfully: ${filename}`);
+      
+      res.json({
+        success: true,
+        message: 'Project deleted successfully',
+        filename: filename
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to delete project',
+        message: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to delete instruction project:', error);
+    res.status(500).json({
+      error: 'Failed to delete instruction project',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Get instruction content
+app.get('/api/instructions/content/:filename', requireAuth, async (req, res) => {
+  try {
+    const { filename } = req.params;
+
+    console.log(`📖 Getting instruction content: ${filename}`);
+
+    const content = await instructionsManager.loadInstructionContent(filename);
+
+    res.json({
+      success: true,
+      filename: filename,
+      content: content,
+      length: content.length,
+      preview: content.substring(0, 200) + (content.length > 200 ? '...' : '')
+    });
+
+  } catch (error) {
+    console.error('Failed to get instruction content:', error);
+    res.status(500).json({
+      error: 'Failed to get instruction content',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Get instructions statistics
+app.get('/api/instructions/stats', requireAuth, (req, res) => {
+  try {
+    const stats = instructionsManager.getStats();
+    
+    console.log('📊 Instructions stats requested:', stats);
+    
+    res.json({
+      success: true,
+      stats: stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Failed to get instructions stats:', error);
+    res.status(500).json({
+      error: 'Failed to get instructions stats', 
+      message: error.message
+    });
+  }
+});
+
+// ✅ Preview instruction filename
+app.post('/api/instructions/preview-filename', requireAuth, (req, res) => {
+  try {
+    const {
+      category,
+      subcategory = '',
+      instructionType = 'user',
+      targetModel = 'universal'
+    } = req.body;
+
+    if (!category) {
+      return res.status(400).json({
+        error: 'Category is required'
+      });
+    }
+
+    console.log('🔍 Previewing filename for:', { category, subcategory, instructionType, targetModel });
+
+    const filename = instructionsManager.generateFileName(
+      category,
+      subcategory,
+      instructionType,
+      targetModel
+    );
+
+    res.json({
+      success: true,
+      filename: filename,
+      parameters: {
+        category,
+        subcategory,
+        instructionType,
+        targetModel
+      },
+      exists: instructionsManager.projectExists(filename)
+    });
+
+  } catch (error) {
+    console.error('Failed to preview filename:', error);
+    res.status(500).json({
+      error: 'Failed to preview filename',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Backup registry
+app.post('/api/instructions/backup', requireAuth, (req, res) => {
+  try {
+    const result = instructionsManager.backupRegistry();
+    
+    if (result.success) {
+      console.log(`📦 Registry backed up: ${result.backupPath}`);
+      
+      res.json({
+        success: true,
+        message: 'Registry backed up successfully',
+        backupPath: result.backupPath
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to backup registry',
+        message: result.error
+      });
+    }
+  } catch (error) {
+    console.error('Failed to backup registry:', error);
+    res.status(500).json({
+      error: 'Failed to backup registry',
+      message: error.message
+    });
+  }
+});
+
+// ✅ Reload registry (for development)
+app.post('/api/instructions/reload', requireAuth, (req, res) => {
+  try {
+    console.log('🔄 Reloading instructions registry...');
+    
+    const registry = instructionsManager.reloadRegistry();
+    const projectCount = Object.keys(registry).length;
+    
+    res.json({
+      success: true,
+      message: 'Registry reloaded successfully',
+      projectCount: projectCount
+    });
+  } catch (error) {
+    console.error('Failed to reload registry:', error);
+    res.status(500).json({
+      error: 'Failed to reload registry',
+      message: error.message
+    });
+  }
 });
 
 app.get('/*', (req, res) => {
@@ -1169,14 +1625,24 @@ app.listen(port, () => {
   console.log(`🚀 Server running at http://localhost:${port}`);
   console.log(`🔄 Polling-based image generation system active`);
   
-  const initialStats = jobManager.getStats();
-  console.log(`🤖 API Mode: ${initialStats.api.mode}`);
-  console.log(`🔑 Available Keys: ${initialStats.api.availableKeys}/${initialStats.api.totalKeys}`);
+  const initialJobStats = jobManager.getStats();
+  const initialInstructionsStats = instructionsManager.getStats();
   
-  console.log(`📡 Polling Endpoints:`);
-  console.log(`   POST /api/image-generation/submit`);
-  console.log(`   GET  /api/image-generation/status/:jobId`);
-  console.log(`   POST /api/image-generation/cancel/:jobId`);
-  console.log(`   GET  /api/image-generation/results/:jobId`);
-  console.log(`   GET  /api/system/stats`);
+  console.log(`🤖 API Mode: ${initialJobStats.api.mode}`);
+  console.log(`🔑 Available Keys: ${initialJobStats.api.availableKeys}/${initialJobStats.api.totalKeys}`);
+  console.log(`📚 Instructions Projects: ${initialInstructionsStats.total} (${initialInstructionsStats.active} active)`);
+  
+  console.log(`📡 API Endpoints:`);
+  console.log(`   Image Generation:`);
+  console.log(`     POST /api/image-generation/submit`);
+  console.log(`     GET  /api/image-generation/status/:jobId`);
+  console.log(`     GET  /api/image-generation/results/:jobId`);
+  console.log(`   Instructions Management:`);
+  console.log(`     GET  /api/instructions/projects`);
+  console.log(`     POST /api/instructions/projects`);
+  console.log(`     DELETE /api/instructions/projects/:filename`);
+  console.log(`     GET  /api/instructions/stats`);
+  console.log(`   System:`);
+  console.log(`     GET  /api/system/stats`);
+  console.log(`     GET  /api/health`);
 });

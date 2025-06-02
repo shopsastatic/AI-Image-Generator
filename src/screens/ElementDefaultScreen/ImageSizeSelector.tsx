@@ -54,9 +54,9 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(true);
   const [isHDMode, setIsHDMode] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet');
-  const [parentCategory, setParentCategory] = useState('design');
-  const [childOption, setChildOption] = useState('modern');
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet");
+  const [parentCategory, setParentCategory] = useState("google_prompt");
+  const [childOption, setChildOption] = useState("shopping-image-generator");
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -71,28 +71,42 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   ];
 
   const categoryOptions: CategoryOption[] = [
-    { value: 'google_prompt', label: 'Google' },
-    { value: 'facebook_prompt', label: 'Facebook' },
+    { value: "google_prompt", label: "Google" },
+    { value: "facebook_prompt", label: "Facebook" },
   ];
 
   const modelOptions = [
     // { value: 'deepsearch', label: 'DeepSearch' },
-    { value: 'claude-sonnet', label: 'Claude Sonnet' }
+    { value: "claude-sonnet", label: "Claude Sonnet" },
   ];
 
   const childOptions: ChildOptions = {
     google_prompt: [
-      // { value: 'modern', label: 'Modern' },
-      // { value: 'classic', label: 'Classic' },
-      // { value: 'minimal', label: 'Minimal' },
-      // { value: 'artistic', label: 'Artistic' }
+      { value: "shopping-image-generator", label: "Shopping Image Generator" },
+      { value: "search-visual-generator", label: "Search Visual Generator" },
+      { value: "display-banner-generator", label: "Display Banner Generator" },
+      {
+        value: "retargeting-image-generator",
+        label: "Retargeting Image Generator",
+      },
+      {
+        value: "youtube-thumbnail-generator",
+        label: "YouTube Thumbnail Generator",
+      },
     ],
     facebook_prompt: [
-      // { value: 'tech', label: 'Technology' },
-      // { value: 'fashion', label: 'Fashion' },
-      // { value: 'food', label: 'Food & Beverage' },
-      // { value: 'real-estate', label: 'Real Estate' }
-    ]
+      { value: "carousel-image-generator", label: "Carousel Image Generator" },
+      { value: "story-template-generator", label: "Story Template Generator" },
+      {
+        value: "video-thumbnail-generator",
+        label: "Video Thumbnail Generator",
+      },
+      {
+        value: "lead-form-visual-generator",
+        label: "Lead Form Visual Generator",
+      },
+      { value: "collection-ad-generator", label: "Collection Ad Generator" },
+    ],
   };
 
   const generateRandomDistribution = (total: number) => {
@@ -164,7 +178,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   };
 
   const toggleHDMode = () => {
-    setIsHDMode(prev => {
+    setIsHDMode((prev) => {
       const newValue = !prev;
       if (onHDModeChange) {
         onHDModeChange(newValue);
@@ -214,9 +228,9 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         onCategoryChange(newCategory, availableOptions[0].value);
       }
     } else {
-      setChildOption('');
+      setChildOption("");
       if (onCategoryChange) {
-        onCategoryChange(newCategory, '');
+        onCategoryChange(newCategory, "");
       }
     }
   };
@@ -322,14 +336,13 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
             {isAutoMode
               ? `Auto • ${numberOfImages}`
               : `${getCurrentTotal()}/${numberOfImages}`}
-            {isHDMode ? ' • HD' : ''}
+            {isHDMode ? " • HD" : ""}
           </span>
         </button>
 
         {/* Enhanced Dropdown */}
         {isOpen && (
           <div className="absolute bottom-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-xl z-50 w-80 overflow-hidden mb-2">
-            
             {/* Enhanced Header Row: Model, Auto, HD, Images */}
             <div className="p-3 bg-gray-50 border-b border-gray-200 space-y-3">
               {/* Top Row: Model Selection */}
@@ -349,15 +362,15 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                     ))}
                   </select> */}
                 </div>
-                
+
                 {/* Mode Toggles */}
                 <div className="flex items-center space-x-1">
                   <button
                     onClick={toggleAutoMode}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      isAutoMode 
-                        ? 'bg-gray-200 text-gray-700' 
-                        : 'text-gray-700 hover:bg-gray-100'
+                      isAutoMode
+                        ? "bg-gray-200 text-gray-700"
+                        : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
                     <Shuffle className="w-3 h-3" />
@@ -367,9 +380,9 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                   <button
                     onClick={toggleHDMode}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      isHDMode 
-                        ? 'bg-gray-200 text-gray-700' 
-                        : 'text-gray-700 hover:bg-gray-100'
+                      isHDMode
+                        ? "bg-gray-200 text-gray-700"
+                        : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
                     <Zap className="w-3 h-3" />
@@ -381,29 +394,33 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               {/* Bottom Row: Images Control */}
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-600">Total Images</span>
-                
+
                 <div className="flex items-center space-x-3">
                   <div className="flex items-center space-x-2">
                     <div className="w-40 relative">
-                      <div 
+                      <div
                         ref={sliderRef}
                         className="h-1.5 bg-gray-200 rounded-full cursor-pointer"
                         onMouseDown={handleMouseDown}
                       >
-                        <div 
+                        <div
                           className="absolute top-0 left-0 h-1.5 rounded-full bg-gray-700"
                           style={{ width: `${sliderPercentage + 6}%` }}
                         />
-                        <div 
+                        <div
                           className="absolute top-1/2 transform w-3 h-3 bg-white border border-gray-700 rounded-full"
-                          style={{ 
+                          style={{
                             left: `calc(${sliderPercentage}%)`,
-                            transform: `translateY(-50%) ${isDragging ? 'scale(1.1)' : 'scale(1)'}`
+                            transform: `translateY(-50%) ${
+                              isDragging ? "scale(1.1)" : "scale(1)"
+                            }`,
                           }}
                         />
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-gray-700 min-w-[16px]">{numberOfImages}</span>
+                    <span className="text-xs font-bold text-gray-700 min-w-[16px]">
+                      {numberOfImages}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -426,14 +443,19 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               <select
                 value={childOption}
                 onChange={(e) => handleChildOptionChange(e.target.value)}
-                disabled={!childOptions[parentCategory] || childOptions[parentCategory].length === 0}
-                className={`flex-1 px-2 py-1.5 text-xs bg-white border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 ${
-                  !childOptions[parentCategory] || childOptions[parentCategory].length === 0 
-                    ? 'opacity-50 cursor-not-allowed bg-gray-50' 
-                    : ''
+                disabled={
+                  !childOptions[parentCategory] ||
+                  childOptions[parentCategory].length === 0
+                }
+                className={`flex-1 px-2 py-1.5 text-xs bg-white border max-w-[50%] border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 ${
+                  !childOptions[parentCategory] ||
+                  childOptions[parentCategory].length === 0
+                    ? "opacity-50 cursor-not-allowed bg-gray-50"
+                    : ""
                 }`}
               >
-                {!childOptions[parentCategory] || childOptions[parentCategory].length === 0 ? (
+                {!childOptions[parentCategory] ||
+                childOptions[parentCategory].length === 0 ? (
                   <option value="">No options</option>
                 ) : (
                   childOptions[parentCategory].map((option) => (
@@ -450,14 +472,18 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               {/* Status for manual mode */}
               {!isAutoMode && (
                 <div className="mb-3 text-center">
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    getCurrentTotal() === numberOfImages 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-orange-100 text-orange-700'
-                  }`}>
-                    {getCurrentTotal() === numberOfImages 
-                      ? '✓ Complete' 
-                      : `${numberOfImages - getCurrentTotal()} images remaining`}
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full ${
+                      getCurrentTotal() === numberOfImages
+                        ? "bg-green-100 text-green-700"
+                        : "bg-orange-100 text-orange-700"
+                    }`}
+                  >
+                    {getCurrentTotal() === numberOfImages
+                      ? "✓ Complete"
+                      : `${
+                          numberOfImages - getCurrentTotal()
+                        } images remaining`}
                   </span>
                 </div>
               )}
@@ -466,26 +492,28 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               <div className="space-y-2">
                 {formats.map((format) => {
                   const IconComponent = format.icon;
-                  const quantity = imageSizes[format.key as keyof typeof imageSizes];
-                  const canIncrease = !isAutoMode && getCurrentTotal() < numberOfImages;
+                  const quantity =
+                    imageSizes[format.key as keyof typeof imageSizes];
+                  const canIncrease =
+                    !isAutoMode && getCurrentTotal() < numberOfImages;
                   const canDecrease = !isAutoMode && quantity > 0;
-                  
+
                   return (
                     <div
                       key={format.key}
                       className={`flex items-center justify-between px-3 py-2 border rounded-lg transition-colors ${
-                        isAutoMode 
-                          ? 'bg-gray-50 border-gray-200' 
-                          : 'border-gray-200 hover:border-gray-300'
+                        isAutoMode
+                          ? "bg-gray-50 border-gray-200"
+                          : "border-gray-200 hover:border-gray-300"
                       }`}
                     >
                       <div className="flex items-center space-x-3">
                         <div className="w-6 h-6 rounded flex items-center justify-center border border-gray-300 bg-white">
                           <IconComponent className="w-3.5 h-3.5 text-gray-600" />
                         </div>
-                        <span 
+                        <span
                           className={`text-sm font-medium ${
-                            isAutoMode ? 'text-gray-400' : 'text-gray-700'
+                            isAutoMode ? "text-gray-400" : "text-gray-700"
                           }`}
                         >
                           {format.name}
@@ -497,19 +525,29 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                       ) : (
                         <div className="flex items-center space-x-2">
                           <button
-                            onClick={() => updateQuantity(format.key as keyof typeof imageSizes, -1)}
+                            onClick={() =>
+                              updateQuantity(
+                                format.key as keyof typeof imageSizes,
+                                -1
+                              )
+                            }
                             disabled={!canDecrease}
                             className="w-6 h-6 rounded border border-gray-400 flex items-center justify-center text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
-                          
+
                           <div className="w-6 text-center text-sm font-bold text-gray-700">
                             {quantity}
                           </div>
-                          
+
                           <button
-                            onClick={() => updateQuantity(format.key as keyof typeof imageSizes, 1)}
+                            onClick={() =>
+                              updateQuantity(
+                                format.key as keyof typeof imageSizes,
+                                1
+                              )
+                            }
                             disabled={!canIncrease}
                             className="w-6 h-6 rounded border border-gray-400 flex items-center justify-center text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
                           >

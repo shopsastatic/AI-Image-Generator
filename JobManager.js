@@ -1,7 +1,8 @@
-// Enhanced JobManager.js - Fixed Version with Queue Management
+// Enhanced JobManager.js - Complete Implementation with InstructionsManager
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
+import { getInstructionsManager } from './InstructionsManager.js';
 
 // 🔄 Request Queue Manager - Complete Implementation
 class RequestQueueManager {
@@ -35,7 +36,7 @@ class RequestQueueManager {
   }
 
   async processQueue() {
-    // ✅ FIX: Process multiple tasks concurrently up to maxConcurrency
+    // ✅ Process multiple tasks concurrently up to maxConcurrency
     while (this.activeRequests < this.maxConcurrency && this.queue.length > 0) {
       const task = this.queue.shift();
       if (!task) break;
@@ -52,12 +53,12 @@ class RequestQueueManager {
         return;
       }
 
-      // ✅ FIX: Process task concurrently (don't await here)
+      // Process task concurrently (don't await here)
       this.processTask(task);
     }
   }
 
-  // ✅ NEW: Separate method to process individual tasks
+  // Separate method to process individual tasks
   async processTask(task) {
     this.activeRequests++;
     this.lastRequestTime = Date.now();
@@ -74,7 +75,7 @@ class RequestQueueManager {
     } finally {
       this.activeRequests--;
       
-      // ✅ FIX: Continue processing queue immediately (not with delay)
+      // Continue processing queue immediately (not with delay)
       setImmediate(() => this.processQueue());
     }
   }
@@ -121,7 +122,7 @@ class RequestQueueManager {
   }
 }
 
-// APIConfigManager - Unchanged
+// APIConfigManager
 class APIConfigManager {
   constructor() {
     this.config = null;
@@ -155,7 +156,7 @@ class APIConfigManager {
 
   getImageConfig(isHDMode) {
     if (isHDMode) {
-      // ✅ FIX: Support multiple HD keys with rotation
+      // Support multiple HD keys with rotation
       const hdKeys = [
         process.env.OPENAI_API_SUB_KEY,
         process.env.OPENAI_API_SUB_KEY_2,
@@ -201,14 +202,14 @@ class APIConfigManager {
   }
 }
 
-// 🔄 FIXED: APIKeyRotationManager
+// APIKeyRotationManager
 class APIKeyRotationManager {
   constructor(config) {
     this.config = config;
     this.apiKeys = [];
     this.currentIndex = 0;
     
-    // ✅ FIX: Initialize requestQueue properly
+    // Initialize requestQueue properly
     const queueConfig = this.getQueueConfigForMode(config.mode);
     this.requestQueue = new RequestQueueManager(
       queueConfig.maxConcurrency, 
@@ -255,7 +256,7 @@ class APIKeyRotationManager {
   }
 
   initializeKeys() {
-    // ✅ FIX: Support multiple keys cho cả HD và Official mode
+    // Support multiple keys for both HD and Official mode
     this.apiKeys = this.config.keys.map((key, index) => ({
       id: index,
       key: key,
@@ -276,7 +277,7 @@ class APIKeyRotationManager {
   }
 
   async getAvailableKey() {
-    // ✅ FIX: Unified key rotation logic for both HD and Official modes
+    // Unified key rotation logic for both HD and Official modes
     
     // Special handling for single-key scenarios
     if (this.apiKeys.length === 1) {
@@ -299,7 +300,7 @@ class APIKeyRotationManager {
       return key;
     }
 
-    // ✅ Multi-key rotation logic (works for both modes)
+    // Multi-key rotation logic (works for both modes)
     let attempts = 0;
     const maxAttempts = this.apiKeys.length * 2;
 
@@ -339,7 +340,7 @@ class APIKeyRotationManager {
   isKeyAvailable(keyInfo) {
     const now = Date.now();
     
-    // ✅ Different thresholds for HD vs Official mode
+    // Different thresholds for HD vs Official mode
     const errorThreshold = this.config.mode === 'unofficial' ? 3 : 5;
     const errorBlockDuration = this.config.mode === 'unofficial' ? 300000 : 180000; // 5min vs 3min
     const rateLimitDuration = this.config.mode === 'unofficial' ? 900000 : 600000; // 15min vs 10min
@@ -402,7 +403,7 @@ class APIKeyRotationManager {
       
       if (status === 429) {
         keyInfo.status = 'rate_limited';
-        // ✅ HD mode gets longer rate limit timeout
+        // HD mode gets longer rate limit timeout
         const rateLimitDuration = this.config.mode === 'unofficial' ? 900000 : 600000; // 15min vs 10min
         keyInfo.rateLimitResetTime = Date.now() + rateLimitDuration;
         
@@ -412,7 +413,7 @@ class APIKeyRotationManager {
         console.log(`💥 ${this.config.mode} key ${keyInfo.id} server error (consecutive: ${keyInfo.consecutiveErrors})`);
       } else if (status === 401 || status === 403) {
         keyInfo.status = 'invalid';
-        // ✅ HD keys get longer invalid timeout due to potential account issues
+        // HD keys get longer invalid timeout due to potential account issues
         const invalidDuration = this.config.mode === 'unofficial' ? 7200000 : 3600000; // 2hr vs 1hr
         keyInfo.rateLimitResetTime = Date.now() + invalidDuration;
         
@@ -421,7 +422,7 @@ class APIKeyRotationManager {
         console.log(`❌ ${this.config.mode} key ${keyInfo.id} error ${status}: ${error?.message || 'Unknown'}`);
       }
       
-      // ✅ Log key health for monitoring
+      // Log key health for monitoring
       const successRate = keyInfo.requestCount > 0 ? Math.round((keyInfo.successCount / keyInfo.requestCount) * 100) : 0;
       console.log(`📊 ${this.config.mode} key ${keyInfo.id} health: ${successRate}% success, ${keyInfo.consecutiveErrors} consecutive errors`);
     }
@@ -447,7 +448,7 @@ class APIKeyRotationManager {
   }
 }
 
-// 🔄 ENHANCED: JobManager
+// 🔄 COMPLETE: JobManager with Dynamic Instructions
 export class JobManager {
   constructor() {
     const configManager = new APIConfigManager();
@@ -455,9 +456,15 @@ export class JobManager {
     this.apiManager = null;
     this.jobs = new Map();
     this.maxRetries = 3;
+    
+    // ✅ Initialize InstructionsManager
+    this.instructionsManager = getInstructionsManager();
+    console.log('🔧 JobManager initialized with InstructionsManager');
+    
     this.startCleanupInterval();
   }
 
+  // ✅ Create Job
   async createJob(sessionId, userPrompt, numberOfImages, imageSizesString, selectedQuality, selectedCategory, selectedModel = 'claude-sonnet', isHDMode = false) {
     const jobId = uuidv4();
 
@@ -497,11 +504,239 @@ export class JobManager {
     return jobId;
   }
 
+  // ✅ UPDATED: Load system instructions dynamically with subcategory support
+  async loadInstructions(category = 'google_prompt', selectedModel = 'claude-sonnet', subcategory = '') {
+    try {
+      // Determine target model for instructions
+      const targetModel = selectedModel === 'deepsearch' ? 'deepseek' : 'universal';
+      
+      console.log(`📚 Loading system instructions:`, {
+        category,
+        subcategory,
+        selectedModel,
+        targetModel,
+        instructionType: 'system'
+      });
+
+      // ✅ Use InstructionsManager with proper parameters
+      const instructions = await this.instructionsManager.getInstructionsForJob(
+        category,
+        subcategory, // ← Now properly passed
+        targetModel
+      );
+
+      console.log(`✅ System instructions loaded: ${instructions.length} characters`);
+      return instructions;
+
+    } catch (error) {
+      console.error(`❌ Failed to load system instructions for ${category}:`, error);
+      return "You are an AI assistant that helps generate image prompts.";
+    }
+  }
+
+  // ✅ UPDATED: Load deepseek user instructions dynamically with subcategory support
+  async loadDeepseekInstruction(category = 'google_prompt', subcategory = '') {
+    try {
+      console.log(`📚 Loading DeepSeek user instruction:`, {
+        category,
+        subcategory,
+        targetModel: 'deepseek',
+        instructionType: 'user'
+      });
+
+      // ✅ Use InstructionsManager with proper parameters for user instructions
+      const instructions = await this.instructionsManager.getInstructionsForJob(
+        category,
+        subcategory, // ← Now properly passed
+        'deepseek'
+      );
+
+      console.log(`✅ DeepSeek user instruction loaded: ${instructions.length} characters`);
+      return instructions;
+
+    } catch (error) {
+      console.error(`❌ Failed to load DeepSeek user instruction for ${category}:`, error);
+      return '';
+    }
+  }
+
+  // ✅ UPDATED: Call Claude API with dynamic system instructions
+  async callClaudeAPI(job) {
+    const maxRetries = this.maxRetries;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (job.status === 'cancelled') throw new Error('Job cancelled');
+
+      try {
+        job.progress.currentStep = `Claude Sonnet generating... (attempt ${attempt}/${maxRetries})`;
+
+        const claudePrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
+
+        // ✅ Extract subcategory from job
+        const subcategory = job.selectedCategory?.subcategory || '';
+        
+        console.log(`🎯 Claude API call with:`, {
+          category: job.selectedCategory.category,
+          subcategory: subcategory,
+          model: job.selectedModel
+        });
+
+        // ✅ Load system instructions dynamically with subcategory
+        const systemInstructions = await this.loadInstructions(
+          job.selectedCategory.category, 
+          job.selectedModel,
+          subcategory // ← Now properly passed
+        );
+
+        const response = await axios.post('https://api.anthropic.com/v1/messages', {
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          messages: [{ role: "user", content: claudePrompt }],
+          system: systemInstructions // ✅ Dynamic system instructions
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.CLAUDE_API_KEY,
+            'anthropic-version': '2023-06-01'
+          }
+        });
+
+        console.log(`✅ Claude API success with dynamic instructions (attempt ${attempt}):`, {
+          systemInstructionsPreview: systemInstructions.substring(0, 100) + '...',
+          responseLength: response.data.content?.[0]?.text?.length || 0
+        });
+
+        return response.data.content?.[0]?.text || "No response from Claude";
+
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ Claude API attempt ${attempt} failed:`, error.message);
+
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error('Claude API failed after retries');
+  }
+
+  // ✅ UPDATED: Call DeepSeek API with dynamic system & user instructions
+  async callDeepSeekAPI(job) {
+    const maxRetries = this.maxRetries;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (job.status === 'cancelled') throw new Error('Job cancelled');
+
+      try {
+        job.progress.currentStep = `DeepSeek generating... (attempt ${attempt}/${maxRetries})`;
+
+        // ✅ Extract subcategory from job
+        const subcategory = job.selectedCategory?.subcategory || '';
+        
+        console.log(`🎯 DeepSeek API call with:`, {
+          category: job.selectedCategory.category,
+          subcategory: subcategory,
+          model: job.selectedModel
+        });
+
+        // ✅ Load both system and user instructions dynamically with subcategory
+        const systemInstruction = await this.loadInstructions(
+          job.selectedCategory.category, 
+          job.selectedModel,
+          subcategory // ← Now properly passed
+        );
+        
+        const deepseekUserInstruction = await this.loadDeepseekInstruction(
+          job.selectedCategory.category,
+          subcategory // ← Now properly passed
+        );
+
+        // Build DeepSeek prompt
+        let deepseekPrompt;
+        if (deepseekUserInstruction && deepseekUserInstruction.trim()) {
+          deepseekPrompt = `${deepseekUserInstruction}\n\n---\n\nUSER REQUEST:\n${job.userPrompt}\n\nOutput: ${job.numberOfImages}\nImage sizes: ${job.imageSizesString}`;
+          console.log(`📝 DeepSeek prompt with dynamic user instruction: ${deepseekPrompt.length} characters`);
+        } else {
+          deepseekPrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
+          console.log(`📝 DeepSeek prompt without user instruction: ${deepseekPrompt.length} characters`);
+        }
+
+        const messages = [];
+
+        // Add system instruction if available
+        if (systemInstruction && systemInstruction.trim()) {
+          messages.push({
+            role: "system",
+            content: systemInstruction
+          });
+          console.log(`📋 Dynamic system instruction added: ${systemInstruction.length} characters`);
+        }
+
+        // Add user message
+        messages.push({
+          role: "user",
+          content: deepseekPrompt
+        });
+
+        const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
+          model: "deepseek-chat",
+          messages: messages,
+          max_tokens: 8000,
+          temperature: 0.7
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
+          }
+        });
+
+        const responseContent = response.data.choices?.[0]?.message?.content || "No response from DeepSeek";
+
+        console.log(`✅ DeepSeek API success with dynamic instructions (attempt ${attempt}):`, {
+          responseLength: responseContent.length,
+          hasSystemInstruction: !!systemInstruction,
+          hasUserInstruction: !!deepseekUserInstruction,
+          messagesCount: messages.length,
+          category: job.selectedCategory.category,
+          subcategory: subcategory
+        });
+
+        return responseContent;
+
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ DeepSeek API attempt ${attempt} failed:`, {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data
+        });
+
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`⏳ Retrying DeepSeek in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error('DeepSeek API failed after retries');
+  }
+
+  // ✅ Process job with proper subcategory handling
   async processJob(jobId) {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
-    console.log(`🎯 Processing job: ${jobId} with model: ${job.selectedModel}, HD: ${job.isHDMode}`);
+    console.log(`🎯 Processing job: ${jobId}`, {
+      model: job.selectedModel,
+      hdMode: job.isHDMode,
+      category: job.selectedCategory?.category,
+      subcategory: job.selectedCategory?.subcategory
+    });
 
     this.updateJobStatus(jobId, 'processing');
     job.progress.currentStep = 'Generating prompts...';
@@ -514,7 +749,7 @@ export class JobManager {
 
       const config = this.configManager.getConfigForRequest(job.isHDMode, job.selectedModel);
 
-      // Generate prompts
+      // Generate prompts with proper model routing
       if (config.promptMode === 'claude') {
         promptResponse = await this.callClaudeAPI(job);
       } else if (config.promptMode === 'deepseek') {
@@ -531,7 +766,7 @@ export class JobManager {
       job.progress.total = parsedResponse.prompts.length;
       job.progress.currentStep = 'Generating images...';
 
-      // ✅ FIX: Initialize apiManager with proper error checking
+      // Initialize apiManager with proper error checking
       try {
         this.apiManager = new APIKeyRotationManager(config.imageConfig);
         console.log(`🔧 API Manager initialized:`, {
@@ -567,7 +802,6 @@ export class JobManager {
           }
         }
 
-        // ✅ FIX: Add validation and better error handling
         const imagePromise = this.generateImageWithQueue(promptData, job, config.imageConfig, i);
         imagePromises.push(imagePromise);
       }
@@ -590,7 +824,7 @@ export class JobManager {
         job.updatedAt = Date.now();
       }
 
-      // ✅ Only save successful images
+      // Only save successful images
       job.results = results;
 
       if (results.length > 0) {
@@ -607,7 +841,7 @@ export class JobManager {
     }
   }
 
-  // ✅ FIX: Better error handling for queue
+  // ✅ Generate image with queue
   async generateImageWithQueue(promptData, job, imageConfig, index) {
     try {
       // Validate apiManager and requestQueue
@@ -630,7 +864,7 @@ export class JobManager {
     }
   }
 
-  // ✅ RENAMED: generateSingleImageWithRetry -> generateSingleImage (no retry here, queue handles it)
+  // ✅ Generate single image
   async generateSingleImage(promptData, job, imageConfig, index) {
     if (job.status === 'cancelled') throw new Error('Job cancelled');
 
@@ -699,159 +933,7 @@ export class JobManager {
     }
   }
 
-  // Keep all other methods unchanged...
-  async loadDeepseekInstruction(category = 'google_prompt') {
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-
-      const fileMapping = {
-        'google_prompt': 'user_prompt_deepseek_google.txt',
-        'facebook_prompt': 'user_prompt_deepseek_facebook.txt'
-      };
-
-      const filename = fileMapping[category];
-
-      if (!filename) {
-        console.warn(`⚠️ No Deepseek instruction file for category: ${category}`);
-        return '';
-      }
-
-      const instructionsPath = path.join(process.cwd(), 'static', 'instructions', filename);
-
-      console.log(`📄 Loading Deepseek instruction: ${filename}`);
-      const content = fs.readFileSync(instructionsPath, 'utf8');
-
-      console.log(`✅ Deepseek instruction loaded: ${content.length} characters`);
-      return content;
-
-    } catch (error) {
-      console.error(`❌ Failed to load Deepseek instruction for ${category}:`, error);
-      return '';
-    }
-  }
-
-  async callDeepSeekAPI(job) {
-    const maxRetries = this.maxRetries;
-    let lastError;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      if (job.status === 'cancelled') throw new Error('Job cancelled');
-
-      try {
-        job.progress.currentStep = `Deepseek generating... (attempt ${attempt}/${maxRetries})`;
-
-        const systemInstruction = await this.loadInstructions(job.selectedCategory.category);
-        const deepseekInstruction = await this.loadDeepseekInstruction(job.selectedCategory.category);
-
-        let deepseekPrompt;
-        if (deepseekInstruction && deepseekInstruction.trim()) {
-          deepseekPrompt = `${deepseekInstruction}\n\n---\n\nUSER REQUEST:\n${job.userPrompt}\n\nOutput: ${job.numberOfImages}\nImage sizes: ${job.imageSizesString}`;
-          console.log(`📝 Deepseek prompt with instruction: ${deepseekPrompt.length} characters`);
-        } else {
-          deepseekPrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
-          console.log(`📝 Deepseek prompt without instruction: ${deepseekPrompt.length} characters`);
-        }
-
-        const messages = [];
-
-        if (systemInstruction && systemInstruction.trim()) {
-          messages.push({
-            role: "system",
-            content: systemInstruction
-          });
-          console.log(`📋 System instruction added: ${systemInstruction.length} characters`);
-        }
-
-        messages.push({
-          role: "user",
-          content: deepseekPrompt
-        });
-
-        const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
-          model: "deepseek-chat",
-          messages: messages,
-          max_tokens: 8000,
-          temperature: 0.7
-        }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
-          }
-        });
-
-        const responseContent = response.data.choices?.[0]?.message?.content || "No response from Deepseek";
-
-        console.log(`✅ Deepseek API success (attempt ${attempt}):`, {
-          responseLength: responseContent.length,
-          hasSystemInstruction: !!systemInstruction,
-          hasDeepseekInstruction: !!deepseekInstruction,
-          messagesCount: messages.length,
-          category: job.selectedCategory.category
-        });
-
-        return responseContent;
-
-      } catch (error) {
-        lastError = error;
-        console.error(`❌ Deepseek API attempt ${attempt} failed:`, {
-          message: error.message,
-          status: error.response?.status,
-          data: error.response?.data
-        });
-
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.log(`⏳ Retrying Deepseek in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
-
-    throw lastError || new Error('Deepseek API failed after retries');
-  }
-
-  async callClaudeAPI(job) {
-    const maxRetries = this.maxRetries;
-    let lastError;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      if (job.status === 'cancelled') throw new Error('Job cancelled');
-
-      try {
-        job.progress.currentStep = `Claude Sonnet generating... (attempt ${attempt}/${maxRetries})`;
-
-        const claudePrompt = `${job.userPrompt}\n\nOutput: ${job.numberOfImages}\n\nImage sizes: ${job.imageSizesString}`;
-
-        const response = await axios.post('https://api.anthropic.com/v1/messages', {
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 8000,
-          messages: [{ role: "user", content: claudePrompt }],
-          system: await this.loadInstructions(job.selectedCategory.category)
-        }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': process.env.CLAUDE_API_KEY,
-            'anthropic-version': '2023-06-01'
-          }
-        });
-
-        return response.data.content?.[0]?.text || "No response from Claude";
-
-      } catch (error) {
-        lastError = error;
-        console.error(`Claude API attempt ${attempt} failed:`, error.message);
-
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
-
-    throw lastError || new Error('Claude API failed after retries');
-  }
-
+  // ✅ Generate image with PiAPI Chat Completions
   async generateImageWithPiapiChatCompletions(keyInfo, promptData, imageConfig) {
     const requestBody = {
       model: imageConfig.model,
@@ -891,6 +973,7 @@ export class JobManager {
     return response.data;
   }
 
+  // ✅ Extract image data from response
   extractImageDataFromResponse(response, mode) {
     if (!response) return null;
 
@@ -974,6 +1057,7 @@ export class JobManager {
     return null;
   }
 
+  // ✅ Convert image data to base64
   async convertImageDataToBase64(imageData) {
     if (!imageData) return null;
 
@@ -1029,26 +1113,28 @@ export class JobManager {
     return null;
   }
 
-  async loadInstructions(category = 'google_prompt') {
+  // ✅ Convert URL to base64
+  async convertUrlToBase64(imageUrl) {
     try {
-      const fs = await import('fs');
-      const path = await import('path');
+      const fetch = (await import('node-fetch')).default;
+      const response = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
 
-      const fileMapping = {
-        'google_prompt': 'instructions_google_prompt.txt',
-        'facebook_prompt': 'instructions_facebook_prompt.txt',
-        'default': 'instructions.txt'
-      };
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-      const filename = fileMapping[category] || fileMapping['google_prompt'];
-      const instructionsPath = path.join(process.cwd(), 'static', 'instructions', filename);
-
-      return fs.readFileSync(instructionsPath, 'utf8');
+      const buffer = await response.buffer();
+      const base64 = buffer.toString('base64');
+      return `data:image/png;base64,${base64}`;
     } catch (error) {
-      return "You are an AI assistant that helps generate image prompts.";
+      console.error('Failed to convert URL to base64:', error);
+      return null;
     }
   }
 
+  // ✅ Parse prompt response
   parsePromptResponse(response, category = 'google_prompt') {
     try {
       const jsonArrayMatch = response.match(/\[\s*\{[\s\S]*?\}\s*\]/);
@@ -1144,6 +1230,7 @@ export class JobManager {
     }
   }
 
+  // ✅ Get size mapping
   getSizeMapping(size) {
     const mapping = {
       'Square': '1024x1024',
@@ -1153,30 +1240,12 @@ export class JobManager {
     return mapping[size] || '1024x1024';
   }
 
-  async convertUrlToBase64(imageUrl) {
-    try {
-      const fetch = (await import('node-fetch')).default;
-      const response = await fetch(imageUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const buffer = await response.buffer();
-      const base64 = buffer.toString('base64');
-      return `data:image/png;base64,${base64}`;
-    } catch (error) {
-      console.error('Failed to convert URL to base64:', error);
-      return null;
-    }
-  }
-
+  // ✅ Get job
   getJob(jobId) {
     return this.jobs.get(jobId) || null;
   }
 
+  // ✅ Get job status
   getJobStatus(jobId) {
     const job = this.jobs.get(jobId);
     if (!job) return null;
@@ -1189,6 +1258,7 @@ export class JobManager {
     };
   }
 
+  // ✅ Cancel job
   cancelJob(jobId) {
     const job = this.jobs.get(jobId);
     if (!job || job.status === 'completed' || job.status === 'failed') {
@@ -1199,6 +1269,7 @@ export class JobManager {
     return true;
   }
 
+  // ✅ Update job status
   updateJobStatus(jobId, status, error = null) {
     const job = this.jobs.get(jobId);
     if (!job) return;
@@ -1211,6 +1282,7 @@ export class JobManager {
     }
   }
 
+  // ✅ Start cleanup interval
   startCleanupInterval() {
     this.cleanupInterval = setInterval(() => {
       const now = Date.now();
@@ -1224,6 +1296,12 @@ export class JobManager {
     }, 5 * 60 * 1000);
   }
 
+  // ✅ Get instructions manager stats
+  getInstructionsStats() {
+    return this.instructionsManager.getStats();
+  }
+
+  // ✅ Get stats
   getStats() {
     const jobs = Array.from(this.jobs.values());
 
@@ -1238,8 +1316,12 @@ export class JobManager {
       apiStats = this.apiManager.getStats();
     }
 
+    // Add instructions stats
+    const instructionsStats = this.getInstructionsStats();
+
     return {
       api: apiStats,
+      instructions: instructionsStats, // ✅ Instructions management stats
       jobs: {
         total: jobs.length,
         pending: jobs.filter(j => j.status === 'pending').length,
@@ -1256,19 +1338,26 @@ export class JobManager {
     };
   }
 
+  // ✅ Destroy
   destroy() {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
     }
     this.jobs.clear();
+    
+    // Clean up instructions manager if needed
+    if (this.instructionsManager) {
+      console.log('🧹 JobManager cleanup completed with InstructionsManager');
+    }
   }
 }
 
+// ✅ Singleton exports
 let jobManagerInstance = null;
 
 export const createJobManager = () => {
   if (!jobManagerInstance) {
-    console.log('🔧 Creating JobManager instance...');
+    console.log('🔧 Creating JobManager instance with InstructionsManager...');
     jobManagerInstance = new JobManager();
   }
   return jobManagerInstance;
