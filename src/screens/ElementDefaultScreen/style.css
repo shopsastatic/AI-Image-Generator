@@ -2826,6 +2826,10 @@ button {
   white-space: break-spaces;
 }
 
+.link-6 {
+  cursor: pointer;
+}
+
 /* .html-content br {
   display: none;
 } */

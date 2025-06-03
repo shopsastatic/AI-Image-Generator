@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from 'react-router-dom';
 import "./default.css";
 import "./style.css";
 import HistorySidebar from "./HistorySideBar";
@@ -25,6 +26,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(
     null
   );
+  const navigate = useNavigate();
 
   const [imageSizes, setImageSizes] = useState<{
     Square: number;
@@ -104,6 +106,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const handleCategoryChange = (category: string, subcategory: string) => {
     setSelectedCategory({ category, subcategory });
+  };
+
+  const handleNavigateToProjectManagement = () => {
+    navigate('/project-management');
   };
 
   // FIX: Add handlers for model and HD mode changes
@@ -2710,7 +2716,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         <div className="header-right">
           <div className="background-wrapper">
             <div className="header-right">
-              <div className="link-6">
+              <div className="link-6" onClick={handleNavigateToProjectManagement}>
                 <img className="SVG-9" alt="Svg" src="/img/svg-16.svg" />
               </div>
 

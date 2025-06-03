@@ -9,18 +9,71 @@ import ProjectManagement from "./screens/ElementDefaultScreen/ProjectManagement"
 import LoginScreen from "./screens/ElementDefaultScreen/LoginScreen";
 import { API_ENDPOINTS } from "./utils/apiConfig";
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+// ✅ NEW: User interface with role
+interface User {
+  email: string;
+  role: 'user' | 'admin';
+  loginTime: number;
+}
+
+// ✅ UPDATED: ProtectedRoute with role-based access
+const ProtectedRoute: React.FC<{ 
+  children: React.ReactNode; 
+  adminOnly?: boolean;
+  user?: User | null;
+}> = ({ children, adminOnly = false, user }) => {
+  
+  // ✅ NEW: Admin-only route protection
+  if (adminOnly && user?.role !== 'admin') {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        backgroundColor: '#f9f9f9',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+        <div style={{
+          backgroundColor: 'white',
+          padding: '40px',
+          borderRadius: '12px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          textAlign: 'center',
+          maxWidth: '400px'
+        }}>
+          <div style={{
+            fontSize: '48px',
+            marginBottom: '16px'
+          }}>🔐</div>
+          <h2 style={{
+            color: '#d73027',
+            marginBottom: '12px',
+            fontSize: '20px'
+          }}>Access Denied</h2>
+          <p style={{
+            color: '#666',
+            marginBottom: '24px',
+            lineHeight: '1.5'
+          }}>
+            You need admin privileges to access this page.
+            <br />
+            Please contact an administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return <div>{children}</div>;
 };
 
-const router = createBrowserRouter([
-  // ✅ IMPORTANT: Route cụ thể phải đặt TRƯỚC route catch-all
+// ✅ UPDATED: Router with role-based protection
+const createRouterWithUser = (user: User | null) => createBrowserRouter([
   {
     path: "/project-management",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute adminOnly={true} user={user}>
         <ProjectManagement />
       </ProtectedRoute>
     ),
@@ -28,7 +81,7 @@ const router = createBrowserRouter([
   {
     path: "/1920w-default",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute user={user}>
         <ElementDefaultScreen />
       </ProtectedRoute>
     ),
@@ -36,7 +89,7 @@ const router = createBrowserRouter([
   {
     path: "/390w-default",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute user={user}>
         <ElementDefault />
       </ProtectedRoute>
     ),
@@ -44,7 +97,7 @@ const router = createBrowserRouter([
   {
     path: "/1440w-default",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute user={user}>
         <ElementWDefault />
       </ProtectedRoute>
     ),
@@ -52,7 +105,7 @@ const router = createBrowserRouter([
   {
     path: "/1024w-default",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute user={user}>
         <ElementDefaultWrapper />
       </ProtectedRoute>
     ),
@@ -60,25 +113,23 @@ const router = createBrowserRouter([
   {
     path: "/768w-default",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute user={user}>
         <ElementWDefaultWrapper />
       </ProtectedRoute>
     ),
   },
-  // ✅ FIX: Thay đổi từ "/*" thành "/" và đặt cuối cùng
   {
     path: "/",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute user={user}>
         <ElementDefaultScreen />
       </ProtectedRoute>
     ),
   },
-  // ✅ OPTIONAL: Thêm 404 route nếu cần
   {
-    path: "*", // Catch-all cho 404
+    path: "*",
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute user={user}>
         <ElementDefaultScreen />
       </ProtectedRoute>
     ),
@@ -88,6 +139,7 @@ const router = createBrowserRouter([
 export const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<User | null>(null); // ✅ NEW: Store user info
 
   useEffect(() => {
     checkAuthStatus();
@@ -101,12 +153,17 @@ export const App = () => {
       });
 
       if (response.ok) {
+        const data = await response.json();
         setIsAuthenticated(true);
+        setUser(data.user); // ✅ NEW: Store user data with role
+        console.log('✅ Authenticated as:', data.user.email, '(' + data.user.role + ')');
       } else {
         setIsAuthenticated(false);
+        setUser(null);
       }
     } catch (error) {
       setIsAuthenticated(false);
+      setUser(null);
     } finally {
       setIsAuthLoading(false);
     }
@@ -114,6 +171,8 @@ export const App = () => {
 
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
+    // Re-check auth to get user role
+    checkAuthStatus();
   };
 
   if (isAuthLoading) {
@@ -170,6 +229,9 @@ export const App = () => {
   if (!isAuthenticated) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
+
+  // ✅ NEW: Create router with user role info
+  const router = createRouterWithUser(user);
 
   return <RouterProvider router={router} />;
 };

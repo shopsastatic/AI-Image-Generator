@@ -935,18 +935,43 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    const isEmailValid = email.toLowerCase().trim() === authCredentials.email.toLowerCase().trim();
-    const isPasswordValid = verifyPassword(password, authCredentials.hashedPassword, authCredentials.salt);
+    // ✅ CHECK: Determine user role based on email
+    let userRole = 'user';
+    let validCredentials = null;
 
-    if (!isEmailValid || !isPasswordValid) {
+    // Check admin credentials first
+    const adminEmail = process.env.LOGIN_ADMIN_EMAIL || 'adminai';
+    const adminPassword = process.env.LOGIN_ADMIN_PASSWORD || '66666666';
+    
+    if (email.toLowerCase().trim() === adminEmail.toLowerCase().trim()) {
+      if (password === adminPassword) {
+        userRole = 'admin';
+        validCredentials = { email: adminEmail };
+      }
+    }
+    
+    // If not admin, check regular user credentials
+    if (!validCredentials) {
+      const isEmailValid = email.toLowerCase().trim() === authCredentials.email.toLowerCase().trim();
+      const isPasswordValid = verifyPassword(password, authCredentials.hashedPassword, authCredentials.salt);
+      
+      if (isEmailValid && isPasswordValid) {
+        userRole = 'user';
+        validCredentials = authCredentials;
+      }
+    }
+
+    if (!validCredentials) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       return res.status(401).json({
         error: 'Invalid email or password'
       });
     }
 
+    // ✅ NEW: Include role in JWT payload
     const tokenPayload = {
-      email: authCredentials.email,
+      email: validCredentials.email,
+      role: userRole, // ← Add role here
       loginTime: Date.now(),
       userAgent: req.headers['user-agent'] || 'unknown'
     };
@@ -963,11 +988,14 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.cookie(AUTH_CONFIG.COOKIE_NAME, token, cookieOptions);
 
+    console.log(`✅ Login successful: ${validCredentials.email} (${userRole})`);
+
     res.json({
       success: true,
       message: 'Login successful',
       user: {
-        email: authCredentials.email,
+        email: validCredentials.email,
+        role: userRole, // ← Return role to frontend
         loginTime: tokenPayload.loginTime
       }
     });
@@ -1001,10 +1029,35 @@ app.get('/api/auth/verify', (req, res) => {
     success: true,
     user: {
       email: decoded.email,
+      role: decoded.role || 'user', // ← Return role (fallback to 'user')
       loginTime: decoded.loginTime
     }
   });
 });
+
+const requireAdmin = (req, res, next) => {
+  const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const decoded = verifyToken(token);
+  if (!decoded) {
+    res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  if (decoded.role !== 'admin') {
+    return res.status(403).json({ 
+      error: 'Admin access required',
+      message: 'You need admin privileges to access this resource'
+    });
+  }
+
+  req.user = decoded;
+  next();
+};
 
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
@@ -1179,7 +1232,7 @@ app.get('/api/health', (req, res) => {
 });
 
 
-app.get('/api/instructions/projects', requireAuth, (req, res) => {
+app.get('/api/instructions/projects', requireAdmin, (req, res) => {
   try {
     const projects = instructionsManager.getAllProjects();
 
@@ -1225,7 +1278,7 @@ app.get('/api/instructions/projects/category/:category', requireAuth, (req, res)
 });
 
 // ✅ Create or update instruction project
-app.post('/api/instructions/projects', requireAuth, (req, res) => {
+app.post('/api/instructions/projects', requireAdmin, (req, res) => {
   try {
     const {
       name,
@@ -1436,7 +1489,7 @@ app.patch('/api/instructions/projects/:filename/status', requireAuth, (req, res)
 });
 
 // ✅ Delete instruction project
-app.delete('/api/instructions/projects/:filename', requireAuth, (req, res) => {
+app.delete('/api/instructions/projects/:filename', requireAdmin, (req, res) => {
   try {
     const { filename } = req.params;
 
@@ -1806,7 +1859,7 @@ app.get('/api/subcategories/category/:category', requireAuth, (req, res) => {
 });
 
 // ✅ POST /api/subcategories - Create or update subcategory
-app.post('/api/subcategories', requireAuth, (req, res) => {
+app.post('/api/subcategories', requireAdmin, (req, res) => {
   try {
     const {
       id, // For updates
@@ -2032,7 +2085,7 @@ app.patch('/api/subcategories/:id/status', requireAuth, (req, res) => {
 });
 
 // ✅ DELETE /api/subcategories/:id - Delete subcategory
-app.delete('/api/subcategories/:id', requireAuth, (req, res) => {
+app.delete('/api/subcategories/:id', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
 
