@@ -131,8 +131,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     category: string,
     subcategoriesList?: SubcategoryOption[]
   ): SubcategoryOption[] => {
-    const list = subcategoriesList || subcategories;
-    // const list = [];
+    // const list = subcategoriesList || subcategories;
+    const list = [];
     return list.filter(
       (sub) =>
         sub.category === getCategoryKey(category) && sub.status === "active"
