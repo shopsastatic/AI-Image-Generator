@@ -213,7 +213,7 @@ const ProjectManagement: React.FC = () => {
   const parentCategories: CategoryOption[] = [
     {
       value: "google-ads",
-      label: "Google Ads",
+      label: "Google Ads", 
       icon: Target,
       color: "bg-blue-50 text-blue-700",
       description: "Search, Display & Shopping campaigns",
@@ -221,9 +221,16 @@ const ProjectManagement: React.FC = () => {
     {
       value: "facebook-ads",
       label: "Facebook Ads",
-      icon: Share2,
+      icon: Share2, 
       color: "bg-indigo-50 text-indigo-700",
       description: "Social media advertising campaigns",
+    },
+    {
+      value: "website-content", // ✅ NEW
+      label: "Website Content",
+      icon: Globe, // ✅ NEW 
+      color: "bg-emerald-50 text-emerald-700", // ✅ NEW
+      description: "Website and content marketing visuals", // ✅ NEW
     },
   ];
 
@@ -260,18 +267,18 @@ const ProjectManagement: React.FC = () => {
   const statusOptions = [
     {
       value: "active",
-      label: "Active",
+      label: "Active", 
       color: "bg-green-50 text-green-700 border-green-200",
     },
     {
       value: "inactive",
       label: "Inactive",
-      color: "bg-gray-50 text-gray-700 border-gray-200",
+      color: "bg-gray-50 text-gray-700 border-gray-200", 
     },
     {
-      value: "paused",
-      label: "Paused",
-      color: "bg-yellow-50 text-yellow-700 border-yellow-200",
+      value: "private",
+      label: "Private",
+      color: "bg-purple-50 text-purple-700 border-purple-200",
     },
   ];
 

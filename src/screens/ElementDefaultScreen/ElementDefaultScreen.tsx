@@ -23,6 +23,7 @@ interface LoadingSession {
 export const ElementDefaultScreen = (): JSX.Element => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<{email: string; role: string} | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(
     null
   );
@@ -273,6 +274,22 @@ export const ElementDefaultScreen = (): JSX.Element => {
       });
     }
   }, [numberOfImages]);
+
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const response = await fetch('/api/auth/verify');
+        const data = await response.json();
+        if (data.success) {
+          setCurrentUser(data.user);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user info:', error);
+      }
+    };
+    
+    fetchUserInfo();
+  }, []);
 
   useEffect(() => {
     fetch("/instructions.txt")
@@ -2620,6 +2637,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           onCategoryChange={handleCategoryChange}
                           onModelChange={handleModelChange}
                           onHDModeChange={handleHDModeChange}
+                          currentUser={currentUser}
                         />
 
                         {/* <div className="button-6" onClick={handleUploadClick}>

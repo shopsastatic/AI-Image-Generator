@@ -88,5 +88,50 @@
     "status": "active",
     "createdAt": "2025-06-02T08:11:20.527Z",
     "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "11",
+    "value": "hero-image-generator",
+    "label": "Hero Image Generator",
+    "category": "website-content",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "12",
+    "value": "advertorial-image-generator",
+    "label": "Advertorial Image Generator",
+    "category": "website-content",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "13",
+    "value": "blog-featured-generator",
+    "label": "Blog Featured Generator",
+    "category": "website-content",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "14",
+    "value": "product-showcase-generator",
+    "label": "Product Showcase Generator",
+    "category": "website-content",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
+  },
+  {
+    "id": "15",
+    "value": "email-header-generator",
+    "label": "Email Header Generator",
+    "category": "website-content",
+    "status": "active",
+    "createdAt": "2025-06-02T08:11:20.527Z",
+    "lastModified": "2025-06-02T08:11:20.527Z"
   }
 ]

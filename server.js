@@ -1313,15 +1313,16 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
     }
 
     // ✅ Validate enums
-    const validCategories = ['google-ads', 'facebook-ads', 'google_prompt', 'facebook_prompt'];
+    const validCategories = ['google-ads', 'facebook-ads', 'website-content', 'google_prompt', 'facebook_prompt', 'website_prompt'];
     const validModels = ['universal', 'deepseek'];
     const validInstructionTypes = ['user', 'system'];
-    const validStatuses = ['active', 'inactive', 'paused'];
+    const validStatuses = ['active', 'inactive', 'private'];
 
     // Convert category format if needed
     const categoryMap = {
       'google_prompt': 'google-ads',
-      'facebook_prompt': 'facebook-ads'
+      'facebook_prompt': 'facebook-ads',
+      'website_prompt': 'website-content'
     };
 
     const normalizedCategory = categoryMap[category] || category;
@@ -1452,7 +1453,7 @@ app.patch('/api/instructions/projects/:filename/status', requireAuth, (req, res)
 
     console.log(`🔄 Updating project status: ${filename} → ${status}`);
 
-    const validStatuses = ['active', 'inactive', 'paused'];
+    const validStatuses = ['active', 'inactive', 'private'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         error: 'Invalid status',
@@ -1769,6 +1770,51 @@ const loadSubcategories = () => {
           createdAt: new Date().toISOString(),
           lastModified: new Date().toISOString(),
         },
+        {
+          id: "11",
+          value: "hero-image-generator", 
+          label: "Hero Image Generator",
+          category: "website-content",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "12",
+          value: "advertorial-image-generator",
+          label: "Advertorial Image Generator", 
+          category: "website-content",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "13",
+          value: "blog-featured-generator",
+          label: "Blog Featured Generator",
+          category: "website-content", 
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "14", 
+          value: "product-showcase-generator",
+          label: "Product Showcase Generator",
+          category: "website-content",
+          status: "active", 
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+        },
+        {
+          id: "15",
+          value: "email-header-generator", 
+          label: "Email Header Generator",
+          category: "website-content",
+          status: "active",
+          createdAt: new Date().toISOString(), 
+          lastModified: new Date().toISOString(),
+        },
       ];
 
       fs.writeFileSync(subcategoriesFilePath, JSON.stringify(defaultSubcategories, null, 2));
@@ -1887,7 +1933,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
     }
 
     // ✅ Validate category
-    const validCategories = ['google-ads', 'facebook-ads'];
+    const validCategories = ['google-ads', 'facebook-ads', 'website-content'];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
         error: 'Invalid category',
@@ -2194,7 +2240,7 @@ app.post('/api/subcategories/import', requireAuth, (req, res) => {
     let skipped = 0;
     let errors = [];
 
-    const validCategories = ['google-ads', 'facebook-ads'];
+    const validCategories = ['google-ads', 'facebook-ads', 'website-content'];
     const validStatuses = ['active', 'inactive'];
 
     for (const item of importData) {

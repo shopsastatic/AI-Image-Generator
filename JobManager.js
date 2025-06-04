@@ -1184,6 +1184,16 @@ export class JobManager {
                 basePrompt.adCreativeB = sharedAdCreativeB;
                 basePrompt.targeting = sharedTargeting;
               }
+            } else if (category === 'website_prompt') {
+              if (index === 0) {
+                basePrompt.adCreativeA = item.adCreativeA || "";
+                basePrompt.adCreativeB = item.adCreativeB || "";
+                basePrompt.targeting = item.targeting || "";
+              } else {
+                basePrompt.adCreativeA = sharedAdCreativeA;
+                basePrompt.adCreativeB = sharedAdCreativeB; 
+                basePrompt.targeting = sharedTargeting;
+              }
             }
 
             console.log(`📝 Parsed item ${index + 1} for ${category}:`, {

@@ -56,8 +56,10 @@ class InstructionsManager {
         const categoryMap = {
             'google_prompt': 'google_ads',
             'facebook_prompt': 'facebook_ads',
+            'website_prompt': 'website_content',
             'google-ads': 'google_ads',
-            'facebook-ads': 'facebook_ads'
+            'facebook-ads': 'facebook_ads',
+            'website-content': 'website_content'
         };
 
         const normalizedCategory = categoryMap[category] || category.replace(/-/g, '_');
@@ -84,7 +86,8 @@ class InstructionsManager {
     findInstructionFile(category, subcategory, targetModel = 'universal') {
         const categoryMap = {
             'google_prompt': 'google-ads',
-            'facebook_prompt': 'facebook-ads'
+            'facebook_prompt': 'facebook-ads', 
+            'website_prompt': 'website-content'
         };
 
         const normalizedCategory = categoryMap[category] || category;

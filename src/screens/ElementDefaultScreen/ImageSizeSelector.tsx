@@ -31,6 +31,7 @@ interface ImageSizeSelectorProps {
   // New props for Model and HD mode
   onModelChange?: (model: string) => void;
   onHDModeChange?: (isHD: boolean) => void;
+  currentUser?: { email: string; role: string };
 }
 
 interface CategoryOption {
@@ -55,6 +56,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   onCategoryChange,
   onModelChange,
   onHDModeChange,
+  currentUser,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(true);
@@ -82,35 +84,43 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const categoryOptions: CategoryOption[] = [
     { value: "google_prompt", label: "Google" },
     { value: "facebook_prompt", label: "Facebook" },
+    { value: "website_prompt", label: "Website" }, // ✅ NEW
   ];
 
-  const modelOptions = [
-    { value: "claude-sonnet", label: "Claude Sonnet" },
-  ];
+  const modelOptions = [{ value: "claude-sonnet", label: "Claude Sonnet" }];
 
   // ✅ FIXED: Simplified fetch function
   const fetchSubcategories = async () => {
     try {
       setLoadingSubcategories(true);
-      console.log("🔄 ImageSizeSelector: Fetching subcategories from API...");
+      console.log("🔄 FORCED TEST: Fetching subcategories...");
 
       const response = await fetch("/api/subcategories");
       const data = await response.json();
 
       if (data.success) {
-        setSubcategories(data.subcategories);
-        console.log(
-          `📊 ImageSizeSelector: Loaded ${data.subcategories.length} subcategories from API`
-        );
-      } else {
-        console.error(
-          "ImageSizeSelector: Failed to fetch subcategories:",
-          data.error
-        );
-        setSubcategories([]);
+        console.log("📊 All subcategories before filter:", data.subcategories);
+        
+        // ✅ TEMPORARY FORCED FILTER for testing
+        let filteredSubcategories = data.subcategories;
+        
+        // FORCE: Remove 'bvc' for non-admin users
+        if (currentUser?.email !== 'misenadminai') {
+          console.log("🔒 FORCING removal of 'bvc' for non-admin user");
+          filteredSubcategories = data.subcategories.filter(sub => {
+            const shouldHide = sub.value === 'bvc'; // Hide 'bvc' specifically
+            console.log(`Subcategory ${sub.value}: ${shouldHide ? 'HIDDEN' : 'SHOWN'}`);
+            return !shouldHide;
+          });
+        } else {
+          console.log("👑 Admin user - showing all");
+        }
+        
+        console.log("📊 Final filtered subcategories:", filteredSubcategories);
+        setSubcategories(filteredSubcategories);
       }
     } catch (error) {
-      console.error("ImageSizeSelector: Error fetching subcategories:", error);
+      console.error("Error:", error);
       setSubcategories([]);
     } finally {
       setLoadingSubcategories(false);
@@ -122,6 +132,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const categoryMap: { [key: string]: string } = {
       google_prompt: "google-ads",
       facebook_prompt: "facebook-ads",
+      website_prompt: "website-content", // ✅ NEW
     };
     return categoryMap[displayCategory] || displayCategory;
   };
@@ -131,8 +142,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     category: string,
     subcategoriesList?: SubcategoryOption[]
   ): SubcategoryOption[] => {
-    // const list = subcategoriesList || subcategories;
-    const list = [];
+    const list = subcategoriesList || subcategories;
+    // const list = [];
     return list.filter(
       (sub) =>
         sub.category === getCategoryKey(category) && sub.status === "active"
@@ -142,7 +153,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   // ✅ Load subcategories on component mount
   useEffect(() => {
     fetchSubcategories();
-  }, []);
+  }, [currentUser]);
 
   // ✅ FIXED: Simplified useEffect for updating childOption
   useEffect(() => {
@@ -289,7 +300,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const availableOptions = getActiveSubcategoriesForCategory(categoryKey);
 
     if (availableOptions.length > 0) {
-      // const newChildOption = availableOptions[0].value;
+      const newChildOption = availableOptions[0].value;
       setChildOption(newChildOption);
       if (onCategoryChange) {
         onCategoryChange(newCategory, newChildOption);
@@ -498,7 +509,10 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               <select
                 value={childOption}
                 onChange={(e) => handleChildOptionChange(e.target.value)}
-                disabled={loadingSubcategories || !getActiveSubcategoriesForCategory(parentCategory).length}
+                disabled={
+                  loadingSubcategories ||
+                  !getActiveSubcategoriesForCategory(parentCategory).length
+                }
                 className={`flex-1 px-2 py-1.5 text-xs bg-white border max-w-[50%] border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 ${
                   loadingSubcategories
                     ? "opacity-50 cursor-not-allowed bg-gray-50"
@@ -634,7 +648,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                   </button>
                 </div>
               )}
-
             </div>
           </div>
         )}
