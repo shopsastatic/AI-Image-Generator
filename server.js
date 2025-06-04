@@ -1419,6 +1419,88 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
   }
 });
 
+// ✅ NEW: Get filtered subcategories based on user role
+app.get('/api/subcategories/filtered', requireAuth, (req, res) => {
+  try {
+    const user = req.user; // Get from JWT token
+    const subcategories = loadSubcategories();
+    
+    console.log(`🔍 Filtering subcategories for user: ${user.email}`);
+    
+    // Admin sees all subcategories
+    if (user.email === 'misenadminai') {
+      console.log('👑 Admin user - returning all subcategories');
+      return res.json({
+        success: true,
+        subcategories: subcategories.filter(sub => sub.status === 'active')
+      });
+    }
+    
+    // For non-admin users, filter out subcategories used only by private projects
+    const projects = instructionsManager.getAllProjects();
+    console.log(`📋 Found ${projects.length} total projects`);
+    
+    // Build subcategory usage map
+    const subcategoryUsage = new Map();
+    
+    projects.forEach(project => {
+      const subcategoryKey = `${project.category}-${project.subcategory}`;
+      
+      if (!subcategoryUsage.has(subcategoryKey)) {
+        subcategoryUsage.set(subcategoryKey, []);
+      }
+      
+      subcategoryUsage.get(subcategoryKey).push(project.status);
+    });
+    
+    console.log('🗺️ Subcategory usage:', Array.from(subcategoryUsage.entries()));
+    
+    // Filter subcategories
+    const filteredSubcategories = subcategories.filter(sub => {
+      // Only show active subcategories
+      if (sub.status !== 'active') {
+        return false;
+      }
+      
+      const subcategoryKey = `${sub.category}-${sub.value}`;
+      const usageStatuses = subcategoryUsage.get(subcategoryKey) || [];
+      
+      console.log(`🔍 Subcategory ${sub.label}: used by projects with statuses [${usageStatuses.join(', ')}]`);
+      
+      // If not used by any project, show it
+      if (usageStatuses.length === 0) {
+        return true;
+      }
+      
+      // If used ONLY by private projects, hide it from non-admin
+      const uniqueStatuses = [...new Set(usageStatuses)];
+      const isUsedOnlyByPrivate = uniqueStatuses.length === 1 && uniqueStatuses[0] === 'private';
+      
+      if (isUsedOnlyByPrivate) {
+        console.log(`   → Hidden: used only by private projects`);
+        return false;
+      }
+      
+      console.log(`   → Shown: used by non-private projects`);
+      return true;
+    });
+    
+    console.log(`✅ Returning ${filteredSubcategories.length}/${subcategories.length} subcategories`);
+    
+    res.json({
+      success: true,
+      subcategories: filteredSubcategories
+    });
+    
+  } catch (error) {
+    console.error('Error filtering subcategories:', error);
+    res.status(500).json({
+      error: 'Failed to filter subcategories',
+      message: error.message
+    });
+  }
+});
+
 // ✅ Get specific project by filename
 app.get('/api/instructions/projects/:filename', requireAuth, (req, res) => {
   try {

@@ -93,34 +93,23 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const fetchSubcategories = async () => {
     try {
       setLoadingSubcategories(true);
-      console.log("🔄 FORCED TEST: Fetching subcategories...");
+      console.log("🔄 ===== FETCHING FILTERED SUBCATEGORIES =====");
 
-      const response = await fetch("/api/subcategories");
+      // ✅ Use new filtered endpoint
+      const response = await fetch("/api/subcategories/filtered");
       const data = await response.json();
 
       if (data.success) {
-        console.log("📊 All subcategories before filter:", data.subcategories);
-        
-        // ✅ TEMPORARY FORCED FILTER for testing
-        let filteredSubcategories = data.subcategories;
-        
-        // FORCE: Remove 'bvc' for non-admin users
-        if (currentUser?.email !== 'misenadminai') {
-          console.log("🔒 FORCING removal of 'bvc' for non-admin user");
-          filteredSubcategories = data.subcategories.filter(sub => {
-            const shouldHide = sub.value === 'bvc'; // Hide 'bvc' specifically
-            console.log(`Subcategory ${sub.value}: ${shouldHide ? 'HIDDEN' : 'SHOWN'}`);
-            return !shouldHide;
-          });
-        } else {
-          console.log("👑 Admin user - showing all");
-        }
-        
-        console.log("📊 Final filtered subcategories:", filteredSubcategories);
-        setSubcategories(filteredSubcategories);
+        console.log("📊 Filtered subcategories received:", data.subcategories);
+        console.log(`✅ Total subcategories: ${data.subcategories.length}`);
+
+        setSubcategories(data.subcategories);
+      } else {
+        console.error("❌ Failed to fetch filtered subcategories:", data.error);
+        setSubcategories([]);
       }
     } catch (error) {
-      console.error("Error:", error);
+      console.error("❌ Error fetching filtered subcategories:", error);
       setSubcategories([]);
     } finally {
       setLoadingSubcategories(false);
