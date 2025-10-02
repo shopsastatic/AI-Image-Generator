@@ -11,6 +11,7 @@ interface ImageData {
   timestamp: string;
   size?: string;
   quality?: string;
+  platform?: string,
   claudeResponse?: string;
   AdCreativeA?: string;
   AdCreativeB?: string;
@@ -23,6 +24,7 @@ interface ImageData {
 interface SessionData {
   sessionId: string;
   describe?: string;
+  platform?: string;
   images: ImageData[];
   timestamp?: string;
   createdAt?: string;
@@ -147,6 +149,7 @@ class StorageManager {
         const session = {
           sessionId: sessionData.sessionId,
           describe: sessionData.describe || '',
+          platform: sessionData.platform || '',
           createdAt: existingSession?.createdAt || now,
           timestamp: now,
           images: []
@@ -159,6 +162,7 @@ class StorageManager {
             const imageData: ImageData = {
               imageUrl: image.imageBase64 || image.imageUrl || '',
               prompt: image.prompt || '',
+              platform: image.platform || '',
               timestamp: image.timestamp || now,
               size: image.size || 'Square',
               quality: image.quality || 'Standard'
@@ -481,20 +485,21 @@ class StorageManager {
         return [];
       }
 
-      // Lọc bỏ ảnh không hợp lệ
+      // Lọc bỏ ảnh không hợp lệ VÀ GIỮ PLATFORM
       const validImages = session.images.filter((img: ImageData) => {
         return img && img.imageUrl && 
-               !img.imageUrl.includes('PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM') &&
-               img.imageUrl !== 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==';
+              !img.imageUrl.includes('PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM') &&
+              img.imageUrl !== 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg==';
       });
       
       if (validImages.length === 0) {
         this.logDebug(`⚠️ Không tìm thấy ảnh hợp lệ cho session: ${sessionId}`);
       } else {
         this.logDebug(`✅ Đã tìm thấy ${validImages.length} ảnh hợp lệ cho session: ${sessionId}`);
+        this.logDebug(`📦 First image platform:`, validImages[0]?.platform); // ✅ Debug
       }
       
-      return validImages;
+      return validImages; // Platform đã có sẵn trong validImages
     } catch (error) {
       console.error(`❌ Lỗi lấy ảnh cho session ${sessionId}:`, error);
       return [];

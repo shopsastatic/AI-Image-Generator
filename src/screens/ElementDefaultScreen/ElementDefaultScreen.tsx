@@ -14,6 +14,7 @@ import {
 interface LoadingSession {
   sessionId: string;
   prompt: string;
+  platform: string;
   startTime: number;
   jobId: string | null;
   countdown: number;
@@ -86,6 +87,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       list: Array<{
         imageBase64: string;
         prompt: string;
+        platform: string;
         claudeResponse?: string;
         timestamp: string;
         size: string;
@@ -101,6 +103,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       imageUrl: string;
       clickedAt: number;
       prompt?: string;
+      platform?: string;
       claudeResponse?: string;
       size?: string;
       quality?: string;
@@ -252,6 +255,91 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     fetchUserInfo();
   }, []);
+
+  // ✅ Auto-load PROMPT CONTENT into textarea
+useEffect(() => {
+  const loadInstructions = async () => {
+    if (!selectedCategory.category) return;
+
+    // ✅ Xóa sạch textarea ngay
+    if (textareaRef.current) {
+      textareaRef.current.value = '';
+      setPromptText('');
+      adjustHeight();
+    }
+
+    try {
+      console.log('🔄 Loading instructions for:', selectedCategory);
+
+      const response = await fetch('/api/instructions/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: selectedCategory.category,
+          subcategory: selectedCategory.subcategory || '',
+          selectedModel: selectedApis[0] || 'claude-sonnet',
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to load instructions');
+        return;
+      }
+
+      const data = await response.json();
+      console.log('📚 Instructions loaded:', data);
+
+      // ✅ Parse content
+      const parseContent = (rawContent: string) => {
+        if (!rawContent) return { promptContent: '', instructions: '' };
+        
+        if (rawContent.includes('--- PROMPT CONTENT ---')) {
+          const parts = rawContent.split('--- INSTRUCTIONS ---');
+          return {
+            promptContent: parts[0].replace('--- PROMPT CONTENT ---', '').trim(),
+            instructions: parts[1] ? parts[1].trim() : ''
+          };
+        }
+        return { 
+          promptContent: '', 
+          instructions: rawContent 
+        };
+      };
+
+      // ✅ Parse system_prompt or user_prompt
+      let parsedContent = { promptContent: '', instructions: '' };
+      
+      if (data.system_prompt) {
+        parsedContent = parseContent(data.system_prompt);
+      } else if (data.user_prompt) {
+        parsedContent = parseContent(data.user_prompt);
+      }
+
+      console.log('📝 Parsed content:', {
+        promptContentLength: parsedContent.promptContent.length,
+        instructionsLength: parsedContent.instructions.length
+      });
+
+      // ✅ FIX: Lấy PROMPT CONTENT thay vì instructions
+      if (parsedContent.promptContent && parsedContent.promptContent.trim()) {
+        if (textareaRef.current) {
+          textareaRef.current.value = parsedContent.promptContent;
+          setPromptText(parsedContent.promptContent);
+          adjustHeight();
+        }
+        
+        console.log(`✅ Loaded ${parsedContent.promptContent.length} characters of PROMPT CONTENT into textarea`);
+      } else {
+        console.log('⚠️ No prompt content found - textarea remains empty');
+      }
+
+    } catch (error) {
+      console.error('Error loading instructions:', error);
+    }
+  };
+
+  loadInstructions();
+}, [selectedCategory, selectedApis]);
 
   useEffect(() => {
     const initStorage = async () => {
@@ -599,6 +687,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
             imageUrl: convertedImages[0].imageBase64,
             clickedAt: Date.now(),
             prompt: convertedImages[0].prompt,
+            platform: convertedImages[0].platform,
             size: convertedImages[0].size,
             quality: convertedImages[0].quality,
             sessionId: sessionId,
@@ -881,13 +970,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 platformData.images.map((img: any) => ({
                   imageUrl: img.url,
                   prompt: img.prompt,
-                  platform: img.platform,
-                  size: "Square", // Hoặc lấy từ settings
+                  platform: img.platform || "legacy",
+                  size: "Square",
                   quality: selectedQuality,
                 }))
               );
-
-              console.log(`✅ Total images received: ${allImages.length}`);
 
               // Tải và convert images thành base64
               const processedImages = await Promise.all(
@@ -936,7 +1023,14 @@ export const ElementDefaultScreen = (): JSX.Element => {
               const sessionData = {
                 sessionId: sessionId,
                 describe: currentPromptText,
-                images: validImages,
+                images: validImages.map(img => ({
+                  imageBase64: img.imageBase64,
+                  prompt: img.prompt,
+                  platform: img.platform,
+                  size: img.size,
+                  quality: img.quality,
+                  timestamp: img.timestamp,
+                })),
               };
 
               // Lưu vào storage
@@ -1021,6 +1115,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     imageUrl: convertedImages[0].imageBase64,
                     clickedAt: Date.now(),
                     prompt: convertedImages[0].prompt,
+                    platform: convertedImages[0].platform,
                     size: convertedImages[0].size,
                     quality: convertedImages[0].quality,
                     sessionId: sessionId,
@@ -1236,6 +1331,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       imageUrl: nextImageData.imageBase64,
       clickedAt: Date.now(),
       prompt: nextImageData.prompt,
+      platform: nextImageData.platform,
       size: nextImageData.size,
       quality: nextImageData.quality,
       sessionId: currentImage.sessionId,
@@ -1324,6 +1420,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
     console.log("📊 Session data:", {
       id: item.id,
       describe: item.describe,
+      platform: item.platform,
       imageCount: item.list ? item.list.length : 0,
     });
 
@@ -1364,6 +1461,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         return {
           imageBase64: img.imageBase64 || "",
           prompt: img.prompt || "",
+          platform: img.platform || "",
           claudeResponse: img.claudeResponse || "",
           timestamp: img.timestamp || new Date().toISOString(),
           size: img.size || "Square",
@@ -1398,6 +1496,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       imageUrl: firstImage.imageBase64,
       clickedAt: Date.now(),
       prompt: firstImage.prompt || "",
+      platform: firstImage.pplatform || "",
       size: firstImage.size || "Square",
       quality: firstImage.quality || "Standard",
       sessionId: item.id,
@@ -2453,6 +2552,15 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         }
                         return null;
                       })()}
+
+                      {img.platform && (
+                        <div className="platform-label">
+                          {img.platform === 'nano-banana' ? 'Nano Banana' : 
+                          img.platform === 'seedream' ? 'Seedream' : 
+                          'OpenAI'}
+                        </div>
+                      )}
+
                       <SafeImage
                         src={img.imageUrl}
                         alt={`Generated image ${index + 1}`}
@@ -2799,6 +2907,27 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         </div>
                       )}
                     </div>
+                    {instructionsContent && (
+                      <div className="instructions-preview-box">
+                        <div className="instructions-preview-header">
+                          <span className="instructions-preview-title">
+                            📝 Active Instructions
+                          </span>
+                          <button
+                            className="instructions-preview-collapse"
+                            onClick={() => setInstructionsContent('')}
+                            title="Hide instructions"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="instructions-preview-content">
+                          {instructionsContent.substring(0, 200)}
+                          {instructionsContent.length > 200 && '...'}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="textarea-2">
                       <textarea
                         ref={textareaRef}
@@ -3081,6 +3210,30 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
               <div className="image-viewer-content">
                 <div className="image-viewer-left">
+                  {(() => {
+                    let platformName = "";
+                    if (currentSessionId) {
+                      const session = selectedSessions.find(
+                        (s) => s.sessionId === currentSessionId
+                      );
+                      if (session && session.list[currentSessionImageIndex]) {
+                        platformName = session.list[currentSessionImageIndex].platform;
+                        console.log("🔍 Platform from session:", session.list); // ✅ Debug
+                      }
+                    } else if (selectedImages[currentViewImageIndex]?.platform) {
+                      platformName = selectedImages[currentViewImageIndex].platform;
+                      console.log("🔍 Platform from image:", session.list); // ✅ Debug
+                    }
+                    
+                    return platformName ? (
+                      <div className={`platform-label platform-label-viewer platform-label-${platformName}`}>
+                        {platformName === 'nano-banana' ? 'Nano Banana' : 
+                        platformName === 'seedream' ? 'Seedream' : 
+                        'OpenAI'}
+                      </div>
+                    ) : null;
+                  })()}
+
                   {currentSessionId &&
                     (() => {
                       const session = selectedSessions.find(
@@ -3424,7 +3577,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
                       <ImageInfoDropdown
                         title="Image Prompt"
-                        isOpen={false}
+                        isOpen={true}
                         copyContent={(() => {
                           let currentImagePrompt = "";
 
@@ -3476,205 +3629,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                               dangerouslySetInnerHTML={{
                                 __html:
                                   currentImagePrompt || "No prompt available",
-                              }}
-                            />
-                          );
-                        })()}
-                      </ImageInfoDropdown>
-
-                      <ImageInfoDropdown
-                        title="Ad Creative A"
-                        copyContent={(() => {
-                          let adCreativeText = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.list.length > 0) {
-                              // FIX: For Google, always use first object's AdCreativeA
-                              // For Facebook, use current image's AdCreativeA
-                              const targetImage =
-                                selectedCategory.category === "google_prompt"
-                                  ? session.list[0] // Always first object for Google
-                                  : session.list[currentSessionImageIndex]; // Current image for Facebook
-
-                              if (targetImage && targetImage.AdCreativeA) {
-                                adCreativeText = targetImage.AdCreativeA;
-                              }
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.AdCreativeA
-                          ) {
-                            adCreativeText =
-                              selectedImages[currentViewImageIndex].AdCreativeA;
-                          }
-
-                          return adCreativeText || "No Ad Creative A available";
-                        })()}
-                      >
-                        {(() => {
-                          let adCreativeText = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.list.length > 0) {
-                              // FIX: For Google, always use first object's AdCreativeA
-                              // For Facebook, use current image's AdCreativeA
-                              const targetImage =
-                                selectedCategory.category === "google_prompt"
-                                  ? session.list[0] // Always first object for Google
-                                  : session.list[currentSessionImageIndex]; // Current image for Facebook
-
-                              if (targetImage && targetImage.AdCreativeA) {
-                                adCreativeText = targetImage.AdCreativeA;
-                              }
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.AdCreativeA
-                          ) {
-                            adCreativeText =
-                              selectedImages[currentViewImageIndex].AdCreativeA;
-                          }
-
-                          return (
-                            <div
-                              className="prompt-text html-content creative-a"
-                              dangerouslySetInnerHTML={{
-                                __html:
-                                  adCreativeText ||
-                                  "No Ad Creative A available",
-                              }}
-                            />
-                          );
-                        })()}
-                      </ImageInfoDropdown>
-
-                      <ImageInfoDropdown
-                        title="Ad Creative B"
-                        copyContent={(() => {
-                          let adCreativeText = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.list.length > 0) {
-                              // FIX: For Google, always use first object's AdCreativeB
-                              // For Facebook, use current image's AdCreativeB
-                              const targetImage =
-                                selectedCategory.category === "google_prompt"
-                                  ? session.list[0] // Always first object for Google
-                                  : session.list[currentSessionImageIndex]; // Current image for Facebook
-
-                              if (targetImage && targetImage.AdCreativeB) {
-                                adCreativeText = targetImage.AdCreativeB;
-                              }
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.AdCreativeB
-                          ) {
-                            adCreativeText =
-                              selectedImages[currentViewImageIndex].AdCreativeB;
-                          }
-
-                          return adCreativeText || "No Ad Creative B available";
-                        })()}
-                      >
-                        {(() => {
-                          let adCreativeText = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.list.length > 0) {
-                              // FIX: For Google, always use first object's AdCreativeB
-                              // For Facebook, use current image's AdCreativeB
-                              const targetImage =
-                                selectedCategory.category === "google_prompt"
-                                  ? session.list[0] // Always first object for Google
-                                  : session.list[currentSessionImageIndex]; // Current image for Facebook
-
-                              if (targetImage && targetImage.AdCreativeB) {
-                                adCreativeText = targetImage.AdCreativeB;
-                              }
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.AdCreativeB
-                          ) {
-                            adCreativeText =
-                              selectedImages[currentViewImageIndex].AdCreativeB;
-                          }
-
-                          return (
-                            <div
-                              className="prompt-text html-content creative-b"
-                              dangerouslySetInnerHTML={{
-                                __html:
-                                  adCreativeText ||
-                                  "No Ad Creative B available",
-                              }}
-                            />
-                          );
-                        })()}
-                      </ImageInfoDropdown>
-
-                      <ImageInfoDropdown
-                        title="Targeting"
-                        copyContent={(() => {
-                          let targetingText = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.list.length > 0) {
-                              // FIX: Always use first object's targeting for both Google and Facebook
-                              const firstImage = session.list[0];
-                              if (firstImage && firstImage.targeting) {
-                                targetingText = firstImage.targeting;
-                              }
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.targeting
-                          ) {
-                            targetingText =
-                              selectedImages[currentViewImageIndex].targeting;
-                          }
-
-                          return targetingText || "No Targeting available";
-                        })()}
-                      >
-                        {(() => {
-                          let targetingText = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.list.length > 0) {
-                              // FIX: Always use first object's targeting for both Google and Facebook
-                              const firstImage = session.list[0];
-                              if (firstImage && firstImage.targeting) {
-                                targetingText = firstImage.targeting;
-                              }
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.targeting
-                          ) {
-                            targetingText =
-                              selectedImages[currentViewImageIndex].targeting;
-                          }
-
-                          return (
-                            <div
-                              className="prompt-text html-content targeting-box"
-                              dangerouslySetInnerHTML={{
-                                __html:
-                                  targetingText || "No Targeting available",
                               }}
                             />
                           );

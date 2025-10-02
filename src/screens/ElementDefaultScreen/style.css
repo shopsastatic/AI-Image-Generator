@@ -2877,3 +2877,113 @@ button {
     height: 14px;
   }
 }
+
+/* Label cơ bản */
+.platform-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+/* Label trong image viewer (lớn hơn) */
+.platform-label-viewer {
+    top: 16px;
+    right: 16px;
+    width: fit-content;
+    text-transform: capitalize;
+    font-size: 12px;
+    padding: 6px 12px;
+    z-index: 10;
+    float: right;
+}
+
+.platform-label-nano-banana {
+  background-color: green;
+}
+
+.platform-label-seedream {
+  background-color: black;
+}
+
+.platform-label-openai {
+  background-color: #413986;
+}
+
+/* Label trong history sidebar (nhỏ hơn) */
+.platform-label-history {
+  top: 4px;
+  left: 4px;
+  font-size: 9px;
+  padding: 2px 6px;
+}
+
+.platform-label:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+/* Instructions preview box */
+.instructions-preview-box {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.instructions-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.instructions-preview-title {
+  font-weight: 600;
+  color: #333;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.instructions-preview-collapse {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #666;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.instructions-preview-collapse:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.instructions-preview-content {
+  color: #555;
+  line-height: 1.5;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 100px;
+  overflow-y: auto;
+}

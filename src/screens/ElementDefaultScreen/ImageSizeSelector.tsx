@@ -195,17 +195,21 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const availableOptions = getActiveSubcategoriesForCategory(categoryKey);
 
     if (availableOptions.length > 0) {
-      const currentOptionValid = availableOptions.some(
-        (opt) => opt.value === childOption
-      );
-      if (!currentOptionValid) {
-        const newChildOption = availableOptions[0].value;
-        setChildOption(newChildOption);
-        if (onCategoryChange) {
-          onCategoryChange(parentCategory, newChildOption);
+      // ✅ FIX: Chỉ validate nếu đã có giá trị, không tự động set
+      if (childOption !== "") {
+        const currentOptionValid = availableOptions.some(
+          (opt) => opt.value === childOption
+        );
+        if (!currentOptionValid) {
+          // Reset về empty nếu option hiện tại không hợp lệ
+          setChildOption("");
+          if (onCategoryChange) {
+            onCategoryChange(parentCategory, "");
+          }
         }
       }
     } else {
+      // Không có options → set về empty
       if (childOption !== "") {
         setChildOption("");
         if (onCategoryChange) {
@@ -228,20 +232,10 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const handleParentCategoryChange = (newCategory: string) => {
     setParentCategory(newCategory);
 
-    const categoryKey = getCategoryKey(newCategory);
-    const availableOptions = getActiveSubcategoriesForCategory(categoryKey);
-
-    if (availableOptions.length > 0) {
-      const newChildOption = availableOptions[0].value;
-      setChildOption(newChildOption);
-      if (onCategoryChange) {
-        onCategoryChange(newCategory, newChildOption);
-      }
-    } else {
-      setChildOption("");
-      if (onCategoryChange) {
-        onCategoryChange(newCategory, "");
-      }
+    // ✅ FIX: Set về empty thay vì tự động chọn option đầu
+    setChildOption("");
+    if (onCategoryChange) {
+      onCategoryChange(newCategory, "");
     }
   };
 

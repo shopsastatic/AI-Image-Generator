@@ -11,6 +11,27 @@ class InstructionsManager {
         console.log('🔧 InstructionsManager initialized');
     }
 
+    parseFileContent(content) {
+        if (content.includes('--- PROMPT CONTENT ---')) {
+            const parts = content.split('--- INSTRUCTIONS ---');
+            return {
+                promptContent: parts[0].replace('--- PROMPT CONTENT ---', '').trim(),
+                instructions: parts[1] ? parts[1].trim() : ''
+            };
+        }
+        return { 
+            promptContent: '', 
+            instructions: content 
+        };
+    }
+
+    combineFileContent(promptContent, instructions) {
+        if (promptContent && promptContent.trim()) {
+            return `--- PROMPT CONTENT ---\n${promptContent.trim()}\n\n--- INSTRUCTIONS ---\n${instructions.trim()}`;
+        }
+        return instructions;
+    }
+
     // ✅ Load registry từ file JSON
     loadRegistry() {
         try {
@@ -177,20 +198,29 @@ class InstructionsManager {
 
             if (!fs.existsSync(filePath)) {
                 console.warn(`⚠️ Instruction file not found: ${filename}`);
-                console.warn(`⚠️ Expected path: ${filePath}`);
-                return "You are an AI assistant that helps generate image prompts.";
+                return {
+                    promptContent: '',
+                    instructions: "You are an AI assistant that helps generate image prompts."
+                };
             }
 
-            const content = fs.readFileSync(filePath, 'utf8');
-            console.log(`📖 Loaded instruction content: ${filename} (${content.length} chars)`);
-            return content;
+            const rawContent = fs.readFileSync(filePath, 'utf8');
+            const parsed = this.parseFileContent(rawContent);
+            
+            console.log(`📖 Loaded instruction: ${filename} (prompt: ${parsed.promptContent.length} chars, instructions: ${parsed.instructions.length} chars)`);
+            
+            return parsed;
         } catch (error) {
             console.error(`❌ Error loading instruction content: ${filename}`, error);
-            return "You are an AI assistant that helps generate image prompts.";
+            return {
+                promptContent: '',
+                instructions: "You are an AI assistant that helps generate image prompts."
+            };
         }
     }
 
     // ✅ Get instructions cho job (MAIN FUNCTION)
+    // ✅ REPLACE existing getInstructionsForJob
     async getInstructionsForJob(category, subcategory = '', targetModel = 'universal') {
         console.log(`🎯 Getting instructions for job:`, {
             category,
@@ -199,10 +229,14 @@ class InstructionsManager {
         });
 
         const filename = this.findInstructionFile(category, subcategory, targetModel);
-        const content = await this.loadInstructionContent(filename);
+        const { promptContent, instructions } = await this.loadInstructionContent(filename);
 
-        console.log(`✅ Instructions retrieved: ${content.length} characters from ${filename}`);
-        return content;
+        console.log(`✅ Instructions retrieved from ${filename}:`, {
+            promptContentLength: promptContent.length,
+            instructionsLength: instructions.length
+        });
+
+        return { promptContent, instructions };
     }
 
     // ✅ Create or update project
@@ -210,13 +244,14 @@ class InstructionsManager {
         try {
             const {
                 name,
+                promptContent = '', // ← THÊM DÒNG NÀY
                 instructions,
                 category,
                 subcategory = '',
                 targetModel = 'universal',
                 instructionType = 'user',
                 status = 'active',
-                originalFilename = null // ← NEW: For edit mode
+                originalFilename = null
             } = projectData;
 
             console.log(`🔧 Creating/updating project:`, {
@@ -278,7 +313,8 @@ class InstructionsManager {
             }
 
             // ✅ Write instruction file
-            fs.writeFileSync(filePath, instructions, 'utf8');
+            const combinedContent = this.combineFileContent(promptContent, instructions);
+            fs.writeFileSync(filePath, combinedContent, 'utf8');
             console.log(`📝 Written instruction file: ${filename}`);
 
             // ✅ Update registry

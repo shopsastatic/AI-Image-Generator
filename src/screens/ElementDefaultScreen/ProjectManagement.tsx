@@ -44,6 +44,7 @@ interface Project {
 interface FormData {
   name: string;
   instructions: string;
+  promptContent: string;
   category: string;
   subcategory: string;
   targetModel: string;
@@ -193,6 +194,7 @@ const ProjectManagement: React.FC = () => {
 
   const [formData, setFormData] = useState<FormData>({
     name: "",
+    promptContent: "",
     instructions: "",
     category: "google-ads",
     subcategory: "",
@@ -634,19 +636,28 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
       const data = await response.json();
 
       if (data.success) {
-        return data.content;
+        return {
+          promptContent: data.promptContent || '',
+          instructions: data.instructions || data.content || '' // fallback cho backward compatibility
+        };
       } else {
         showNotification(
           "error",
           "Load Failed",
           "Could not load project content."
         );
-        return "";
+        return {
+          promptContent: '',
+          instructions: ''
+        };
       }
     } catch (error) {
       console.error("Error loading project content:", error);
       showNotification("error", "Network Error", "Failed to load content.");
-      return "";
+      return {
+        promptContent: '',
+        instructions: ''
+      };
     }
   };
 
@@ -770,6 +781,7 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
     const firstSubcat = getActiveSubcategoriesForCategory("google-ads")[0];
     setFormData({
       name: "",
+      promptContent: "", // ✅ THÊM DÒNG NÀY
       instructions: "",
       category: "google-ads",
       subcategory: firstSubcat?.value || "",
@@ -780,12 +792,14 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
     setIsFormOpen(true);
   };
 
+  // Trong handleEdit (dòng ~770)
   const handleEdit = async (project: Project) => {
     setEditingProject(project);
     const content = await loadProjectContent(project.filename);
     setFormData({
       name: project.project,
-      instructions: content,
+      promptContent: content.promptContent || '', // ← THÊM DÒNG NÀY
+      instructions: content.instructions || content, // ← SỬA DÒNG NÀY
       category: project.category,
       subcategory: project.subcategory,
       targetModel: project.targetModel,
@@ -1735,6 +1749,29 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                           );
                         })}
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-3">
+                    Prompt Content
+                  </label>
+                  <textarea
+                    value={formData.promptContent}
+                    onChange={(e) =>
+                      setFormData({ ...formData, promptContent: e.target.value })
+                    }
+                    placeholder="Enter optional prompt content here (e.g., context, variables, examples)..."
+                    rows={6}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-vertical font-mono text-sm leading-relaxed"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="text-xs text-gray-500">
+                      Optional: Additional context or content to prepend before instructions
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {formData.promptContent.length} characters
                     </div>
                   </div>
                 </div>

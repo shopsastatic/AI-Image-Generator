@@ -4,10 +4,12 @@ import { storageManager, ImageCompressor } from "./storageUtils";
 interface HistoryImage {
   imageBase64: string;
   prompt: string;
+  platform?: string; // ✅ Thêm platform
   AdCreativeA?: string;
   AdCreativeB?: string;
   timestamp: string;
 }
+
 
 interface HistoryItem {
   id: string;
@@ -252,6 +254,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   originalBase64: img.imageUrl,
                   isBlob: true,
                   prompt: img.prompt || '',
+                  platform: img.platform || '',
                   claudeResponse: img.claudeResponse || '',
                   timestamp: img.timestamp || new Date().toISOString(),
                   size: img.size || 'Square',
@@ -267,6 +270,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   imageBase64: img.imageUrl,
                   isBlob: false,
                   prompt: img.prompt || '',
+                  platform: img.platform || '',
                   claudeResponse: img.claudeResponse || '',
                   timestamp: img.timestamp || new Date().toISOString(),
                   size: img.size || 'Square',
@@ -283,6 +287,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                 imageBase64: img.imageUrl,
                 isBlob: false,
                 prompt: img.prompt || '',
+                platform: img.platform || '',
                 claudeResponse: img.claudeResponse || '',
                 timestamp: img.timestamp || new Date().toISOString(),
                 size: img.size || 'Square',
@@ -592,6 +597,9 @@ const HistoryDisplay: React.FC<{
             {dateGroup.items.map((item) => {
               const isItemDisabled = isItemSelected(item);
               
+              // ✅ Lấy platform từ image đầu tiên (nếu có)
+              const platform = item.list && item.list[0] ? item.list[0].platform : undefined;
+              
               return (
                 <div
                   key={`item-${item.id}`}
@@ -607,6 +615,7 @@ const HistoryDisplay: React.FC<{
                     alt={item.describe || "Generated image"}
                     id={item.id}
                     count={item.imageCount}
+                    platform={platform} // ✅ Truyền platform
                   />
 
                   {item.imageCount > 1 && (
@@ -629,7 +638,8 @@ const SafeHistoryImage: React.FC<{
   alt: string;
   id: string;
   count: number;
-}> = ({ src, alt, id, count }) => {
+  platform?: string; // ✅ Thêm platform prop
+}> = ({ src, alt, id, count, platform }) => {
   const [imageSrc, setImageSrc] = useState<string>(src);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -710,6 +720,15 @@ const SafeHistoryImage: React.FC<{
 
   return (
     <div className="history-image-container">
+      {/* ✅ THÊM PLATFORM LABEL */}
+      {/* {platform && (
+        <div className="platform-label platform-label-history">
+          {platform === 'nano-banana' ? 'Nano Banana' : 
+           platform === 'seedream' ? 'Seedream' : 
+           platform}
+        </div>
+      )} */}
+      
       {isLoading && (
         <div className="history-image-loading">
           <div className="loading-spinner"></div>

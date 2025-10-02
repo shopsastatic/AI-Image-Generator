@@ -1282,14 +1282,15 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
   try {
     const {
       name,
+      promptContent = '',  // ← THÊM DÒNG NÀY
       instructions,
       category,
       subcategory = '',
       targetModel = 'universal',
       instructionType = 'user',
       status = 'active',
-      originalFilename = null, // ✅ NEW: For edit mode
-      allowOverwrite = false   // ✅ NEW: Force overwrite flag
+      originalFilename = null,
+      allowOverwrite = false
     } = req.body;
 
     console.log('📝 Creating/updating instruction project:', {
@@ -1361,14 +1362,15 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
 
     // ✅ Create/update project
     const result = instructionsManager.createOrUpdateProject({
-      name,
-      instructions,
-      category: normalizedCategory,
-      subcategory: subcategory || '',
-      targetModel,
-      instructionType,
-      status,
-      originalFilename // ✅ Pass for edit mode detection
+        name,
+        promptContent,  // ← THÊM DÒNG NÀY
+        instructions,
+        category: normalizedCategory,
+        subcategory: subcategory || '',
+        targetModel,
+        instructionType,
+        status,
+        originalFilename
     }, allowOverwrite);
 
     if (result.success) {
@@ -1613,20 +1615,25 @@ app.delete('/api/instructions/projects/:filename', requireAdmin, (req, res) => {
 });
 
 // ✅ Get instruction content
+// Tìm endpoint này (khoảng line 1200) và REPLACE:
 app.get('/api/instructions/content/:filename', requireAuth, async (req, res) => {
   try {
     const { filename } = req.params;
 
     console.log(`📖 Getting instruction content: ${filename}`);
 
-    const content = await instructionsManager.loadInstructionContent(filename);
+    const { promptContent, instructions } = await instructionsManager.loadInstructionContent(filename);
 
     res.json({
       success: true,
       filename: filename,
-      content: content,
-      length: content.length,
-      preview: content.substring(0, 200) + (content.length > 200 ? '...' : '')
+      promptContent: promptContent,      // ← NEW
+      instructions: instructions,        // ← CHANGED
+      content: instructions,             // ← Keep for backward compatibility
+      lengths: {
+        promptContent: promptContent.length,
+        instructions: instructions.length
+      }
     });
 
   } catch (error) {

@@ -29,24 +29,14 @@
     "createdAt": "2025-01-02T10:10:00.000Z",
     "lastModified": "2025-01-02T10:10:00.000Z"
   },
-  "user_prompt_deepseek_google.txt": {
+  "user_prompt_deepseek_google_ads.txt": {
     "project": "Google Ads DeepSeek User Instructions",
     "category": "google-ads",
     "subcategory": "",
     "instructionType": "user",
     "targetModel": "deepseek",
     "status": "active",
-    "createdAt": "2025-01-02T10:15:00.000Z",
-    "lastModified": "2025-01-02T10:15:00.000Z"
-  },
-  "system_prompt_universal_google_ads_sss.txt": {
-    "project": "sss",
-    "category": "google-ads",
-    "subcategory": "sss",
-    "instructionType": "system",
-    "targetModel": "universal",
-    "status": "active",
-    "createdAt": "2025-10-01T07:50:48.123Z",
-    "lastModified": "2025-10-01T07:50:48.123Z"
+    "createdAt": "2025-10-02T05:55:35.991Z",
+    "lastModified": "2025-10-02T05:55:35.991Z"
   }
 }
