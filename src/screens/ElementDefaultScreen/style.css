@@ -2882,7 +2882,6 @@ button {
 .platform-label {
   position: absolute;
   top: 8px;
-  left: 8px;
   background: rgba(0, 0, 0, 0.7);
   color: white;
   padding: 4px 8px;
