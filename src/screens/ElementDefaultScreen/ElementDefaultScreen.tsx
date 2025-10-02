@@ -763,7 +763,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       let uploadedImageUrls = [];
 
       if (uploadedImages.length > 0) {
-        console.log("📤 Uploading", uploadedImages.length, "images...");
 
         const uploadPromises = uploadedImages.map(
           async (base64Image, index) => {
