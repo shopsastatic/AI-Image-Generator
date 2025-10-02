@@ -240,126 +240,68 @@ class InstructionsManager {
     }
 
     // ✅ Create or update project
+    // ✅ REPLACE method createOrUpdateProject trong InstructionsManager.js
     createOrUpdateProject(projectData, allowOverwrite = false) {
         try {
             const {
                 name,
-                promptContent = '', // ← THÊM DÒNG NÀY
+                promptContent = '',
                 instructions,
                 category,
                 subcategory = '',
                 targetModel = 'universal',
                 instructionType = 'user',
                 status = 'active',
-                originalFilename = null
+                originalFilename = null // Không dùng nữa nhưng giữ lại cho compatibility
             } = projectData;
 
-            console.log(`🔧 Creating/updating project:`, {
-                name,
+            console.log(`🔧 Saving content for subcategory:`, {
                 category,
                 subcategory,
                 targetModel,
-                instructionType,
-                status,
-                originalFilename,
-                allowOverwrite
+                instructionType
             });
 
-            // Generate filename
+            // Generate filename cho subcategory hiện tại
             const filename = this.generateFileName(category, subcategory, instructionType, targetModel);
             const filePath = path.join(this.instructionsDir, filename);
 
-            // ✅ NEW: Check for conflicts
-            const projectExists = this.registry[filename] !== undefined;
-
-            if (projectExists) {
-                // ✅ Case 1: Edit mode - same filename is OK
-                if (originalFilename && originalFilename === filename) {
-                    console.log(`📝 Editing existing project: ${filename}`);
-                    // Continue with update...
-                }
-                // ✅ Case 2: Edit mode - filename changed, check new filename
-                else if (originalFilename && originalFilename !== filename) {
-                    console.log(`⚠️ Filename change detected: ${originalFilename} → ${filename}`);
-                    return {
-                        success: false,
-                        error: `A project with this configuration already exists: "${this.registry[filename].project}". Please change the category, subcategory, instruction type, or target model to create a unique project.`,
-                        conflictingProject: {
-                            filename: filename,
-                            project: this.registry[filename].project,
-                            category: this.registry[filename].category,
-                            subcategory: this.registry[filename].subcategory,
-                            instructionType: this.registry[filename].instructionType,
-                            targetModel: this.registry[filename].targetModel
-                        }
-                    };
-                }
-                // ✅ Case 3: Create mode - conflict not allowed
-                else if (!originalFilename && !allowOverwrite) {
-                    console.log(`❌ Project conflict detected: ${filename}`);
-                    return {
-                        success: false,
-                        error: `A project with this configuration already exists: "${this.registry[filename].project}". Please change the category, subcategory, instruction type, or target model to create a unique project.`,
-                        conflictingProject: {
-                            filename: filename,
-                            project: this.registry[filename].project,
-                            category: this.registry[filename].category,
-                            subcategory: this.registry[filename].subcategory,
-                            instructionType: this.registry[filename].instructionType,
-                            targetModel: this.registry[filename].targetModel
-                        }
-                    };
-                }
-            }
-
-            // ✅ Write instruction file
+            // ✅ SIMPLE LOGIC: Chỉ save file hiện tại, không đụng các file khác
+            
+            // Write file
             const combinedContent = this.combineFileContent(promptContent, instructions);
             fs.writeFileSync(filePath, combinedContent, 'utf8');
             console.log(`📝 Written instruction file: ${filename}`);
 
-            // ✅ Update registry
+            // Update registry
             const now = new Date().toISOString();
-            const isUpdate = projectExists && originalFilename === filename;
-
-            // ✅ Handle filename changes in edit mode
-            if (originalFilename && originalFilename !== filename) {
-                // Remove old registry entry
-                if (this.registry[originalFilename]) {
-                    delete this.registry[originalFilename];
-
-                    // Remove old file
-                    const oldFilePath = path.join(this.instructionsDir, originalFilename);
-                    if (fs.existsSync(oldFilePath)) {
-                        fs.unlinkSync(oldFilePath);
-                        console.log(`🗑️ Removed old file: ${originalFilename}`);
-                    }
-                }
-            }
+            const fileExists = this.registry[filename];
 
             this.registry[filename] = {
-                project: name,
+                project: name || `${category} - ${subcategory}`,
                 category: category,
                 subcategory: subcategory,
                 instructionType: instructionType,
                 targetModel: targetModel,
                 status: status,
-                createdAt: isUpdate ? this.registry[filename].createdAt : now,
+                createdAt: fileExists ? this.registry[filename].createdAt : now,
                 lastModified: now
             };
 
             // Save registry
             this.saveRegistry();
 
-            console.log(`✅ ${isUpdate ? 'Updated' : 'Created'} project: ${filename}`);
+            console.log(`✅ ${fileExists ? 'Updated' : 'Created'} file: ${filename}`);
+            
             return {
                 success: true,
                 filename,
-                isUpdate: isUpdate,
-                message: isUpdate ? 'Project updated successfully' : 'Project created successfully'
+                isUpdate: !!fileExists,
+                message: fileExists ? 'Content updated successfully' : 'Content created successfully'
             };
 
         } catch (error) {
-            console.error('❌ Error creating/updating project:', error);
+            console.error('❌ Error saving content:', error);
             return { success: false, error: error.message };
         }
     }

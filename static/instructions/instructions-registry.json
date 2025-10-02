@@ -29,14 +29,44 @@
     "createdAt": "2025-01-02T10:10:00.000Z",
     "lastModified": "2025-01-02T10:10:00.000Z"
   },
-  "user_prompt_deepseek_google_ads.txt": {
+  "system_prompt_universal_google_ads_display_banner_generator.txt": {
     "project": "Google Ads DeepSeek User Instructions",
     "category": "google-ads",
-    "subcategory": "",
-    "instructionType": "user",
-    "targetModel": "deepseek",
+    "subcategory": "display-banner-generator",
+    "instructionType": "system",
+    "targetModel": "universal",
     "status": "active",
-    "createdAt": "2025-10-02T05:55:35.991Z",
-    "lastModified": "2025-10-02T05:55:35.991Z"
+    "createdAt": "2025-10-02T09:18:01.963Z",
+    "lastModified": "2025-10-02T09:56:52.003Z"
+  },
+  "system_prompt_universal_google_ads_search_visual_generator.txt": {
+    "project": "Google Ads DeepSeek User Instructions",
+    "category": "google-ads",
+    "subcategory": "search-visual-generator",
+    "instructionType": "system",
+    "targetModel": "universal",
+    "status": "active",
+    "createdAt": "2025-10-02T09:45:06.603Z",
+    "lastModified": "2025-10-02T09:49:57.343Z"
+  },
+  "system_prompt_universal_google_ads_shopping_image_generator.txt": {
+    "project": "Google Ads DeepSeek User Instructions",
+    "category": "google-ads",
+    "subcategory": "shopping-image-generator",
+    "instructionType": "system",
+    "targetModel": "universal",
+    "status": "active",
+    "createdAt": "2025-10-02T09:45:15.341Z",
+    "lastModified": "2025-10-02T09:48:52.851Z"
+  },
+  "system_prompt_universal_google_ads_youtube_thumbnail_generator.txt": {
+    "project": "Google Ads DeepSeek User Instructions",
+    "category": "google-ads",
+    "subcategory": "youtube-thumbnail-generator",
+    "instructionType": "system",
+    "targetModel": "universal",
+    "status": "active",
+    "createdAt": "2025-10-02T09:45:34.275Z",
+    "lastModified": "2025-10-02T09:47:25.802Z"
   }
 }

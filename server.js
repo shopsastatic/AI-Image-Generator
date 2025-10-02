@@ -1277,61 +1277,126 @@ app.get('/api/instructions/projects/category/:category', requireAuth, (req, res)
   }
 });
 
+// POST /api/instructions/load-by-config - Load content for specific configuration
+app.post('/api/instructions/load-by-config', requireAuth, async (req, res) => {
+  try {
+    const {
+      category,
+      subcategory = '',
+      targetModel = 'universal',
+      instructionType = 'user'
+    } = req.body;
+
+    if (!category) {
+      return res.status(400).json({ error: 'Category is required' });
+    }
+
+    console.log('Loading content for config:', {
+      category,
+      subcategory,
+      targetModel,
+      instructionType
+    });
+
+    // Generate filename
+    const filename = instructionsManager.generateFileName(
+      category,
+      subcategory,
+      instructionType,
+      targetModel
+    );
+
+    // Check if file exists
+    const filePath = path.join(instructionsManager.instructionsDir, filename);
+    const fileExists = fs.existsSync(filePath);
+
+    if (fileExists) {
+      // Load content from file
+      const { promptContent, instructions } = await instructionsManager.loadInstructionContent(filename);
+      
+      // Get registry info if available
+      const registryInfo = instructionsManager.registry[filename];
+
+      console.log(`Loaded: ${filename} (${instructions.length} chars)`);
+
+      return res.json({
+        success: true,
+        exists: true,
+        filename: filename,
+        promptContent: promptContent || '',
+        instructions: instructions || '',
+        project: registryInfo?.project || '',
+        status: registryInfo?.status || 'active',
+        lastModified: registryInfo?.lastModified
+      });
+    } else {
+      console.log(`File not found: ${filename}`);
+
+      return res.json({
+        success: true,
+        exists: false,
+        filename: filename,
+        promptContent: '',
+        instructions: '',
+        project: '',
+        status: 'active'
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to load content:', error);
+    res.status(500).json({
+      error: 'Failed to load content',
+      message: error.message
+    });
+  }
+});
+
 // ✅ Create or update instruction project
+// POST /api/instructions/projects - Save content for specific subcategory
 app.post('/api/instructions/projects', requireAdmin, (req, res) => {
   try {
     const {
-      name,
-      promptContent = '',  // ← THÊM DÒNG NÀY
+      name, // Project display name (optional, chỉ dùng để hiển thị)
+      promptContent = '',
       instructions,
       category,
       subcategory = '',
       targetModel = 'universal',
       instructionType = 'user',
       status = 'active',
-      originalFilename = null,
-      allowOverwrite = false
+      originalFilename = null // Not used anymore, kept for compatibility
     } = req.body;
 
-    console.log('📝 Creating/updating instruction project:', {
-      name,
+    console.log('Saving subcategory content:', {
       category,
       subcategory,
       targetModel,
-      instructionType,
-      status,
-      originalFilename,
-      allowOverwrite
+      instructionType
     });
 
-    // ✅ Validate required fields
-    if (!name || !instructions || !category) {
+    // Validate required fields
+    if (!instructions || !category || !subcategory) {
       return res.status(400).json({
         error: 'Missing required fields',
-        required: ['name', 'instructions', 'category'],
-        received: { name: !!name, instructions: !!instructions, category: !!category }
+        required: ['instructions', 'category', 'subcategory'],
+        received: { 
+          instructions: !!instructions, 
+          category: !!category, 
+          subcategory: !!subcategory 
+        }
       });
     }
 
-    // ✅ Validate enums
-    const validCategories = ['google-ads', 'facebook-ads', 'website-content', 'google_prompt', 'facebook_prompt', 'website_prompt'];
+    // Validate enums
+    const validCategories = ['google-ads', 'facebook-ads', 'website-content'];
     const validModels = ['universal', 'deepseek'];
     const validInstructionTypes = ['user', 'system'];
-    const validStatuses = ['active', 'inactive', 'private'];
 
-    // Convert category format if needed
-    const categoryMap = {
-      'google_prompt': 'google-ads',
-      'facebook_prompt': 'facebook-ads',
-      'website_prompt': 'website-content'
-    };
-
-    const normalizedCategory = categoryMap[category] || category;
-
-    if (!validCategories.includes(category) && !validCategories.includes(normalizedCategory)) {
+    if (!validCategories.includes(category)) {
       return res.status(400).json({
         error: 'Invalid category',
-        validCategories: ['google-ads', 'facebook-ads', 'google_prompt', 'facebook_prompt'],
+        validCategories,
         received: category
       });
     }
@@ -1339,7 +1404,7 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
     if (!validModels.includes(targetModel)) {
       return res.status(400).json({
         error: 'Invalid target model',
-        validModels: validModels,
+        validModels,
         received: targetModel
       });
     }
@@ -1347,75 +1412,60 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
     if (!validInstructionTypes.includes(instructionType)) {
       return res.status(400).json({
         error: 'Invalid instruction type',
-        validTypes: validInstructionTypes,
+        validInstructionTypes,
         received: instructionType
       });
     }
 
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        error: 'Invalid status',
-        validStatuses: validStatuses,
-        received: status
-      });
-    }
+    // Generate filename for this specific subcategory
+    const filename = instructionsManager.generateFileName(
+      category,
+      subcategory,
+      instructionType,
+      targetModel
+    );
 
-    // ✅ Create/update project
-    const result = instructionsManager.createOrUpdateProject({
-        name,
-        promptContent,  // ← THÊM DÒNG NÀY
-        instructions,
-        category: normalizedCategory,
-        subcategory: subcategory || '',
+    // Save to file (create or update)
+    const filePath = path.join(instructionsManager.instructionsDir, filename);
+    const combinedContent = instructionsManager.combineFileContent(promptContent, instructions);
+    fs.writeFileSync(filePath, combinedContent, 'utf8');
+
+    // Update registry
+    const now = new Date().toISOString();
+    const fileExists = instructionsManager.registry[filename];
+
+    instructionsManager.registry[filename] = {
+      project: name || `${category} - ${subcategory}`,
+      category: category,
+      subcategory: subcategory,
+      instructionType: instructionType,
+      targetModel: targetModel,
+      status: status,
+      createdAt: fileExists ? instructionsManager.registry[filename].createdAt : now,
+      lastModified: now
+    };
+
+    instructionsManager.saveRegistry();
+
+    console.log(`Saved: ${filename}`);
+
+    res.json({
+      success: true,
+      message: fileExists ? 'Content updated successfully' : 'Content created successfully',
+      filename: filename,
+      isUpdate: !!fileExists,
+      config: {
+        category,
+        subcategory,
         targetModel,
-        instructionType,
-        status,
-        originalFilename
-    }, allowOverwrite);
-
-    if (result.success) {
-      console.log(`✅ Project ${result.isUpdate ? 'updated' : 'created'}: ${result.filename}`);
-
-      res.json({
-        success: true,
-        message: result.message,
-        filename: result.filename,
-        isUpdate: result.isUpdate,
-        project: {
-          name,
-          category: normalizedCategory,
-          subcategory,
-          targetModel,
-          instructionType,
-          status
-        }
-      });
-    } else {
-      // ✅ NEW: Handle conflicts with detailed error info
-      if (result.conflictingProject) {
-        res.status(409).json({ // 409 Conflict
-          error: result.error,
-          type: 'CONFIGURATION_CONFLICT',
-          conflictingProject: result.conflictingProject,
-          suggestions: [
-            'Change the category (Google Ads ↔ Facebook Ads)',
-            'Change the instruction type (User Prompt ↔ System Prompt)',
-            'Change the target model (Universal ↔ DeepSeek)',
-            'Add or modify the subcategory'
-          ]
-        });
-      } else {
-        res.status(500).json({
-          error: 'Failed to create/update project',
-          message: result.error
-        });
+        instructionType
       }
-    }
+    });
 
   } catch (error) {
-    console.error('Failed to create/update instruction project:', error);
+    console.error('Failed to save subcategory content:', error);
     res.status(500).json({
-      error: 'Failed to create/update instruction project',
+      error: 'Failed to save content',
       message: error.message
     });
   }
@@ -2220,6 +2270,7 @@ app.patch('/api/subcategories/:id/status', requireAuth, (req, res) => {
 });
 
 // ✅ DELETE /api/subcategories/:id - Delete subcategory
+// DELETE /api/subcategories/:id - Delete subcategory and all related files
 app.delete('/api/subcategories/:id', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
@@ -2236,31 +2287,43 @@ app.delete('/api/subcategories/:id', requireAdmin, (req, res) => {
       });
     }
 
-    // ✅ Check if subcategory is being used by any projects
+    const subcategoryToDelete = subcategories[deleteIndex];
+
+    // ✅ NEW: Find and delete all projects using this subcategory
     const projects = instructionsManager.getAllProjects();
-    const usedByProjects = projects.filter(project => project.subcategory === subcategories[deleteIndex].value);
+    const relatedProjects = projects.filter(
+      project => 
+        project.category === subcategoryToDelete.category && 
+        project.subcategory === subcategoryToDelete.value
+    );
 
-    if (usedByProjects.length > 0) {
-      return res.status(409).json({
-        error: 'Cannot delete subcategory',
-        message: `This subcategory is being used by ${usedByProjects.length} project(s)`,
-        usedByProjects: usedByProjects.map(p => ({
-          filename: p.filename,
-          project: p.project
-        }))
-      });
-    }
+    console.log(`📋 Found ${relatedProjects.length} related projects to delete`);
 
-    // Remove from array
+    // Delete all related project files
+    let deletedFiles = 0;
+    relatedProjects.forEach(project => {
+      const result = instructionsManager.deleteProject(project.filename);
+      if (result.success) {
+        deletedFiles++;
+        console.log(`  ✅ Deleted file: ${project.filename}`);
+      } else {
+        console.log(`  ❌ Failed to delete: ${project.filename}`);
+      }
+    });
+
+    // Remove subcategory from array
     const deletedSubcategory = subcategories.splice(deleteIndex, 1)[0];
 
     if (saveSubcategories(subcategories)) {
-      console.log(`✅ Subcategory deleted successfully: ${id}`);
+      console.log(`✅ Subcategory deleted: ${id}`);
+      console.log(`✅ Deleted ${deletedFiles} related files`);
 
       res.json({
         success: true,
-        message: 'Subcategory deleted successfully',
-        deletedSubcategory: deletedSubcategory
+        message: `Subcategory deleted successfully. ${deletedFiles} related file(s) also deleted.`,
+        deletedSubcategory: deletedSubcategory,
+        deletedFilesCount: deletedFiles,
+        deletedFiles: relatedProjects.map(p => p.filename)
       });
     } else {
       res.status(500).json({
@@ -2479,6 +2542,174 @@ app.get('/api/instructions/available', requireAuth, (req, res) => {
       }));
 
     res.json({ success: true, files });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/instructions/preview', requireAuth, async (req, res) => {
+  try {
+    const {
+      category,
+      subcategory = '',
+      targetModel = 'universal',
+      instructionType = 'user'
+    } = req.body;
+
+    if (!category) {
+      return res.status(400).json({
+        error: 'Category is required'
+      });
+    }
+
+    console.log('🔍 Previewing instruction content for:', {
+      category,
+      subcategory,
+      targetModel,
+      instructionType
+    });
+
+    // Generate filename
+    const filename = instructionsManager.generateFileName(
+      category,
+      subcategory,
+      instructionType,
+      targetModel
+    );
+
+    // Check if file exists
+    const fileExists = instructionsManager.projectExists(filename);
+
+    if (fileExists) {
+      // Load content
+      const { promptContent, instructions } = await instructionsManager.loadInstructionContent(filename);
+      
+      console.log(`✅ Found existing file: ${filename}`);
+      
+      return res.json({
+        success: true,
+        exists: true,
+        filename: filename,
+        promptContent: promptContent || '',
+        instructions: instructions || '',
+        project: instructionsManager.getProject(filename)
+      });
+    } else {
+      console.log(`📝 No existing file found: ${filename}`);
+      
+      return res.json({
+        success: true,
+        exists: false,
+        filename: filename,
+        promptContent: '',
+        instructions: ''
+      });
+    }
+
+  } catch (error) {
+    console.error('Failed to preview instruction content:', error);
+    res.status(500).json({
+      error: 'Failed to preview instruction content',
+      message: error.message
+    });
+  }
+});
+
+// GET all projects (simplified - just parent categories)
+app.get('/api/instructions/projects', requireAuth, (req, res) => {
+  try {
+    const projects = instructionsManager.getAllProjects();
+    res.json({ success: true, projects });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST create project (just create parent category entry)
+app.post('/api/instructions/projects', requireAdmin, (req, res) => {
+  try {
+    const { category } = req.body;
+    
+    if (!category) {
+      return res.status(400).json({ error: 'Category is required' });
+    }
+
+    const project = instructionsManager.getOrCreateProject(category);
+    
+    res.json({
+      success: true,
+      message: 'Project created successfully',
+      project
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST save subcategory content
+app.post('/api/instructions/subcategory-content', requireAuth, async (req, res) => {
+  try {
+    const {
+      category,
+      subcategory,
+      instructionType,
+      targetModel,
+      promptContent,
+      instructions
+    } = req.body;
+
+    if (!category || !subcategory || !instructionType || !targetModel) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['category', 'subcategory', 'instructionType', 'targetModel']
+      });
+    }
+
+    const result = instructionsManager.saveSubcategoryContent(
+      category,
+      subcategory,
+      instructionType,
+      targetModel,
+      promptContent || '',
+      instructions || ''
+    );
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Content saved successfully',
+        filename: result.filename
+      });
+    } else {
+      res.status(500).json({ error: result.error });
+    }
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET load subcategory content
+app.post('/api/instructions/subcategory-content/load', requireAuth, async (req, res) => {
+  try {
+    const { category, subcategory, instructionType, targetModel } = req.body;
+
+    if (!category || !subcategory || !instructionType || !targetModel) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const content = await instructionsManager.loadSubcategoryContent(
+      category,
+      subcategory,
+      instructionType,
+      targetModel
+    );
+
+    res.json({
+      success: true,
+      ...content
+    });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

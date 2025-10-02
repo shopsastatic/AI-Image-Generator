@@ -191,6 +191,109 @@ const ProjectManagement: React.FC = () => {
     message: string;
   } | null>(null);
   const [loadingSubcategories, setLoadingSubcategories] = useState(false);
+  const [shouldLoadPreview, setShouldLoadPreview] = useState(true);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
+
+  const [showQuickAddSubcategory, setShowQuickAddSubcategory] = useState(false);
+  const [quickAddSubcategoryName, setQuickAddSubcategoryName] = useState("");
+  const [savingQuickAdd, setSavingQuickAdd] = useState(false);
+
+  const [configDrafts, setConfigDrafts] = useState<
+    Map<
+      string,
+      {
+        promptContent: string;
+        instructions: string;
+        name: string;
+      }
+    >
+  >(new Map());
+
+  // Helper to generate unique key for each configuration
+  const getConfigKey = (
+    category: string,
+    subcategory: string,
+    targetModel: string,
+    instructionType: string
+  ) => {
+    return `${category}__${subcategory}__${targetModel}__${instructionType}`;
+  };
+
+  const loadContentByConfig = async (
+    category: string,
+    subcategory: string,
+    targetModel: string,
+    instructionType: string
+  ) => {
+    if (!subcategory) {
+      // Nếu không có subcategory, clear content
+      setFormData((prev) => ({
+        ...prev,
+        promptContent: "",
+        instructions: "",
+        name: "",
+      }));
+      return;
+    }
+
+    try {
+      setIsLoadingContent(true);
+
+      const response = await fetch("/api/instructions/load-by-config", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          category,
+          subcategory,
+          targetModel,
+          instructionType,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.exists) {
+          console.log(`Loaded existing content: ${data.filename}`);
+
+          setFormData((prev) => ({
+            ...prev,
+            promptContent: data.promptContent || "",
+            instructions: data.instructions || "",
+            name: data.project || prev.name,
+          }));
+
+          showNotification(
+            "info",
+            "Content Loaded",
+            `Loaded from: ${data.filename}`
+          );
+        } else {
+          console.log(`No existing content for: ${data.filename}`);
+
+          // Clear content cho subcategory mới
+          setFormData((prev) => ({
+            ...prev,
+            promptContent: "",
+            instructions: "",
+          }));
+
+          showNotification(
+            "info",
+            "New Subcategory",
+            "No existing content. You can create new instructions here."
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load content:", error);
+      showNotification("error", "Load Failed", "Could not load content");
+    } finally {
+      setIsLoadingContent(false);
+    }
+  };
 
   const [formData, setFormData] = useState<FormData>({
     name: "",
@@ -215,7 +318,7 @@ const ProjectManagement: React.FC = () => {
   const parentCategories: CategoryOption[] = [
     {
       value: "google-ads",
-      label: "Google Ads", 
+      label: "Google Ads",
       icon: Target,
       color: "bg-blue-50 text-blue-700",
       description: "Search, Display & Shopping campaigns",
@@ -223,14 +326,14 @@ const ProjectManagement: React.FC = () => {
     {
       value: "facebook-ads",
       label: "Facebook Ads",
-      icon: Share2, 
+      icon: Share2,
       color: "bg-indigo-50 text-indigo-700",
       description: "Social media advertising campaigns",
     },
     {
       value: "website-content", // ✅ NEW
       label: "Website Content",
-      icon: Globe, // ✅ NEW 
+      icon: Globe, // ✅ NEW
       color: "bg-emerald-50 text-emerald-700", // ✅ NEW
       description: "Website and content marketing visuals", // ✅ NEW
     },
@@ -239,7 +342,7 @@ const ProjectManagement: React.FC = () => {
   const modelOptions = [
     {
       value: "universal",
-      label: "Universal (Claude)",
+      label: "Claude",
       color: "bg-purple-50 text-purple-700",
       icon: Brain,
     },
@@ -269,13 +372,13 @@ const ProjectManagement: React.FC = () => {
   const statusOptions = [
     {
       value: "active",
-      label: "Active", 
+      label: "Active",
       color: "bg-green-50 text-green-700 border-green-200",
     },
     {
       value: "inactive",
       label: "Inactive",
-      color: "bg-gray-50 text-gray-700 border-gray-200", 
+      color: "bg-gray-50 text-gray-700 border-gray-200",
     },
     {
       value: "private",
@@ -283,6 +386,150 @@ const ProjectManagement: React.FC = () => {
       color: "bg-purple-50 text-purple-700 border-purple-200",
     },
   ];
+
+  const handleDeleteSelectedSubcategory = async () => {
+    if (!formData.subcategory) return;
+
+    // Find subcategory data
+    const subcategoryToDelete = subcategories.find(
+      (sub) =>
+        sub.category === formData.category && sub.value === formData.subcategory
+    );
+
+    if (!subcategoryToDelete) {
+      showNotification("error", "Not Found", "Subcategory not found.");
+      return;
+    }
+
+    // Count related files
+    const relatedFiles = projects.filter(
+      (p) =>
+        p.category === formData.category &&
+        p.subcategory === formData.subcategory
+    );
+
+    // Confirm deletion with file count
+    const confirmMessage =
+      relatedFiles.length > 0
+        ? `Are you sure you want to delete "${
+            subcategoryToDelete.label
+          }"?\n\nThis will also delete ${
+            relatedFiles.length
+          } related file(s):\n${relatedFiles
+            .map((p) => `• ${p.filename}`)
+            .join("\n")}\n\nThis action cannot be undone.`
+        : `Are you sure you want to delete "${subcategoryToDelete.label}"?\n\nThis action cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/subcategories/${subcategoryToDelete.id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Refresh both subcategories and projects
+        await fetchSubcategories();
+        await fetchProjects();
+
+        // Clear selected subcategory
+        setFormData({
+          ...formData,
+          subcategory: "",
+          promptContent: "",
+          instructions: "",
+        });
+
+        const message =
+          data.deletedFilesCount > 0
+            ? `"${subcategoryToDelete.label}" and ${data.deletedFilesCount} related file(s) deleted successfully.`
+            : `"${subcategoryToDelete.label}" deleted successfully.`;
+
+        showNotification("success", "Deleted!", message);
+
+        console.log(
+          `✅ Deleted subcategory and ${data.deletedFilesCount} files`
+        );
+      } else {
+        showNotification("error", "Delete Failed", data.error);
+      }
+    } catch (error) {
+      console.error("Error deleting subcategory:", error);
+      showNotification(
+        "error",
+        "Network Error",
+        "Failed to delete subcategory."
+      );
+    }
+  };
+
+  const handleQuickAddSubcategory = async () => {
+    if (!quickAddSubcategoryName.trim()) return;
+
+    try {
+      setSavingQuickAdd(true);
+
+      const slug = generateSlug(quickAddSubcategoryName);
+
+      const response = await fetch("/api/subcategories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          value: slug,
+          label: quickAddSubcategoryName.trim(),
+          category: formData.category,
+          status: "active",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Refresh subcategories list
+        await fetchSubcategories();
+
+        // Auto-select the new subcategory
+        setFormData({
+          ...formData,
+          subcategory: slug,
+        });
+
+        // Close quick add form
+        setShowQuickAddSubcategory(false);
+        setQuickAddSubcategoryName("");
+
+        showNotification(
+          "success",
+          "Subcategory Added!",
+          `"${quickAddSubcategoryName}" has been created and selected.`
+        );
+      } else {
+        if (response.status === 409) {
+          showNotification(
+            "warning",
+            "Already Exists",
+            `A subcategory with this name already exists in ${formData.category}.`
+          );
+        } else {
+          showNotification("error", "Failed to Add", data.error);
+        }
+      }
+    } catch (error) {
+      console.error("Error adding subcategory:", error);
+      showNotification("error", "Network Error", "Failed to add subcategory.");
+    } finally {
+      setSavingQuickAdd(false);
+    }
+  };
 
   // ✅ Notification Helper
   const showNotification = (
@@ -322,6 +569,82 @@ const ProjectManagement: React.FC = () => {
       setLoading(false);
     }
   }, []);
+
+  const previewInstructionContent = async () => {
+    try {
+      if (editingProject && !shouldLoadPreview) {
+        return;
+      }
+
+      const configKey = getConfigKey(
+        formData.category,
+        formData.subcategory,
+        formData.targetModel,
+        formData.instructionType
+      );
+
+      // Check if we have a draft for this configuration
+      const existingDraft = configDrafts.get(configKey);
+
+      if (existingDraft) {
+        console.log(`📝 Loading draft for config: ${configKey}`);
+
+        setFormData((prev) => ({
+          ...prev,
+          promptContent: existingDraft.promptContent,
+          instructions: existingDraft.instructions,
+          name: existingDraft.name,
+        }));
+
+        return; // Don't fetch from API if we have draft
+      }
+
+      // If no draft, fetch from API
+      const response = await fetch("/api/instructions/preview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          category: formData.category,
+          subcategory: formData.subcategory,
+          targetModel: formData.targetModel,
+          instructionType: formData.instructionType,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.exists) {
+          console.log(`📖 Loading existing content from: ${data.filename}`);
+
+          setFormData((prev) => ({
+            ...prev,
+            promptContent: data.promptContent || "",
+            instructions: data.instructions || "",
+            name: data.project?.project || prev.name,
+          }));
+
+          showNotification(
+            "info",
+            "Existing Content Loaded",
+            `Found existing instruction file: ${data.filename}`
+          );
+        } else {
+          console.log(`📝 No existing content for: ${data.filename}`);
+
+          setFormData((prev) => ({
+            ...prev,
+            promptContent: "",
+            instructions: "",
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Failed to preview content:", error);
+    }
+  };
 
   // ✅ NEW: API Functions for Subcategories
   const fetchSubcategories = useCallback(async () => {
@@ -530,8 +853,10 @@ const ProjectManagement: React.FC = () => {
       const data = await response.json();
 
       if (data.success) {
-        await fetchProjects();
-        showNotification("success", "Success!", data.message);
+        // ❌ XÓA DÒNG NÀY - không fetch lại projects
+        // await fetchProjects();
+
+        showNotification("success", "Saved!", data.message);
         return { success: true, message: data.message };
       } else {
         if (response.status === 409 && data.type === "CONFIGURATION_CONFLICT") {
@@ -637,8 +962,8 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
 
       if (data.success) {
         return {
-          promptContent: data.promptContent || '',
-          instructions: data.instructions || data.content || '' // fallback cho backward compatibility
+          promptContent: data.promptContent || "",
+          instructions: data.instructions || data.content || "", // fallback cho backward compatibility
         };
       } else {
         showNotification(
@@ -647,16 +972,16 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
           "Could not load project content."
         );
         return {
-          promptContent: '',
-          instructions: ''
+          promptContent: "",
+          instructions: "",
         };
       }
     } catch (error) {
       console.error("Error loading project content:", error);
       showNotification("error", "Network Error", "Failed to load content.");
       return {
-        promptContent: '',
-        instructions: ''
+        promptContent: "",
+        instructions: "",
       };
     }
   };
@@ -666,6 +991,78 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
     fetchProjects();
     fetchSubcategories();
   }, []);
+
+  useEffect(() => {
+    if (isFormOpen && formData.category && formData.subcategory) {
+      // Debounce để tránh gọi API liên tục
+      const timer = setTimeout(() => {
+        loadContentByConfig(
+          formData.category,
+          formData.subcategory,
+          formData.targetModel,
+          formData.instructionType
+        );
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    formData.category,
+    formData.subcategory,
+    formData.targetModel,
+    formData.instructionType,
+    isFormOpen,
+  ]);
+
+  useEffect(() => {
+    if (shouldLoadPreview && formData.category && formData.subcategory) {
+      const debounceTimer = setTimeout(() => {
+        previewInstructionContent();
+        setShouldLoadPreview(false);
+      }, 300); // Debounce to avoid too many requests
+
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [
+    formData.category,
+    formData.subcategory,
+    formData.targetModel,
+    formData.instructionType,
+    shouldLoadPreview,
+  ]);
+
+  useEffect(() => {
+    if (isFormOpen && formData.category && formData.subcategory) {
+      const configKey = getConfigKey(
+        formData.category,
+        formData.subcategory,
+        formData.targetModel,
+        formData.instructionType
+      );
+
+      // Only save if content has actual data
+      if (formData.promptContent || formData.instructions || formData.name) {
+        setConfigDrafts((prev) => {
+          const newDrafts = new Map(prev);
+          newDrafts.set(configKey, {
+            promptContent: formData.promptContent,
+            instructions: formData.instructions,
+            name: formData.name,
+          });
+          return newDrafts;
+        });
+      }
+    }
+  }, [
+    formData.promptContent,
+    formData.instructions,
+    formData.name,
+    formData.category,
+    formData.subcategory,
+    formData.targetModel,
+    formData.instructionType,
+    isFormOpen,
+  ]);
 
   // ✅ Utility Functions
   const getTimeAgo = (date: string): string => {
@@ -779,9 +1176,10 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
   const handleCreateNew = () => {
     setEditingProject(null);
     const firstSubcat = getActiveSubcategoriesForCategory("google-ads")[0];
+
     setFormData({
       name: "",
-      promptContent: "", // ✅ THÊM DÒNG NÀY
+      promptContent: "",
       instructions: "",
       category: "google-ads",
       subcategory: firstSubcat?.value || "",
@@ -789,31 +1187,37 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
       instructionType: "system",
       status: "active",
     });
+
     setIsFormOpen(true);
+    // Content sẽ được load tự động bởi useEffect
   };
 
   // Trong handleEdit (dòng ~770)
   const handleEdit = async (project: Project) => {
     setEditingProject(project);
-    const content = await loadProjectContent(project.filename);
+
     setFormData({
       name: project.project,
-      promptContent: content.promptContent || '', // ← THÊM DÒNG NÀY
-      instructions: content.instructions || content, // ← SỬA DÒNG NÀY
+      promptContent: "", // Sẽ được load bởi useEffect
+      instructions: "", // Sẽ được load bởi useEffect
       category: project.category,
       subcategory: project.subcategory,
       targetModel: project.targetModel,
       instructionType: project.instructionType,
       status: project.status,
     });
+
     setIsFormOpen(true);
+    // Content sẽ được load tự động bởi useEffect
   };
 
   const handleSave = async () => {
     const result = await saveProject(formData);
     if (result.success) {
-      setIsFormOpen(false);
-      setEditingProject(null);
+      // Không setIsFormOpen(false) nữa
+      // Không setEditingProject(null) nữa
+      // Chỉ thông báo thành công
+      console.log("Content saved successfully");
     }
   };
 
@@ -839,6 +1243,33 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
       category: newParent,
       subcategory: firstChild?.value || "",
     });
+    setShouldLoadPreview(true); // Enable preview on category change
+  };
+
+  const handleSubcategoryChange = (newSubcategory: string) => {
+    setFormData({
+      ...formData,
+      subcategory: newSubcategory,
+    });
+    // Content sẽ được load tự động bởi useEffect
+  };
+
+  // Add new handler for model change
+  const handleModelChange = (newModel: string) => {
+    setFormData({
+      ...formData,
+      targetModel: newModel,
+    });
+    // Content sẽ được load tự động bởi useEffect
+  };
+
+  // Add new handler for instruction type change
+  const handleInstructionTypeChange = (newType: string) => {
+    setFormData({
+      ...formData,
+      instructionType: newType,
+    });
+    // Content sẽ được load tự động bởi useEffect
   };
 
   // ✅ NEW: Subcategory Management Handlers
@@ -1119,28 +1550,26 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
             </div>
 
             {/* Projects Table */}
+            {/* Projects Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Project
-                      </th>
-                      <th className="text-left py-4 px-6 font-semibold text-gray-900">
                         Category
                       </th>
                       <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Model
+                        Subcategories
                       </th>
                       <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Type
+                        Files
                       </th>
                       <th className="text-left py-4 px-6 font-semibold text-gray-900">
                         Status
                       </th>
                       <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Updated
+                        Last Updated
                       </th>
                       <th className="text-left py-4 px-6 font-semibold text-gray-900">
                         Actions
@@ -1148,147 +1577,233 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredProjects.map((project) => {
-                      const parentCat = getParentCategoryData(project.category);
-                      const childCat = getSubcategoryData(
-                        project.category,
-                        project.subcategory
-                      );
-                      const ParentIcon = parentCat?.icon;
-                      const ModelOption = modelOptions.find(
-                        (m) => m.value === project.targetModel
-                      );
-                      const InstructionTypeOption = instructionTypeOptions.find(
-                        (t) => t.value === project.instructionType
-                      );
+                    {parentCategories
+                      .filter((category) => {
+                        // Apply filters
+                        if (
+                          filterCategory !== "all" &&
+                          filterCategory !== category.value
+                        ) {
+                          return false;
+                        }
 
-                      return (
-                        <tr
-                          key={project.filename}
-                          className="hover:bg-gray-50 transition-colors"
-                        >
-                          {/* Project Name */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-3">
-                              <div
-                                className={`p-2 rounded-lg ${parentCat?.color}`}
-                              >
-                                {ParentIcon && (
-                                  <ParentIcon className="w-5 h-5" />
-                                )}
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-gray-900 text-sm">
-                                  {project.project}
-                                </h3>
-                                <div className="text-xs text-gray-500 font-mono">
-                                  {project.filename}
+                        // Check if category has projects
+                        const categoryProjects = filteredProjects.filter(
+                          (p) => p.category === category.value
+                        );
+
+                        return categoryProjects.length > 0;
+                      })
+                      .map((category) => {
+                        const Icon = category.icon;
+                        const categoryProjects = filteredProjects.filter(
+                          (p) => p.category === category.value
+                        );
+
+                        // Get unique subcategories
+                        const uniqueSubcategories = [
+                          ...new Set(
+                            categoryProjects.map((p) => p.subcategory)
+                          ),
+                        ];
+
+                        // Get most recent update
+                        const lastModified = categoryProjects.reduce(
+                          (latest, project) => {
+                            const projectDate = new Date(
+                              project.lastModified
+                            ).getTime();
+                            return projectDate > latest ? projectDate : latest;
+                          },
+                          0
+                        );
+
+                        // Count active vs inactive files
+                        const activeFiles = categoryProjects.filter(
+                          (p) => p.status === "active"
+                        ).length;
+                        const inactiveFiles = categoryProjects.filter(
+                          (p) => p.status === "inactive"
+                        ).length;
+                        const privateFiles = categoryProjects.filter(
+                          (p) => p.status === "private"
+                        ).length;
+
+                        return (
+                          <tr
+                            key={category.value}
+                            className="hover:bg-gray-50 transition-colors"
+                          >
+                            {/* Category */}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-3">
+                                <div
+                                  className={`p-2 rounded-lg ${category.color}`}
+                                >
+                                  <Icon className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <h3 className="font-semibold text-gray-900 text-sm">
+                                    {category.label}
+                                  </h3>
+                                  <div className="text-xs text-gray-500">
+                                    {category.description}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Category */}
-                          <td className="py-4 px-6">
-                            <div className="text-sm font-medium text-gray-900">
-                              {parentCat?.label}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {childCat?.label || project.subcategory}
-                            </div>
-                          </td>
+                            {/* Subcategories */}
+                            <td className="py-4 px-6">
+                              <div className="flex flex-wrap gap-1.5">
+                                {uniqueSubcategories
+                                  .slice(0, 3)
+                                  .map((subcategoryValue) => {
+                                    const subcategoryData = getSubcategoryData(
+                                      category.value,
+                                      subcategoryValue
+                                    );
+                                    return (
+                                      <span
+                                        key={subcategoryValue}
+                                        className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700"
+                                      >
+                                        {subcategoryData?.label ||
+                                          subcategoryValue}
+                                      </span>
+                                    );
+                                  })}
+                                {uniqueSubcategories.length > 3 && (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
+                                    +{uniqueSubcategories.length - 3} more
+                                  </span>
+                                )}
+                              </div>
+                            </td>
 
-                          {/* Model */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-2">
-                              {ModelOption?.icon && (
-                                <ModelOption.icon className="w-4 h-4" />
-                              )}
+                            {/* Files Count */}
+                            <td className="py-4 px-6">
+                              <div className="text-sm text-gray-900 font-medium">
+                                {categoryProjects.length} files
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1 space-x-2">
+                                {activeFiles > 0 && (
+                                  <span className="text-green-600">
+                                    {activeFiles} active
+                                  </span>
+                                )}
+                                {inactiveFiles > 0 && (
+                                  <span className="text-gray-500">
+                                    {inactiveFiles} inactive
+                                  </span>
+                                )}
+                                {privateFiles > 0 && (
+                                  <span className="text-purple-600">
+                                    {privateFiles} private
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Overall Status */}
+                            <td className="py-4 px-6">
                               <span
-                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getModelStyle(
-                                  project.targetModel
-                                )}`}
+                                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
+                                  activeFiles > 0
+                                    ? "bg-green-50 text-green-700 border-green-200"
+                                    : "bg-gray-50 text-gray-700 border-gray-200"
+                                }`}
                               >
-                                {ModelOption?.label || project.targetModel}
+                                {activeFiles > 0 ? "Active" : "Inactive"}
                               </span>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Type */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-2">
-                              {InstructionTypeOption?.icon && (
-                                <InstructionTypeOption.icon className="w-4 h-4" />
-                              )}
-                              <span
-                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getInstructionTypeStyle(
-                                  project.instructionType
-                                )}`}
-                              >
-                                {InstructionTypeOption?.label ||
-                                  project.instructionType}
-                              </span>
-                            </div>
-                          </td>
+                            {/* Last Updated */}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-1 text-sm text-gray-600">
+                                <Clock className="w-4 h-4" />
+                                <span>
+                                  {getTimeAgo(
+                                    new Date(lastModified).toISOString()
+                                  )}
+                                </span>
+                              </div>
+                            </td>
 
-                          {/* Status */}
-                          <td className="py-4 px-6">
-                            <button
-                              onClick={() => handleStatusToggle(project)}
-                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusStyle(
-                                project.status
-                              )} hover:opacity-80 transition-opacity`}
-                            >
-                              {project.status.charAt(0).toUpperCase() +
-                                project.status.slice(1)}
-                            </button>
-                          </td>
-
-                          {/* Updated */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-1 text-sm text-gray-600">
-                              <Clock className="w-4 h-4" />
-                              <span>{getTimeAgo(project.lastModified)}</span>
-                            </div>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-2">
-                              <button
-                                onClick={() =>
-                                  copyToClipboard(project.filename, "Filename")
-                                }
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Copy filename"
-                              >
-                                <Copy className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleEdit(project)}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Edit project"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(project)}
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete project"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            {/* Actions */}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => {
+                                    // Open form to manage this category
+                                    setFormData({
+                                      name: "",
+                                      promptContent: "",
+                                      instructions: "",
+                                      category: category.value,
+                                      subcategory:
+                                        getActiveSubcategoriesForCategory(
+                                          category.value
+                                        )[0]?.value || "",
+                                      targetModel: "universal",
+                                      instructionType: "system",
+                                      status: "active",
+                                    });
+                                    setIsFormOpen(true);
+                                  }}
+                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                  title="Manage content"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        `Delete all ${categoryProjects.length} files in "${category.label}"?\n\nThis action cannot be undone.`
+                                      )
+                                    ) {
+                                      // Delete all files in this category
+                                      Promise.all(
+                                        categoryProjects.map((p) =>
+                                          deleteProject(p.filename)
+                                        )
+                                      ).then(() => {
+                                        showNotification(
+                                          "success",
+                                          "Deleted!",
+                                          `All files in ${category.label} deleted.`
+                                        );
+                                      });
+                                    }
+                                  }}
+                                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Delete all files"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
 
               {/* Empty State */}
-              {filteredProjects.length === 0 && (
+              {parentCategories.filter((category) => {
+                if (
+                  filterCategory !== "all" &&
+                  filterCategory !== category.value
+                ) {
+                  return false;
+                }
+                const categoryProjects = filteredProjects.filter(
+                  (p) => p.category === category.value
+                );
+                return categoryProjects.length > 0;
+              }).length === 0 && (
                 <div className="text-center py-16">
                   <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -1633,37 +2148,139 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                       </div>
 
                       {/* ✅ UPDATED: Dynamic Subcategory Selection */}
+                      {/* Subcategory Selection with Delete Icon */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Subcategory
                         </label>
-                        <select
-                          value={formData.subcategory}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              subcategory: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500"
-                        >
-                          <option value="">Select subcategory...</option>
-                          {getActiveSubcategoriesForCategory(
-                            formData.category
-                          ).map((child) => (
-                            <option key={child.id} value={child.value}>
-                              {child.label}
-                            </option>
-                          ))}
-                        </select>
+
+                        <div className="flex items-center space-x-2">
+                          {/* Select Dropdown */}
+                          <div className="relative flex-1">
+                            <select
+                              value={formData.subcategory}
+                              onChange={(e) => {
+                                if (e.target.value === "__add_new__") {
+                                  setShowQuickAddSubcategory(true);
+                                } else {
+                                  handleSubcategoryChange(e.target.value);
+                                }
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500"
+                            >
+                              <option value="">Select subcategory...</option>
+                              {getActiveSubcategoriesForCategory(
+                                formData.category
+                              ).map((child) => (
+                                <option key={child.id} value={child.value}>
+                                  {child.label}
+                                </option>
+                              ))}
+                              <option
+                                value="__add_new__"
+                                className="text-blue-600 font-medium"
+                              >
+                                ➕ Add New Subcategory
+                              </option>
+                            </select>
+                          </div>
+
+                          {/* Delete Icon */}
+                          {formData.subcategory &&
+                            formData.subcategory !== "__add_new__" && (
+                              <button
+                                onClick={() =>
+                                  handleDeleteSelectedSubcategory()
+                                }
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                                title="Delete this subcategory"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            )}
+                        </div>
+
+                        {/* Quick Add Inline Form */}
+                        {showQuickAddSubcategory && (
+                          <div className="mt-3 p-4 border border-blue-200 rounded-lg bg-blue-50">
+                            <div className="flex items-start justify-between mb-3">
+                              <label className="block text-sm font-semibold text-gray-900">
+                                Quick Add Subcategory
+                              </label>
+                              <button
+                                onClick={() => {
+                                  setShowQuickAddSubcategory(false);
+                                  setQuickAddSubcategoryName("");
+                                }}
+                                className="text-gray-400 hover:text-gray-600"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              value={quickAddSubcategoryName}
+                              onChange={(e) =>
+                                setQuickAddSubcategoryName(e.target.value)
+                              }
+                              onKeyPress={(e) => {
+                                if (
+                                  e.key === "Enter" &&
+                                  quickAddSubcategoryName.trim()
+                                ) {
+                                  handleQuickAddSubcategory();
+                                }
+                              }}
+                              placeholder="Enter subcategory name..."
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                              autoFocus
+                            />
+
+                            <div className="flex items-center justify-between">
+                              <div className="text-xs text-gray-500">
+                                Will be added to:{" "}
+                                <span className="font-medium">
+                                  {
+                                    parentCategories.find(
+                                      (c) => c.value === formData.category
+                                    )?.label
+                                  }
+                                </span>
+                              </div>
+                              <button
+                                onClick={handleQuickAddSubcategory}
+                                disabled={
+                                  !quickAddSubcategoryName.trim() ||
+                                  savingQuickAdd
+                                }
+                                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                              >
+                                {savingQuickAdd ? (
+                                  <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    <span>Adding...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="w-4 h-4" />
+                                    <span>Add</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="text-xs text-gray-500 mt-1">
                           {getActiveSubcategoriesForCategory(formData.category)
-                            .length === 0 && (
-                            <span className="text-orange-600">
-                              No active subcategories found. Please create one
-                              first.
-                            </span>
-                          )}
+                            .length === 0 &&
+                            !showQuickAddSubcategory && (
+                              <span className="text-orange-600">
+                                No active subcategories found. Click "Add New
+                                Subcategory" to create one.
+                              </span>
+                            )}
                         </div>
                       </div>
                     </div>
@@ -1726,10 +2343,7 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                             <div
                               key={type.value}
                               onClick={() =>
-                                setFormData({
-                                  ...formData,
-                                  instructionType: type.value,
-                                })
+                                handleInstructionTypeChange(type.value)
                               }
                               className={`p-3 border rounded-lg cursor-pointer transition-all ${
                                 isSelected
@@ -1760,7 +2374,10 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                   <textarea
                     value={formData.promptContent}
                     onChange={(e) =>
-                      setFormData({ ...formData, promptContent: e.target.value })
+                      setFormData({
+                        ...formData,
+                        promptContent: e.target.value,
+                      })
                     }
                     placeholder="Enter optional prompt content here (e.g., context, variables, examples)..."
                     rows={6}
@@ -1768,7 +2385,8 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                   />
                   <div className="flex items-center justify-between mt-2">
                     <div className="text-xs text-gray-500">
-                      Optional: Additional context or content to prepend before instructions
+                      Optional: Additional context or content to prepend before
+                      instructions
                     </div>
                     <div className="text-xs text-gray-500">
                       {formData.promptContent.length} characters
@@ -1837,17 +2455,21 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
               {/* Modal Footer */}
               <div className="flex items-center justify-end space-x-4 p-8 border-t border-gray-200 bg-gray-50">
                 <button
-                  onClick={() => setIsFormOpen(false)}
+                  onClick={() => {
+                    setIsFormOpen(false);
+                    setEditingProject(null);
+                  }}
                   className="px-6 py-3 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-medium"
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={
-                    !formData.name.trim() ||
+                    !formData.subcategory ||
                     !formData.instructions.trim() ||
-                    saving
+                    saving ||
+                    isLoadingContent
                   }
                   className="inline-flex items-center space-x-2 px-6 py-3 bg-gray-800 text-white rounded-xl hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >
@@ -1859,9 +2481,7 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                   ) : (
                     <>
                       <Save className="w-5 h-5" />
-                      <span>
-                        {editingProject ? "Update Project" : "Create Project"}
-                      </span>
+                      <span>Save Content</span>
                     </>
                   )}
                 </button>
