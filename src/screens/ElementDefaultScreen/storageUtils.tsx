@@ -65,12 +65,9 @@ class StorageManager {
     if (this.isInitialized) return;
 
     try {
-      this.logDebug('Đang khởi tạo storage...');
-      
       return new Promise((resolve, reject) => {
         // Kiểm tra hỗ trợ IndexedDB
         if (!window.indexedDB) {
-          this.logDebug('IndexedDB không được hỗ trợ, dùng localStorage');
           this.isInitialized = true;
           resolve();
           return;
@@ -79,7 +76,6 @@ class StorageManager {
         const request = indexedDB.open(this.dbName, this.dbVersion);
 
         request.onerror = (event) => {
-          console.error('❌ Lỗi IndexedDB:', event);
           this.isInitialized = true;
           resolve(); // Vẫn resolve để dùng localStorage fallback
         };
@@ -93,13 +89,10 @@ class StorageManager {
             console.error('❌ Lỗi database:', event.target.errorCode);
           };
           
-          this.logDebug('✅ IndexedDB khởi tạo thành công');
-          
           // Thực hiện deduplicate khi khởi động
           this.deduplicateOnStartup().then(() => {
             resolve();
           }).catch(err => {
-            console.warn('⚠️ Lỗi khi deduplicate:', err);
             resolve(); // Vẫn resolve dù có lỗi
           });
         };
@@ -116,7 +109,6 @@ class StorageManager {
           const store = db.createObjectStore('sessions', { keyPath: 'sessionId' });
           store.createIndex('timestamp', 'timestamp', { unique: false });
           store.createIndex('createdAt', 'createdAt', { unique: false });
-          this.logDebug('📦 Đã tạo/nâng cấp object store sessions');
         };
       });
     } catch (error) {
@@ -603,8 +595,6 @@ class StorageManager {
    */
   private async deduplicateOnStartup(): Promise<void> {
     try {
-      this.logDebug('🧹 Kiểm tra và deduplicate dữ liệu khi khởi động...');
-      
       let sessions: any[] = [];
       let isDirty = false;
       
@@ -708,7 +698,6 @@ class StorageManager {
               const request = store.add(session);
               request.onsuccess = () => resolve();
               request.onerror = (e: any) => {
-                console.warn(`⚠️ Không thể thêm lại session ${session.sessionId}:`, e.target.error);
                 resolve(); // Tiếp tục dù có lỗi
               };
             });
@@ -717,10 +706,6 @@ class StorageManager {
           // Cập nhật localStorage
           localStorage.setItem('Image_Generator_Sessions', JSON.stringify(validSessions));
         }
-        
-        this.logDebug(`🧹 Deduplicate thành công: ${originalCount} → ${validSessions.length} sessions (loại bỏ ${invalidCount} không hợp lệ, ${originalCount - invalidCount - validSessions.length} trùng lặp)`);
-      } else {
-        this.logDebug(`✅ Không tìm thấy dữ liệu trùng lặp hoặc không hợp lệ`);
       }
     } catch (error) {
       console.error('❌ Lỗi khi deduplicate dữ liệu:', error);
@@ -776,7 +761,6 @@ class StorageManager {
     }
     
     if (!this.isInitialized) {
-      console.warn('⚠️ Đã đạt số lần thử tối đa khi đợi khởi tạo');
       this.isInitialized = true; // Đánh dấu đã khởi tạo để không bị treo
     }
   }
@@ -878,28 +862,22 @@ class StorageMigration {
     try {
       // Kiểm tra nếu đã migrate
       if (localStorage.getItem('migration_completed') === 'true') {
-        console.log('✅ Migration đã hoàn thành');
         return true;
       }
       
-      console.log('🔄 Bắt đầu di chuyển dữ liệu từ localStorage cũ...');
       
       // Lấy dữ liệu từ định dạng cũ
       const oldDataJson = localStorage.getItem('Image_Generator_Sessions');
       if (!oldDataJson) {
-        console.log('📭 Không tìm thấy dữ liệu cũ');
         localStorage.setItem('migration_completed', 'true');
         return true;
       }
       
       const oldData = JSON.parse(oldDataJson);
       if (!Array.isArray(oldData) || oldData.length === 0) {
-        console.log('📭 Không tìm thấy dữ liệu cũ hợp lệ');
         localStorage.setItem('migration_completed', 'true');
         return true;
       }
-      
-      console.log(`📊 Tìm thấy ${oldData.length} sessions để di chuyển`);
       
       // Deduplicate dữ liệu cũ trước
       const uniqueIds = new Set();
@@ -909,8 +887,6 @@ class StorageMigration {
         uniqueIds.add(session.sessionId);
         return true;
       });
-      
-      console.log(`🧹 Đã deduplicate thành ${uniqueOldData.length} sessions duy nhất`);
       
       // Lưu từng session vào storage mới
       for (const session of uniqueOldData) {
@@ -927,10 +903,8 @@ class StorageMigration {
       // Tạo backup dữ liệu cũ phòng khi cần
       localStorage.setItem('Image_Generator_Sessions_BACKUP', oldDataJson);
       
-      console.log('✅ Migration hoàn thành thành công');
       return true;
     } catch (error) {
-      console.error('❌ Lỗi migration:', error);
       return false;
     }
   }

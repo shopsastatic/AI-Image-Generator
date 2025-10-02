@@ -1309,8 +1309,6 @@ button {
 .prompt-actions .button-menu-3,
 .prompt-actions .button-menu-4,
 .prompt-actions .button-6 {
-  width: 36px;
-  height: 36px;
   border-radius: 100px;
   display: flex;
   align-items: center;

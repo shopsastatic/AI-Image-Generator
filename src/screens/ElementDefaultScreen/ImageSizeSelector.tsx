@@ -1,13 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
-  Plus,
-  Minus,
   Square,
   Smartphone,
   Monitor,
-  Image,
-  Shuffle,
-  RotateCw,
   Zap,
 } from "lucide-react";
 
@@ -28,9 +23,9 @@ interface ImageSizeSelectorProps {
   >;
   // Optional category selection props
   onCategoryChange?: (category: string, subcategory: string) => void;
-  // New props for Model and HD mode
-  onModelChange?: (model: string) => void;
-  onHDModeChange?: (isHD: boolean) => void;
+  // New props for API selection
+  onApiChange?: (apis: string[]) => void; // ["nano", "seed"] or ["nano"] or ["seed"]
+  onAspectRatioChange?: (aspectRatio: string) => void; // ✅ ADDED
   currentUser?: { email: string; role: string };
 }
 
@@ -48,20 +43,29 @@ interface SubcategoryOption {
   status: "active" | "inactive";
 }
 
+// ✅ NEW: Aspect ratio options
+interface AspectRatioOption {
+  value: string;
+  label: string;
+  format: "Square" | "Portrait" | "Landscape";
+}
+
 const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   numberOfImages,
   setNumberOfImages,
   imageSizes,
   setImageSizes,
   onCategoryChange,
-  onModelChange,
-  onHDModeChange,
+  onApiChange,
+  onAspectRatioChange, // ✅ ADDED
   currentUser,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isAutoMode, setIsAutoMode] = useState(true);
-  const [isHDMode, setIsHDMode] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("claude-sonnet");
+  
+  // ✅ NEW: API selection states (default both selected)
+  const [useNano, setUseNano] = useState(true);
+  const [useSeed, setUseSeed] = useState(true);
+  
   const [parentCategory, setParentCategory] = useState("google_prompt");
   const [childOption, setChildOption] = useState("");
 
@@ -69,39 +73,81 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
   const [loadingSubcategories, setLoadingSubcategories] = useState(false);
 
+  // ✅ NEW: Single aspect ratio state (default Square HD)
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState("1:1");
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartValue, setDragStartValue] = useState(0);
 
-  const formats = [
-    { key: "Square", name: "Square", icon: Square },
-    { key: "Portrait", name: "Portrait", icon: Smartphone },
-    { key: "Landscape", name: "Landscape", icon: Monitor },
-  ];
-
   const categoryOptions: CategoryOption[] = [
     { value: "google_prompt", label: "Google" },
     { value: "facebook_prompt", label: "Facebook" },
-    { value: "website_prompt", label: "Website" }, // ✅ NEW
+    { value: "website_prompt", label: "Website" },
   ];
 
-  const modelOptions = [{ value: "claude-sonnet", label: "Claude Sonnet" }];
+  // ✅ NEW: All aspect ratio options in single list
+  const aspectRatioOptions: AspectRatioOption[] = [
+    { value: "Square HD", label: "Square HD", format: "Square" },
+    { value: "Portrait 3:4", label: "Portrait 3:4", format: "Portrait" },
+    { value: "Portrait 2:3", label: "Portrait 2:3", format: "Portrait" },
+    { value: "Portrait 9:16", label: "Portrait 9:16", format: "Portrait" },
+    { value: "Landscape 4:3", label: "Landscape 4:3", format: "Landscape" },
+    { value: "Landscape 3:2", label: "Landscape 3:2", format: "Landscape" },
+    { value: "Landscape 16:9", label: "Landscape 16:9", format: "Landscape" },
+  ];
+
+  // ✅ NEW: Get icon and format type for selected aspect ratio
+  const getIconForAspectRatio = (ratio: string) => {
+    const option = aspectRatioOptions.find(opt => opt.value === ratio);
+    if (!option) return Square;
+    
+    switch (option.format) {
+      case "Square": return Square;
+      case "Portrait": return Smartphone;
+      case "Landscape": return Monitor;
+      default: return Square;
+    }
+  };
+
+  // ✅ NEW: Notify parent component when API selection changes
+  useEffect(() => {
+    const selectedApis: string[] = [];
+    
+    // If both unselected, use both APIs
+    if (!useNano && !useSeed) {
+      selectedApis.push("nano", "seed");
+    } else {
+      if (useNano) selectedApis.push("nano");
+      if (useSeed) selectedApis.push("seed");
+    }
+    
+    if (onApiChange) {
+      onApiChange(selectedApis);
+    }
+  }, [useNano, useSeed]); // Removed onApiChange from deps
+
+  // ✅ ADDED: Notify parent when aspect ratio changes
+  useEffect(() => {
+    
+    if (onAspectRatioChange) {
+      onAspectRatioChange(selectedAspectRatio);
+    } else {
+      console.warn("⚠️ onAspectRatioChange callback not provided by parent");
+    }
+  }, [selectedAspectRatio]); // Only selectedAspectRatio, not onAspectRatioChange
 
   // ✅ FIXED: Simplified fetch function
   const fetchSubcategories = async () => {
     try {
       setLoadingSubcategories(true);
-      console.log("🔄 ===== FETCHING FILTERED SUBCATEGORIES =====");
 
-      // ✅ Use new filtered endpoint
       const response = await fetch("/api/subcategories/filtered");
       const data = await response.json();
 
       if (data.success) {
-        console.log("📊 Filtered subcategories received:", data.subcategories);
-        console.log(`✅ Total subcategories: ${data.subcategories.length}`);
 
         setSubcategories(data.subcategories);
       } else {
@@ -121,7 +167,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const categoryMap: { [key: string]: string } = {
       google_prompt: "google-ads",
       facebook_prompt: "facebook-ads",
-      website_prompt: "website-content", // ✅ NEW
+      website_prompt: "website-content",
     };
     return categoryMap[displayCategory] || displayCategory;
   };
@@ -132,7 +178,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     subcategoriesList?: SubcategoryOption[]
   ): SubcategoryOption[] => {
     const list = subcategoriesList || subcategories;
-    // const list = [];
     return list.filter(
       (sub) =>
         sub.category === getCategoryKey(category) && sub.status === "active"
@@ -156,7 +201,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
       if (!currentOptionValid) {
         const newChildOption = availableOptions[0].value;
         setChildOption(newChildOption);
-        // ✅ FIXED: Single callback without race condition
         if (onCategoryChange) {
           onCategoryChange(parentCategory, newChildOption);
         }
@@ -171,120 +215,19 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     }
   }, [parentCategory, subcategories]);
 
-  const generateRandomDistribution = (total: number) => {
-    if (total <= 0) return { Square: 0, Portrait: 0, Landscape: 0 };
-
-    const result = { Square: 0, Portrait: 0, Landscape: 0 };
-    const formatKeys = ["Square", "Portrait", "Landscape"] as const;
-
-    for (let i = 0; i < total; i++) {
-      const randomFormat =
-        formatKeys[Math.floor(Math.random() * formatKeys.length)];
-      result[randomFormat]++;
-    }
-
-    return result;
+  // ✅ NEW: Toggle Nano API
+  const toggleNano = () => {
+    setUseNano((prev) => !prev);
   };
 
-  const getCurrentTotal = () => {
-    return Object.values(imageSizes).reduce((sum, qty) => sum + qty, 0);
-  };
-
-  useEffect(() => {
-    if (isAutoMode) {
-      setImageSizes(generateRandomDistribution(numberOfImages));
-    } else {
-      setImageSizes((prev) => {
-        const currentTotal = Object.values(prev).reduce(
-          (sum, qty) => sum + qty,
-          0
-        );
-
-        if (currentTotal > numberOfImages) {
-          const newSizes = { ...prev };
-          let excess = currentTotal - numberOfImages;
-
-          while (excess > 0) {
-            const maxFormat = Object.keys(newSizes).reduce((max, format) =>
-              newSizes[format as keyof typeof newSizes] >
-              newSizes[max as keyof typeof newSizes]
-                ? format
-                : max
-            );
-
-            if (newSizes[maxFormat as keyof typeof newSizes] > 0) {
-              newSizes[maxFormat as keyof typeof newSizes]--;
-              excess--;
-            } else {
-              break;
-            }
-          }
-
-          return newSizes;
-        }
-
-        return prev;
-      });
-    }
-  }, [numberOfImages, isAutoMode, setImageSizes]);
-
-  const toggleAutoMode = () => {
-    setIsAutoMode((prev) => {
-      if (!prev) {
-        setImageSizes(generateRandomDistribution(numberOfImages));
-        return true;
-      } else {
-        return false;
-      }
-    });
-  };
-
-  const toggleHDMode = () => {
-    setIsHDMode((prev) => {
-      const newValue = !prev;
-      if (onHDModeChange) {
-        onHDModeChange(newValue);
-      }
-      return newValue;
-    });
-  };
-
-  const handleModelChange = (newModel: string) => {
-    setSelectedModel(newModel);
-    if (onModelChange) {
-      onModelChange(newModel);
-    }
-  };
-
-  const updateQuantity = (format: keyof typeof imageSizes, delta: number) => {
-    if (isAutoMode) return;
-
-    setImageSizes((prev) => {
-      const newValue = Math.max(0, prev[format] + delta);
-      const newSizes = { ...prev, [format]: newValue };
-      const newTotal = Object.values(newSizes).reduce(
-        (sum, qty) => sum + qty,
-        0
-      );
-
-      if (newTotal <= numberOfImages) {
-        return newSizes;
-      }
-
-      return prev;
-    });
-  };
-
-  const resetQuantities = () => {
-    if (!isAutoMode) {
-      setImageSizes({ Square: 0, Portrait: 0, Landscape: 0 });
-    }
+  // ✅ NEW: Toggle SeeD API
+  const toggleSeed = () => {
+    setUseSeed((prev) => !prev);
   };
 
   const handleParentCategoryChange = (newCategory: string) => {
     setParentCategory(newCategory);
 
-    // Get available subcategories for new category
     const categoryKey = getCategoryKey(newCategory);
     const availableOptions = getActiveSubcategoriesForCategory(categoryKey);
 
@@ -309,6 +252,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     }
   };
 
+  // ✅ UPDATED: Calculate value from position for max 5
   const calculateValueFromPosition = (clientX: number) => {
     if (!sliderRef.current) return numberOfImages;
 
@@ -317,7 +261,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
       0,
       Math.min(1, (clientX - rect.left) / rect.width)
     );
-    return Math.max(1, Math.min(10, Math.round(percentage * 9) + 1));
+    return Math.max(1, Math.min(5, Math.round(percentage * 4) + 1));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -330,7 +274,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     setIsDragging(true);
 
     const clickX = e.clientX;
-    const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 9;
+    const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 4;
     const thumbWidth = 20;
 
     if (Math.abs(clickX - thumbPosition) > thumbWidth) {
@@ -347,11 +291,11 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
       const rect = sliderRef.current.getBoundingClientRect();
       const deltaX = e.clientX - dragStartX;
       const deltaPercentage = deltaX / rect.width;
-      const deltaValue = deltaPercentage * 9;
+      const deltaValue = deltaPercentage * 4;
 
       const newValue = Math.max(
         1,
-        Math.min(10, Math.round(dragStartValue + deltaValue))
+        Math.min(5, Math.round(dragStartValue + deltaValue))
       );
       setNumberOfImages(newValue);
     };
@@ -388,7 +332,17 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const sliderPercentage = ((numberOfImages - 1) / 9) * 100;
+  // ✅ UPDATED: Slider percentage for max 5
+  const sliderPercentage = ((numberOfImages - 1) / 4) * 100;
+
+  // ✅ NEW: Get API status text
+  const getApiStatusText = () => {
+    if (!useNano && !useSeed) return "Nano • SeeD";
+    if (useNano && useSeed) return "Nano • SeeD";
+    if (useNano) return "Nano";
+    if (useSeed) return "SeeD";
+    return "";
+  };
 
   return (
     <div>
@@ -396,92 +350,90 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         {/* Compact Trigger Button */}
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`inline-flex items-center space-x-2 bg-white rounded-sm px-3 py-2 text-sm`}
+          className={`inline-flex items-center space-x-2 bg-white rounded-xl px-3 py-2 text-sm`}
         >
-          <Image className="w-4 h-4 text-gray-700" />
+          {React.createElement(getIconForAspectRatio(selectedAspectRatio), { 
+            className: "w-4 h-4 text-gray-700" 
+          })}
           <span className="text-sm font-medium text-gray-700">
-            {isAutoMode
-              ? `Auto • ${numberOfImages}`
-              : `${getCurrentTotal()}/${numberOfImages}`}
-            {isHDMode ? " • HD" : ""}
+            {aspectRatioOptions.find(opt => opt.value === selectedAspectRatio)?.label || "Square HD"}
+            {` • ${numberOfImages}`}
+            {` • ${getApiStatusText()}`}
           </span>
         </button>
 
         {/* Enhanced Dropdown */}
         {isOpen && (
           <div className="absolute bottom-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-xl z-50 w-80 overflow-hidden mb-2">
-            {/* Enhanced Header Row: Model, Auto, HD, Images */}
+            {/* Enhanced Header Row: Nano, SeeD, Images */}
             <div className="p-3 bg-gray-50 border-b border-gray-200 space-y-3">
-              {/* Top Row: Model Selection */}
+              {/* Top Row: API Selection */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <strong className="text-gray-700">Setting</strong>
                 </div>
 
-                {/* Mode Toggles */}
+                {/* API Toggles */}
                 <div className="flex items-center space-x-1">
                   <button
-                    onClick={toggleAutoMode}
+                    onClick={toggleNano}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      isAutoMode
-                        ? "bg-gray-200 text-gray-700"
+                      useNano
+                        ? "bg-blue-100 text-blue-700"
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
-                    <Shuffle className="w-3 h-3" />
-                    <span>Auto</span>
+                    <span>Nano</span>
                   </button>
 
                   <button
-                    onClick={toggleHDMode}
+                    onClick={toggleSeed}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      isHDMode
-                        ? "bg-gray-200 text-gray-700"
+                      useSeed
+                        ? "bg-green-100 text-green-700"
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
                     <Zap className="w-3 h-3" />
-                    <span>HD</span>
+                    <span>SeeD</span>
                   </button>
                 </div>
               </div>
 
               {/* Bottom Row: Images Control */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Total Images</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-gray-600 whitespace-nowrap">Total Images</span>
 
-                <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-40 relative">
+                <div className="flex items-center gap-3 flex-1 justify-end">
+                  <div className="w-36 relative">
+                    <div
+                      ref={sliderRef}
+                      className="h-1.5 bg-gray-200 rounded-full cursor-pointer"
+                      onMouseDown={handleMouseDown}
+                    >
                       <div
-                        ref={sliderRef}
-                        className="h-1.5 bg-gray-200 rounded-full cursor-pointer"
-                        onMouseDown={handleMouseDown}
-                      >
-                        <div
-                          className="absolute top-0 left-0 h-1.5 rounded-full bg-gray-700"
-                          style={{ width: `${sliderPercentage + 6}%` }}
-                        />
-                        <div
-                          className="absolute top-1/2 transform w-3 h-3 bg-white border border-gray-700 rounded-full"
-                          style={{
-                            left: `calc(${sliderPercentage}%)`,
-                            transform: `translateY(-50%) ${
-                              isDragging ? "scale(1.1)" : "scale(1)"
-                            }`,
-                          }}
-                        />
-                      </div>
+                        className="absolute top-0 left-0 h-1.5 rounded-full bg-gray-700 transition-all pointer-events-none"
+                        style={{ width: `${sliderPercentage}%` }}
+                      />
+                      <div
+                        className="absolute top-1/2 w-3.5 h-3.5 bg-white border-2 border-gray-700 rounded-full transition-all pointer-events-none"
+                        style={{
+                          left: `${sliderPercentage}%`,
+                          transform: `translate(-50%, -50%) ${
+                            isDragging ? "scale(1.15)" : "scale(1)"
+                          }`,
+                        }}
+                      />
                     </div>
-                    <span className="text-xs font-bold text-gray-700 min-w-[16px]">
-                      {numberOfImages}
-                    </span>
                   </div>
+                  <span className="text-sm font-bold text-gray-700 w-4 text-right">
+                    {numberOfImages}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* ✅ UPDATED: Dynamic Category Selection Row */}
+            {/* Dynamic Category Selection Row */}
             <div className="flex items-center space-x-2 p-3 border-b border-gray-200 bg-gray-25">
               <select
                 value={parentCategory}
@@ -532,111 +484,27 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
               </select>
             </div>
 
-            {/* Status & Format Controls */}
+            {/* Aspect Ratio Selection */}
             <div className="p-3">
-              {/* Status for manual mode */}
-              {!isAutoMode && (
-                <div className="mb-3 text-center">
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      getCurrentTotal() === numberOfImages
-                        ? "bg-green-100 text-green-700"
-                        : "bg-orange-100 text-orange-700"
-                    }`}
-                  >
-                    {getCurrentTotal() === numberOfImages
-                      ? "✓ Complete"
-                      : `${
-                          numberOfImages - getCurrentTotal()
-                        } images remaining`}
-                  </span>
+              <label className="block text-xs text-gray-600 mb-2">Aspect Ratio</label>
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded flex items-center justify-center border border-gray-300 bg-white shrink-0">
+                  {React.createElement(getIconForAspectRatio(selectedAspectRatio), { 
+                    className: "w-4 h-4 text-gray-600" 
+                  })}
                 </div>
-              )}
-
-              {/* Format List */}
-              <div className="space-y-2">
-                {formats.map((format) => {
-                  const IconComponent = format.icon;
-                  const quantity =
-                    imageSizes[format.key as keyof typeof imageSizes];
-                  const canIncrease =
-                    !isAutoMode && getCurrentTotal() < numberOfImages;
-                  const canDecrease = !isAutoMode && quantity > 0;
-
-                  return (
-                    <div
-                      key={format.key}
-                      className={`flex items-center justify-between px-3 py-2 border rounded-lg transition-colors ${
-                        isAutoMode
-                          ? "bg-gray-50 border-gray-200"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-6 h-6 rounded flex items-center justify-center border border-gray-300 bg-white">
-                          <IconComponent className="w-3.5 h-3.5 text-gray-600" />
-                        </div>
-                        <span
-                          className={`text-sm font-medium ${
-                            isAutoMode ? "text-gray-400" : "text-gray-700"
-                          }`}
-                        >
-                          {format.name}
-                        </span>
-                      </div>
-
-                      {isAutoMode ? (
-                        <></>
-                      ) : (
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() =>
-                              updateQuantity(
-                                format.key as keyof typeof imageSizes,
-                                -1
-                              )
-                            }
-                            disabled={!canDecrease}
-                            className="w-6 h-6 rounded border border-gray-400 flex items-center justify-center text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-
-                          <div className="w-6 text-center text-sm font-bold text-gray-700">
-                            {quantity}
-                          </div>
-
-                          <button
-                            onClick={() =>
-                              updateQuantity(
-                                format.key as keyof typeof imageSizes,
-                                1
-                              )
-                            }
-                            disabled={!canIncrease}
-                            className="w-6 h-6 rounded border border-gray-400 flex items-center justify-center text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                <select
+                  value={selectedAspectRatio}
+                  onChange={(e) => setSelectedAspectRatio(e.target.value)}
+                  className="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                >
+                  {aspectRatioOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-
-              {/* Reset Button */}
-              {!isAutoMode && (
-                <div className="mt-3 text-center">
-                  <button
-                    onClick={resetQuantities}
-                    className="inline-flex items-center space-x-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    <RotateCw className="w-3 h-3" />
-                    <span>Reset All</span>
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )}

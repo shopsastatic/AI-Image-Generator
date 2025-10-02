@@ -2455,6 +2455,173 @@ app.get('/api/subcategories/export', requireAuth, (req, res) => {
   }
 });
 
+// GET available instructions for dropdown
+app.get('/api/instructions/available', requireAuth, (req, res) => {
+  try {
+    const instructionsDir = path.join(__dirname, 'static', 'instructions');
+    
+    if (!fs.existsSync(instructionsDir)) {
+      return res.json({ success: true, files: [] });
+    }
+
+    const files = fs.readdirSync(instructionsDir)
+      .filter(file => file.endsWith('.txt') && !file.includes('registry'))
+      .map(file => ({
+        filename: file,
+        name: file.replace('.txt', '').replace(/_/g, ' ')
+      }));
+
+    res.json({ success: true, files });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET instruction content by filename
+app.get('/api/instructions/content/:filename', requireAuth, (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(__dirname, 'static', 'instructions', filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    res.json({ success: true, content });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/instructions/resolve - Resolve instruction content với đọc tất cả files
+app.post('/api/instructions/resolve', requireAuth, (req, res) => {
+  try {
+    const { category, subcategory = '', selectedModel = 'claude-sonnet' } = req.body;
+    
+    if (!category) {
+      return res.status(400).json({ error: 'Category is required' });
+    }
+
+    const instructionsDir = path.join(__dirname, 'static', 'instructions');
+    
+    // Normalize category
+    const categoryMap = {
+      'google_prompt': 'google_ads',
+      'facebook_prompt': 'facebook_ads',
+      'website_prompt': 'website_content'
+    };
+    const normalizedCategory = categoryMap[category] || category.replace(/-/g, '_');
+    
+    // Normalize subcategory
+    const normalizedSubcategory = subcategory 
+      ? subcategory.replace(/-/g, '_').toLowerCase() 
+      : '';
+
+    // Determine target model
+    const targetModel = selectedModel === 'deepsearch' ? 'deepseek' : 'universal';
+
+    console.log('🔍 Resolving instructions:', { 
+      category: normalizedCategory, 
+      subcategory: normalizedSubcategory,
+      targetModel 
+    });
+
+    // Build ALL filenames to try (không dừng khi tìm thấy)
+    const userPromptFiles = [];
+    const systemPromptFiles = [];
+
+    if (normalizedSubcategory) {
+      // With subcategory - specific model first, then universal
+      userPromptFiles.push(
+        `user_prompt_${targetModel}_${normalizedCategory}_${normalizedSubcategory}.txt`,
+        `user_prompt_universal_${normalizedCategory}_${normalizedSubcategory}.txt`
+      );
+      systemPromptFiles.push(
+        `system_prompt_${targetModel}_${normalizedCategory}_${normalizedSubcategory}.txt`,
+        `system_prompt_universal_${normalizedCategory}_${normalizedSubcategory}.txt`
+      );
+    }
+    
+    // Without subcategory (fallback)
+    userPromptFiles.push(
+      `user_prompt_${targetModel}_${normalizedCategory}.txt`,
+      `user_prompt_universal_${normalizedCategory}.txt`
+    );
+    systemPromptFiles.push(
+      `system_prompt_${targetModel}_${normalizedCategory}.txt`,
+      `system_prompt_universal_${normalizedCategory}.txt`
+    );
+
+    console.log('📋 User prompt files to try:', userPromptFiles);
+    console.log('📋 System prompt files to try:', systemPromptFiles);
+
+    // Try to find user_prompt
+    let userPromptContent = null;
+    let userPromptFilename = null;
+
+    for (const filename of userPromptFiles) {
+      const filePath = path.join(instructionsDir, filename);
+      
+      if (fs.existsSync(filePath)) {
+        userPromptContent = fs.readFileSync(filePath, 'utf8');
+        userPromptFilename = filename;
+        console.log(`✅ Found user_prompt: ${filename} (${userPromptContent.length} chars)`);
+        break; // Tìm thấy thì dừng vòng lặp user_prompt
+      } else {
+        console.log(`⏭️  User prompt not found: ${filename}`);
+      }
+    }
+
+    // Try to find system_prompt
+    let systemPromptContent = null;
+    let systemPromptFilename = null;
+
+    for (const filename of systemPromptFiles) {
+      const filePath = path.join(instructionsDir, filename);
+      
+      if (fs.existsSync(filePath)) {
+        systemPromptContent = fs.readFileSync(filePath, 'utf8');
+        systemPromptFilename = filename;
+        console.log(`✅ Found system_prompt: ${filename} (${systemPromptContent.length} chars)`);
+        break; // Tìm thấy thì dừng vòng lặp system_prompt
+      } else {
+        console.log(`⏭️  System prompt not found: ${filename}`);
+      }
+    }
+
+    // Log final result
+    console.log('📦 Final result:', {
+      hasUserPrompt: !!userPromptContent,
+      hasSystemPrompt: !!systemPromptContent,
+      userPromptFile: userPromptFilename,
+      systemPromptFile: systemPromptFilename
+    });
+
+    return res.json({
+      success: true,
+      user_prompt: userPromptContent, // null nếu không tìm thấy
+      system_prompt: systemPromptContent, // null nếu không tìm thấy
+      files: {
+        user_prompt: userPromptFilename,
+        system_prompt: systemPromptFilename
+      },
+      matched: {
+        category: normalizedCategory,
+        subcategory: normalizedSubcategory,
+        targetModel: targetModel
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error resolving instructions:', error);
+    res.status(500).json({ 
+      error: 'Failed to resolve instructions',
+      message: error.message 
+    });
+  }
+});
+
 app.get('/*', (req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(frontendBuildPath, 'index.html'));

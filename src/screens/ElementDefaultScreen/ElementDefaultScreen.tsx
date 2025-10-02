@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 import "./default.css";
 import "./style.css";
 import HistorySidebar from "./HistorySideBar";
 import ImageInfoDropdown from "./ImageInfoDropdown";
 import ImageSizeSelector from "./ImageSizeSelector";
-import { API_ENDPOINTS } from "../../utils/apiConfig";
 import {
   storageManager,
   StorageMigration,
@@ -23,7 +22,10 @@ interface LoadingSession {
 export const ElementDefaultScreen = (): JSX.Element => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<{email: string; role: string} | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    role: string;
+  } | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(
     null
   );
@@ -48,8 +50,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
   });
 
   // FIX: Add states for model and HD mode
-  const [selectedModel, setSelectedModel] = useState<string>("claude-sonnet");
-  const [isHDMode, setIsHDMode] = useState<boolean>(false);
+  const [selectedApis, setSelectedApis] = useState<string[]>(["nano", "seed"]);
+  const [selectedAspectRatio, setSelectedAspectRatio] =
+    useState<string>("Square HD");
+
+  const [instructionsContent, setInstructionsContent] = useState("");
 
   const [numberOfImages, setNumberOfImages] = useState<number>(1);
   const [selectedQuality, setSelectedQuality] = useState<string>("Low");
@@ -58,7 +63,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const [showHistorySidebar, setShowHistorySidebar] = useState<boolean>(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [promptText, setPromptText] = useState<string>("");
-  const [instructionsText, setInstructionsText] = useState<string>("");
   const [storageReady, setStorageReady] = useState(false);
   const [currentLoadingPrompt, setCurrentLoadingPrompt] = useState<string>("");
   const [expandedGrid, setExpandedGrid] = useState<boolean>(false);
@@ -110,19 +114,19 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const handleNavigateToProjectManagement = () => {
-    navigate('/project-management');
+    navigate("/project-management");
   };
 
   // FIX: Add handlers for model and HD mode changes
-  const handleModelChange = (model: string) => {
-    console.log("🔄 Model changed to:", model);
-    setSelectedModel(model);
-  };
+  const handleApiChange = useCallback((apis: string[]) => {
+    console.log("🔄 Selected APIs changed to:", apis);
+    setSelectedApis(apis);
+  }, []);
 
-  const handleHDModeChange = (isHD: boolean) => {
-    console.log("🔄 HD Mode changed to:", isHD);
-    setIsHDMode(isHD);
-  };
+  const handleAspectRatioChange = useCallback((aspectRatio: string) => {
+    console.log("🔄 Selected Aspect Ratio changed to:", aspectRatio);
+    setSelectedAspectRatio(aspectRatio);
+  }, []);
 
   const [currentViewImageIndex, setCurrentViewImageIndex] = useState<
     number | null
@@ -148,48 +152,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const sessionCountdownRefs = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingIntervalRefs = useRef<Record<string, NodeJS.Timeout>>({});
-
-  const sizeOptions = [
-    {
-      id: "Square",
-      label: "Square",
-      className: "size-option-item menuitem",
-      textClassName: "text-wrapper-2",
-    },
-    {
-      id: "Portrait",
-      label: "Portrait",
-      className: "size-option-item menuitem div-wrapper",
-      textClassName: "text-wrapper-3",
-    },
-    {
-      id: "Landscape",
-      label: "Landscape",
-      className: "size-option-item menuitem menuitem-2",
-      textClassName: "text-wrapper-4",
-    },
-  ];
-
-  const qualityOptions = [
-    {
-      id: "High",
-      label: "High",
-      className: "menuitem menuitem-3",
-      textClassName: "text-wrapper-5",
-    },
-    {
-      id: "Medium",
-      label: "Medium",
-      className: "menuitem menuitem-4",
-      textClassName: "text-wrapper-6",
-    },
-    {
-      id: "Low",
-      label: "Low",
-      className: "menuitem menuitem-5",
-      textClassName: "text-wrapper-7",
-    },
-  ];
 
   const suggestionItems = [
     "Logo",
@@ -278,33 +240,17 @@ export const ElementDefaultScreen = (): JSX.Element => {
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
-        const response = await fetch('/api/auth/verify');
+        const response = await fetch("/api/auth/verify");
         const data = await response.json();
         if (data.success) {
           setCurrentUser(data.user);
         }
       } catch (error) {
-        console.error('Failed to fetch user info:', error);
+        console.error("Failed to fetch user info:", error);
       }
     };
-    
-    fetchUserInfo();
-  }, []);
 
-  useEffect(() => {
-    fetch("/instructions.txt")
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to load instructions.txt");
-        }
-        return response.text();
-      })
-      .then((text) => {
-        setInstructionsText(text);
-      })
-      .catch((error) => {
-        console.error("Error loading instructions:", error);
-      });
+    fetchUserInfo();
   }, []);
 
   useEffect(() => {
@@ -470,250 +416,245 @@ export const ElementDefaultScreen = (): JSX.Element => {
     }
   };
 
-  const resetLoadingState = () => {
-    console.log(
-      "🔍 RESET DEBUG - Before reset - currentLoadingPrompt:",
-      currentLoadingPrompt
-    );
-
-    setIsLoading(false);
-    setLoadingStatus("");
-    setCurrentJobId(null);
-    // FIX: Không reset loadingSessionId ở đây vì cần giữ lại cho đến khi job hoàn thành
-
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
-
-    stopJobPolling();
-
-    console.log(
-      "🔍 RESET DEBUG - After reset - currentLoadingPrompt should still be:",
-      currentLoadingPrompt
-    );
-  };
-
   // FIX: Complete rewrite of processJobResults
   const processJobResults = async (jobData: any, sessionId: string) => {
-  try {
-    const { results, claudeResponse } = jobData;
-
-    console.log("🔄 Processing job results for session:", sessionId);
-    console.log("📝 Claude response received:", claudeResponse ? "YES" : "NO");
-    console.log("📊 Total results received:", results?.length || 0);
-
-    // Tìm prompt từ loading session
-    const loadingSession = loadingSessions.find(
-      (session) => session.sessionId === sessionId
-    );
-    const promptFromLoadingSession = loadingSession?.prompt || "";
-
-    // ✅ FIX: Filter chỉ lấy những ảnh thành công và hợp lệ
-    const successfulImages = results
-      .filter((img: any) => {
-        // Kiểm tra có imageBase64 và là data URL hợp lệ
-        if (!img.imageBase64 || !img.imageBase64.startsWith("data:")) {
-          console.log("❌ Rejected: Invalid imageBase64 format");
-          return false;
-        }
-
-        // Loại bỏ placeholder errors
-        if (img.imageBase64.includes("PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM")) {
-          console.log("❌ Rejected: Error placeholder detected");
-          return false;
-        }
-
-        // Loại bỏ specific error placeholder
-        if (img.imageBase64 === "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4=") {
-          console.log("❌ Rejected: Specific error placeholder");
-          return false;
-        }
-
-        // Kiểm tra kích thước tối thiểu (optional)
-        if (img.imageBase64.length < 1000) {
-          console.log("❌ Rejected: Image data too small");
-          return false;
-        }
-
-        console.log("✅ Accepted: Valid image");
-        return true;
-      })
-      .map((img: any) => ({
-        ...img,
-        claudeResponse: claudeResponse, // Attach Claude response
-      }));
-
-    console.log(`📈 Filtered results: ${successfulImages.length}/${results?.length || 0} successful images`);
-
-    // ✅ FIX: Chỉ tiếp tục nếu có ít nhất 1 ảnh thành công
-    if (successfulImages.length === 0) {
-      console.warn("⚠️ No successful images to save for session:", sessionId);
-      
-      // Hiển thị notification cho user
-      showNotification(
-        "warning", 
-        "Generation Failed!", 
-        "All images failed to generate. Please try again with a different prompt."
-      );
-      
-      // Không tạo session, chỉ remove loading session
-      removeLoadingSession(sessionId);
-      return;
-    }
-
-    // Determine describe
-    let describeToUse = promptFromLoadingSession;
-    if (!describeToUse || describeToUse.trim() === "") {
-      describeToUse =
-        jobData.originalPrompt || jobData.userPrompt || "Generated images";
-      console.log("⚠️ Using fallback describe:", describeToUse);
-    }
-
-    console.log("🔍 Final describe to use:", describeToUse);
-
-    // Create session data with only successful images
-    const sessionData = {
-      sessionId: sessionId,
-      describe: describeToUse,
-      images: successfulImages,
-    };
-
-    // Save to storage
     try {
-      await storageManager.saveSession(sessionData);
-      console.log(`✅ Session saved with ${successfulImages.length} successful images`);
-      
-      // Show success notification with count
-      showNotification(
-        "success", 
-        "Images Generated!", 
-        `Successfully generated ${successfulImages.length} image${successfulImages.length > 1 ? 's' : ''}`
+      const { results, claudeResponse } = jobData;
+
+      console.log("🔄 Processing job results for session:", sessionId);
+      console.log(
+        "📝 Claude response received:",
+        claudeResponse ? "YES" : "NO"
       );
-    } catch (storageError) {
-      console.error("Storage save failed:", storageError);
-      showNotification(
-        "error",
-        "Storage Full!",
-        "Your images were generated but couldn't be saved due to storage limits."
+      console.log("📊 Total results received:", results?.length || 0);
+
+      // Tìm prompt từ loading session
+      const loadingSession = loadingSessions.find(
+        (session) => session.sessionId === sessionId
       );
-    }
+      const promptFromLoadingSession = loadingSession?.prompt || "";
 
-    // Convert images to blob URLs for display
-    const convertedImages = await Promise.all(
-      successfulImages.map(async (img: any) => {
-        try {
-          const compressed = await ImageCompressor.compressImage(
-            img.imageBase64
-          );
-          const blobUrl = URL.createObjectURL(compressed.blob);
+      // ✅ FIX: Filter chỉ lấy những ảnh thành công và hợp lệ
+      const successfulImages = results
+        .filter((img: any) => {
+          // Kiểm tra có imageBase64 và là data URL hợp lệ
+          if (!img.imageBase64 || !img.imageBase64.startsWith("data:")) {
+            console.log("❌ Rejected: Invalid imageBase64 format");
+            return false;
+          }
 
-          return {
-            ...img,
-            imageBase64: blobUrl,
-            originalBase64: img.imageBase64,
-            isBlob: true,
-            claudeResponse: img.claudeResponse,
-          };
-        } catch (error) {
-          console.warn("Failed to convert to blob, using base64:", error);
-          return {
-            ...img,
-            isBlob: false,
-            claudeResponse: img.claudeResponse,
-          };
-        }
-      })
-    );
+          // Loại bỏ placeholder errors
+          if (
+            img.imageBase64.includes(
+              "PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM"
+            )
+          ) {
+            console.log("❌ Rejected: Error placeholder detected");
+            return false;
+          }
 
-    // Create new session for UI
-    const newSession = {
-      sessionId: sessionId,
-      clickedAt: Date.now(),
-      currentImageIndex: 0,
-      describe: describeToUse,
-      list: convertedImages,
-    };
+          // Loại bỏ specific error placeholder
+          if (
+            img.imageBase64 ===
+            "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4="
+          ) {
+            console.log("❌ Rejected: Specific error placeholder");
+            return false;
+          }
 
-    // Update selectedSessions
-    setSelectedSessions((prevSessions) => {
-      const existingIndex = prevSessions.findIndex(
-        (s) => s.sessionId === sessionId
+          // Kiểm tra kích thước tối thiểu (optional)
+          if (img.imageBase64.length < 1000) {
+            console.log("❌ Rejected: Image data too small");
+            return false;
+          }
+
+          console.log("✅ Accepted: Valid image");
+          return true;
+        })
+        .map((img: any) => ({
+          ...img,
+          claudeResponse: claudeResponse, // Attach Claude response
+        }));
+
+      console.log(
+        `📈 Filtered results: ${successfulImages.length}/${
+          results?.length || 0
+        } successful images`
       );
 
-      if (existingIndex !== -1) {
-        console.log("🔄 Updating existing session:", sessionId);
-        const updatedSessions = [...prevSessions];
-        updatedSessions[existingIndex] = newSession;
-        return updatedSessions;
+      // ✅ FIX: Chỉ tiếp tục nếu có ít nhất 1 ảnh thành công
+      if (successfulImages.length === 0) {
+        console.warn("⚠️ No successful images to save for session:", sessionId);
+
+        // Hiển thị notification cho user
+        showNotification(
+          "warning",
+          "Generation Failed!",
+          "All images failed to generate. Please try again with a different prompt."
+        );
+
+        // Không tạo session, chỉ remove loading session
+        removeLoadingSession(sessionId);
+        return;
       }
 
-      console.log("➕ Adding new session:", sessionId);
-      return [newSession, ...prevSessions];
-    });
+      // Determine describe
+      let describeToUse = promptFromLoadingSession;
+      if (!describeToUse || describeToUse.trim() === "") {
+        describeToUse =
+          jobData.originalPrompt || jobData.userPrompt || "Generated images";
+        console.log("⚠️ Using fallback describe:", describeToUse);
+      }
 
-    // Add first image to selectedImages if exists
-    if (convertedImages.length > 0) {
-      setSelectedImages((prevImages) => {
-        const firstImageObj = {
-          imageUrl: convertedImages[0].imageBase64,
-          clickedAt: Date.now(),
-          prompt: convertedImages[0].prompt,
-          size: convertedImages[0].size,
-          quality: convertedImages[0].quality,
-          sessionId: sessionId,
-          imageIndex: 0,
-          claudeResponse: convertedImages[0].claudeResponse,
-          AdCreativeA: convertedImages[0].AdCreativeA,
-          AdCreativeB: convertedImages[0].AdCreativeB,
-          targeting: convertedImages[0].targeting,
-          imageName: convertedImages[0].imageName,
-        };
+      console.log("🔍 Final describe to use:", describeToUse);
 
-        // Remove any existing images from this session
-        const filteredImages = prevImages.filter(
-          (img) => img.sessionId !== sessionId
+      // Create session data with only successful images
+      const sessionData = {
+        sessionId: sessionId,
+        describe: describeToUse,
+        images: successfulImages,
+      };
+
+      // Save to storage
+      try {
+        await storageManager.saveSession(sessionData);
+        console.log(
+          `✅ Session saved with ${successfulImages.length} successful images`
         );
 
-        // Add new image at the beginning, right after any loading items
-        const loadingItems = filteredImages.filter((img) =>
-          loadingSessions.some(
-            (session) => session.sessionId === img.sessionId
-          )
+        // Show success notification with count
+        showNotification(
+          "success",
+          "Images Generated!",
+          `Successfully generated ${successfulImages.length} image${
+            successfulImages.length > 1 ? "s" : ""
+          }`
+        );
+      } catch (storageError) {
+        console.error("Storage save failed:", storageError);
+        showNotification(
+          "error",
+          "Storage Full!",
+          "Your images were generated but couldn't be saved due to storage limits."
+        );
+      }
+
+      // Convert images to blob URLs for display
+      const convertedImages = await Promise.all(
+        successfulImages.map(async (img: any) => {
+          try {
+            const compressed = await ImageCompressor.compressImage(
+              img.imageBase64
+            );
+            const blobUrl = URL.createObjectURL(compressed.blob);
+
+            return {
+              ...img,
+              imageBase64: blobUrl,
+              originalBase64: img.imageBase64,
+              isBlob: true,
+              claudeResponse: img.claudeResponse,
+            };
+          } catch (error) {
+            console.warn("Failed to convert to blob, using base64:", error);
+            return {
+              ...img,
+              isBlob: false,
+              claudeResponse: img.claudeResponse,
+            };
+          }
+        })
+      );
+
+      // Create new session for UI
+      const newSession = {
+        sessionId: sessionId,
+        clickedAt: Date.now(),
+        currentImageIndex: 0,
+        describe: describeToUse,
+        list: convertedImages,
+      };
+
+      // Update selectedSessions
+      setSelectedSessions((prevSessions) => {
+        const existingIndex = prevSessions.findIndex(
+          (s) => s.sessionId === sessionId
         );
 
-        const regularItems = filteredImages.filter(
-          (img) =>
-            !loadingSessions.some(
+        if (existingIndex !== -1) {
+          console.log("🔄 Updating existing session:", sessionId);
+          const updatedSessions = [...prevSessions];
+          updatedSessions[existingIndex] = newSession;
+          return updatedSessions;
+        }
+
+        console.log("➕ Adding new session:", sessionId);
+        return [newSession, ...prevSessions];
+      });
+
+      // Add first image to selectedImages if exists
+      if (convertedImages.length > 0) {
+        setSelectedImages((prevImages) => {
+          const firstImageObj = {
+            imageUrl: convertedImages[0].imageBase64,
+            clickedAt: Date.now(),
+            prompt: convertedImages[0].prompt,
+            size: convertedImages[0].size,
+            quality: convertedImages[0].quality,
+            sessionId: sessionId,
+            imageIndex: 0,
+            claudeResponse: convertedImages[0].claudeResponse,
+            AdCreativeA: convertedImages[0].AdCreativeA,
+            AdCreativeB: convertedImages[0].AdCreativeB,
+            targeting: convertedImages[0].targeting,
+            imageName: convertedImages[0].imageName,
+          };
+
+          // Remove any existing images from this session
+          const filteredImages = prevImages.filter(
+            (img) => img.sessionId !== sessionId
+          );
+
+          // Add new image at the beginning, right after any loading items
+          const loadingItems = filteredImages.filter((img) =>
+            loadingSessions.some(
               (session) => session.sessionId === img.sessionId
             )
-        );
+          );
 
-        return [...loadingItems, firstImageObj, ...regularItems].slice(
-          0,
-          gridItemCount
-        );
-      });
+          const regularItems = filteredImages.filter(
+            (img) =>
+              !loadingSessions.some(
+                (session) => session.sessionId === img.sessionId
+              )
+          );
+
+          return [...loadingItems, firstImageObj, ...regularItems].slice(
+            0,
+            gridItemCount
+          );
+        });
+      }
+
+      window.dispatchEvent(new Event("historyUpdated"));
+      console.log(
+        `✅ Job results processed successfully: ${successfulImages.length} images saved`
+      );
+    } catch (error) {
+      console.error("Error processing job results:", error);
+
+      // Show error notification
+      showNotification(
+        "error",
+        "Processing Error!",
+        "Failed to process generated images. Please try again."
+      );
+
+      // Remove loading session on error
+      removeLoadingSession(sessionId);
+      throw error;
     }
-
-    window.dispatchEvent(new Event("historyUpdated"));
-    console.log(`✅ Job results processed successfully: ${successfulImages.length} images saved`);
-    
-  } catch (error) {
-    console.error("Error processing job results:", error);
-    
-    // Show error notification
-    showNotification(
-      "error",
-      "Processing Error!",
-      "Failed to process generated images. Please try again."
-    );
-    
-    // Remove loading session on error
-    removeLoadingSession(sessionId);
-    throw error;
-  }
-};
+  };
 
   const cleanupBlobUrls = () => {
     // Clean up blob URLs in selectedImages
@@ -772,17 +713,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
     removeLoadingSession(sessionId);
   };
 
-  const editPromptFromLoading = () => {
-    if (currentLoadingPrompt && textareaRef.current) {
-      textareaRef.current.value = currentLoadingPrompt;
-      setPromptText(currentLoadingPrompt);
-
-      const event = new Event("input", { bubbles: true });
-      textareaRef.current.dispatchEvent(event);
-      adjustHeight();
-    }
-  };
-
   const startSessionCountdown = (sessionId: string) => {
     // Tạo interval cho session này
     const intervalId = setInterval(() => {
@@ -804,20 +734,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const handleFormSubmit = async () => {
     if (!promptText.trim()) return;
 
-    if (!instructionsText) {
-      console.error("Instructions have not been loaded yet");
-      alert("Please wait for instructions to load");
-      return;
-    }
-
     const sessionId = `session-${Date.now()}-${Math.random()
       .toString(36)
       .substr(2, 9)}`;
-
     const currentPromptText = promptText.trim();
+    startSessionCountdown(sessionId);
 
-    // Thêm session mới vào loadingSessions
-    const newLoadingSession: LoadingSession = {
+    const newLoadingSession = {
       sessionId,
       prompt: currentPromptText,
       startTime: Date.now(),
@@ -826,71 +749,354 @@ export const ElementDefaultScreen = (): JSX.Element => {
     };
 
     setLoadingSessions((prev) => [newLoadingSession, ...prev]);
-
-    // Lưu prompt hiện tại (vẫn giữ lại biến này để tương thích)
     setCurrentLoadingPrompt(currentPromptText);
 
-    // Clear input
     setPromptText("");
-    setUploadedImages([]);
     if (textareaRef.current) {
       textareaRef.current.value = "";
       textareaRef.current.style.height = "auto";
-      requestAnimationFrame(() => {
-        adjustHeight();
-      });
+      adjustHeight();
     }
+    setUploadedImages([]);
 
     try {
-      const outputCount = numberOfImages;
-      const imageSizesString = generateImageSizesString();
+      let uploadedImageUrls = [];
 
-      const jobResponse = await fetch("/api/image-generation/submit", {
+      if (uploadedImages.length > 0) {
+        console.log("📤 Uploading", uploadedImages.length, "images...");
+
+        const uploadPromises = uploadedImages.map(
+          async (base64Image, index) => {
+            try {
+              const blob = await fetch(base64Image).then((r) => r.blob());
+
+              const formData = new FormData();
+              // FIXED: Field name là 'filename'
+              formData.append("filename", blob, `reference-image-${index}.png`);
+
+              const response = await fetch(
+                "https://prod.api.market/api/v1/magicapi/image-upload/upload",
+                {
+                  method: "POST",
+                  headers: {
+                    "x-magicapi-key": "cmfxojr010001jo04ld19izzv",
+                  },
+                  body: formData,
+                }
+              );
+
+              if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Upload failed for image ${index}:`, errorText);
+                return null;
+              }
+
+              const data = await response.json();
+              console.log(`✅ Image ${index} uploaded:`, data.url);
+              return data.url;
+            } catch (error) {
+              console.error(`Failed to upload image ${index}:`, error);
+              return null;
+            }
+          }
+        );
+
+        const results = await Promise.all(uploadPromises);
+        uploadedImageUrls = results.filter((url) => url !== null);
+
+        console.log(
+          `✅ Uploaded ${uploadedImageUrls.length}/${uploadedImages.length} images`
+        );
+
+        if (uploadedImageUrls.length === 0) {
+          throw new Error("All image uploads failed");
+        }
+      }
+
+      console.log("📚 Loading instructions...");
+
+      const instructionResponse = await fetch("/api/instructions/resolve", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: sessionId,
-          userPrompt: currentPromptText,
-          numberOfImages: outputCount,
-          imageSizesString: imageSizesString,
-          selectedQuality: selectedQuality,
-          selectedCategory: selectedCategory,
-          selectedModel: selectedModel,
-          isHDMode: isHDMode,
+          category: selectedCategory.category,
+          subcategory: selectedCategory.subcategory || "",
+          selectedModel: selectedApis[0] || "claude-sonnet",
         }),
       });
 
-      if (!jobResponse.ok) {
-        const errorData = await jobResponse.json();
-        throw new Error(errorData.error || "Failed to submit generation job");
+      if (!instructionResponse.ok) {
+        throw new Error("Failed to load instructions");
       }
 
-      const jobData = await jobResponse.json();
-      const jobId = jobData.jobId;
+      const instructionData = await instructionResponse.json();
 
-      // Cập nhật jobId cho loading session
+      const generateResponse = await fetch(
+        "https://n8n.misencorp.com/webhook/ms-image-generator",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            userPrompt: currentPromptText,
+            userPromptInstruction: instructionData.user_prompt,
+            systemPromptInstruction: instructionData.system_prompt,
+            uploadedImageUrls,
+            numberOfImages,
+            imageSizesString: generateImageSizesString(),
+            selectedQuality,
+            selectedCategory,
+            selectedApis,
+            selectedAspectRatio,
+          }),
+        }
+      );
+
+      const generateData = await generateResponse.json();
+
+      var jobId = generateData[0]?.job_id;
+
+      if (jobId) {
+        let generateImagePool = setInterval(async function () {
+          try {
+            const response = await fetch(
+              `https://n8n.misencorp.com/webhook/get_image_queue?job_id=${jobId}`,
+              {
+                method: "GET",
+                headers: { "Content-Type": "application/json" },
+              }
+            );
+
+            const data = await response.json();
+
+            // Kiểm tra nếu data[0].data không null
+            if (data && data[0] && data[0].data != null) {
+              clearInterval(generateImagePool);
+
+              // Xử lý data để hiển thị
+              const imagesData = data[0].data;
+              console.log("📦 Received images data:", imagesData);
+
+              // Flatten tất cả images từ các platforms
+              const allImages = imagesData.flatMap((platformData: any) =>
+                platformData.images.map((img: any) => ({
+                  imageUrl: img.url,
+                  prompt: img.prompt,
+                  platform: img.platform,
+                  size: "Square", // Hoặc lấy từ settings
+                  quality: selectedQuality,
+                }))
+              );
+
+              console.log(`✅ Total images received: ${allImages.length}`);
+
+              // Tải và convert images thành base64
+              const processedImages = await Promise.all(
+                allImages.map(async (img: any) => {
+                  try {
+                    // Fetch image từ URL
+                    const imgResponse = await fetch(img.imageUrl);
+                    const blob = await imgResponse.blob();
+
+                    // Convert blob thành base64
+                    return new Promise<any>((resolve) => {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        resolve({
+                          imageBase64: reader.result as string,
+                          prompt: img.prompt,
+                          platform: img.platform,
+                          size: img.size,
+                          quality: img.quality,
+                          timestamp: new Date().toISOString(),
+                        });
+                      };
+                      reader.readAsDataURL(blob);
+                    });
+                  } catch (error) {
+                    console.error("Error processing image:", error);
+                    return null;
+                  }
+                })
+              );
+
+              // Lọc bỏ images bị lỗi
+              const validImages = processedImages.filter((img) => img !== null);
+
+              if (validImages.length === 0) {
+                showNotification(
+                  "error",
+                  "Generation Failed!",
+                  "Failed to process generated images. Please try again."
+                );
+                removeLoadingSession(sessionId);
+                return;
+              }
+
+              // Tạo session data
+              const sessionData = {
+                sessionId: sessionId,
+                describe: currentPromptText,
+                images: validImages,
+              };
+
+              // Lưu vào storage
+              try {
+                await storageManager.saveSession(sessionData);
+                console.log(
+                  `✅ Session saved with ${validImages.length} images`
+                );
+
+                showNotification(
+                  "success",
+                  "Images Generated!",
+                  `Successfully generated ${validImages.length} image${
+                    validImages.length > 1 ? "s" : ""
+                  }`
+                );
+              } catch (storageError) {
+                console.error("Storage save failed:", storageError);
+                showNotification(
+                  "error",
+                  "Storage Full!",
+                  "Your images were generated but couldn't be saved due to storage limits."
+                );
+              }
+
+              // Convert images thành blob URLs để hiển thị
+              const convertedImages = await Promise.all(
+                validImages.map(async (img: any) => {
+                  try {
+                    const compressed = await ImageCompressor.compressImage(
+                      img.imageBase64
+                    );
+                    const blobUrl = URL.createObjectURL(compressed.blob);
+
+                    return {
+                      ...img,
+                      imageBase64: blobUrl,
+                      originalBase64: img.imageBase64,
+                      isBlob: true,
+                    };
+                  } catch (error) {
+                    console.warn(
+                      "Failed to convert to blob, using base64:",
+                      error
+                    );
+                    return {
+                      ...img,
+                      isBlob: false,
+                    };
+                  }
+                })
+              );
+
+              // Tạo session mới cho UI
+              const newSession = {
+                sessionId: sessionId,
+                clickedAt: Date.now(),
+                currentImageIndex: 0,
+                describe: currentPromptText,
+                list: convertedImages,
+              };
+
+              // Update selectedSessions
+              setSelectedSessions((prevSessions) => {
+                const existingIndex = prevSessions.findIndex(
+                  (s) => s.sessionId === sessionId
+                );
+
+                if (existingIndex !== -1) {
+                  const updatedSessions = [...prevSessions];
+                  updatedSessions[existingIndex] = newSession;
+                  return updatedSessions;
+                }
+
+                return [newSession, ...prevSessions];
+              });
+
+              // Thêm ảnh đầu tiên vào selectedImages
+              if (convertedImages.length > 0) {
+                setSelectedImages((prevImages) => {
+                  const firstImageObj = {
+                    imageUrl: convertedImages[0].imageBase64,
+                    clickedAt: Date.now(),
+                    prompt: convertedImages[0].prompt,
+                    size: convertedImages[0].size,
+                    quality: convertedImages[0].quality,
+                    sessionId: sessionId,
+                    imageIndex: 0,
+                  };
+
+                  // Xóa các ảnh cũ từ session này nếu có
+                  const filteredImages = prevImages.filter(
+                    (img) => img.sessionId !== sessionId
+                  );
+
+                  // Thêm ảnh mới vào đầu
+                  const loadingItems = filteredImages.filter((img) =>
+                    loadingSessions.some(
+                      (session) => session.sessionId === img.sessionId
+                    )
+                  );
+
+                  const regularItems = filteredImages.filter(
+                    (img) =>
+                      !loadingSessions.some(
+                        (session) => session.sessionId === img.sessionId
+                      )
+                  );
+
+                  return [
+                    ...loadingItems,
+                    firstImageObj,
+                    ...regularItems,
+                  ].slice(0, gridItemCount);
+                });
+              }
+
+              // Update history
+              window.dispatchEvent(new Event("historyUpdated"));
+
+              // Remove loading session
+              removeLoadingSession(sessionId);
+
+              console.log(
+                `✅ Successfully processed ${validImages.length} images`
+              );
+            }
+          } catch (error) {
+            console.error("Polling error:", error);
+            clearInterval(generateImagePool);
+            showNotification(
+              "error",
+              "Generation Failed!",
+              "An error occurred while generating images. Please try again."
+            );
+            removeLoadingSession(sessionId);
+          }
+        }, 5000);
+      } else {
+        console.error("No jobId received");
+        showNotification(
+          "error",
+          "Submission Failed!",
+          "Failed to start image generation. Please try again."
+        );
+        removeLoadingSession(sessionId);
+      }
+
       setLoadingSessions((prev) =>
         prev.map((session) =>
           session.sessionId === sessionId ? { ...session, jobId } : session
         )
       );
-
-      // Bắt đầu đếm thời gian cho session này
-      startSessionCountdown(sessionId);
-
-      // Bắt đầu polling cho job này
-      startJobPolling(jobId, sessionId);
     } catch (error) {
-      console.error("Form submission failed:", error);
-
-      // Xóa session này khỏi loadingSessions
+      console.error("❌ Submission failed:", error);
       setLoadingSessions((prev) =>
         prev.filter((session) => session.sessionId !== sessionId)
       );
-
-      showNotification("error", "API Error!", error.message);
+      showNotification("error", "Submission Failed!", error.message);
     }
   };
 
@@ -1420,22 +1626,26 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const editPrompt = (prompt: string = "") => {
-  if (textareaRef.current && prompt) {
-    // Convert HTML to plain text if needed
-    let cleanPrompt = prompt;
-    if (prompt.includes('<') && prompt.includes('>')) {
-      const div = document.createElement('div');
-      div.innerHTML = prompt.replace(/<(li|h[1-6]|p|div)>/gi, '\n\n<$1>').replace(/<br\s*\/?>/gi, '\n\n');
-      cleanPrompt = div.innerText.replace(/\n{2,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
+    if (textareaRef.current && prompt) {
+      // Convert HTML to plain text if needed
+      let cleanPrompt = prompt;
+      if (prompt.includes("<") && prompt.includes(">")) {
+        const div = document.createElement("div");
+        div.innerHTML = prompt
+          .replace(/<(li|h[1-6]|p|div)>/gi, "\n\n<$1>")
+          .replace(/<br\s*\/?>/gi, "\n\n");
+        cleanPrompt = div.innerText
+          .replace(/\n{2,}/g, "\n\n")
+          .replace(/^\n+|\n+$/g, "");
+      }
+
+      textareaRef.current.value = cleanPrompt;
+      setPromptText(cleanPrompt);
+      const event = new Event("input", { bubbles: true });
+      textareaRef.current.dispatchEvent(event);
+      adjustHeight();
     }
-    
-    textareaRef.current.value = cleanPrompt;
-    setPromptText(cleanPrompt);
-    const event = new Event("input", { bubbles: true });
-    textareaRef.current.dispatchEvent(event);
-    adjustHeight();
-  }
-};
+  };
 
   const downloadImage = async (
     imageUrl: string,
@@ -1872,17 +2082,17 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const showNotification = (type: string, title: string, message: string) => {
     const notification = document.createElement("div");
-    
+
     // Different colors for different types
     const colors = {
       error: { bg: "#ff6b6b", text: "white" },
       warning: { bg: "#f39c12", text: "white" },
       success: { bg: "#4CAF50", text: "white" },
-      info: { bg: "#3498db", text: "white" }
+      info: { bg: "#3498db", text: "white" },
     };
-    
+
     const color = colors[type as keyof typeof colors] || colors.info;
-    
+
     notification.innerHTML = `
       <div style="
         position: fixed; 
@@ -1899,7 +2109,15 @@ export const ElementDefaultScreen = (): JSX.Element => {
       ">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
           <strong style="font-size: 16px;">${title}</strong>
-          ${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : type === 'error' ? '❌' : 'ℹ️'}
+          ${
+            type === "success"
+              ? "✅"
+              : type === "warning"
+              ? "⚠️"
+              : type === "error"
+              ? "❌"
+              : "ℹ️"
+          }
         </div>
         <div style="font-size: 14px; line-height: 1.4; margin-bottom: 12px;">
           ${message}
@@ -1919,11 +2137,12 @@ export const ElementDefaultScreen = (): JSX.Element => {
         </button>
       </div>
     `;
-    
+
     document.body.appendChild(notification);
 
     // Auto remove after delay
-    const autoRemoveDelay = type === 'error' ? 8000 : type === 'warning' ? 6000 : 4000;
+    const autoRemoveDelay =
+      type === "error" ? 8000 : type === "warning" ? 6000 : 4000;
     setTimeout(() => {
       if (notification.parentElement) {
         document.body.removeChild(notification);
@@ -1939,15 +2158,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
     onClick?: () => void;
     selectedImages?: any[];
     selectedSessions?: any[];
-  }> = ({
-    src,
-    alt,
-    className,
-    style,
-    onClick,
-    selectedImages,
-    selectedSessions,
-  }) => {
+  }> = ({ src, alt, className, style, onClick }) => {
     const [imageSrc, setImageSrc] = useState<string>(src);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [hasError, setHasError] = useState<boolean>(false);
@@ -2230,9 +2441,15 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     >
                       {(() => {
                         if (img.sessionId) {
-                          const session = selectedSessions.find(s => s.sessionId === img.sessionId);
+                          const session = selectedSessions.find(
+                            (s) => s.sessionId === img.sessionId
+                          );
                           if (session && session.list.length > 1) {
-                            return <div className="overlay-item-count">{session.list.length}</div>;
+                            return (
+                              <div className="overlay-item-count">
+                                {session.list.length}
+                              </div>
+                            );
                           }
                         }
                         return null;
@@ -2635,26 +2852,31 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           imageSizes={imageSizes}
                           setImageSizes={setImageSizes}
                           onCategoryChange={handleCategoryChange}
-                          onModelChange={handleModelChange}
-                          onHDModeChange={handleHDModeChange}
+                          onApiChange={handleApiChange}
+                          onAspectRatioChange={handleAspectRatioChange} // ✅ THÊM MỚI
                           currentUser={currentUser}
                         />
 
-                        {/* <div className="button-6" onClick={handleUploadClick}>
-                          <img
-                            className="SVG-6"
-                            alt="Svg"
-                            src="/img/svg-11.svg"
-                          />
-                          <input
-                            type="file"
-                            style={{ display: "none" }}
-                            accept="image/*"
-                            ref={fileInputRef}
-                            onChange={handleFileChange}
-                            multiple
-                          />
-                        </div> */}
+                        {
+                          <div
+                            className="button-6 bg-white rounded-full"
+                            onClick={handleUploadClick}
+                          >
+                            <img
+                              className="SVG-6"
+                              alt="Svg"
+                              src="/img/svg-11.svg"
+                            />
+                            <input
+                              type="file"
+                              style={{ display: "none" }}
+                              accept="image/*"
+                              ref={fileInputRef}
+                              onChange={handleFileChange}
+                              multiple
+                            />
+                          </div>
+                        }
                       </div>
 
                       <div
@@ -2734,7 +2956,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
         <div className="header-right">
           <div className="background-wrapper">
             <div className="header-right">
-              <div className="link-6" onClick={handleNavigateToProjectManagement}>
+              <div
+                className="link-6"
+                onClick={handleNavigateToProjectManagement}
+              >
                 <img className="SVG-9" alt="Svg" src="/img/svg-16.svg" />
               </div>
 
@@ -2889,18 +3114,18 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     <div className="session-possition">
                       <span className="session-possition-text">
                         {currentSessionId &&
-                        (() => {
-                          const session = selectedSessions.find(
-                            (s) => s.sessionId === currentSessionId
-                          );
-                          if (session && session.list.length > 0) {
-                            return `${currentSessionImageIndex + 1}/${
-                              session.list.length
-                            }`;
-                          } else {
-                            return "1/1";
-                          }
-                        })()}
+                          (() => {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (session && session.list.length > 0) {
+                              return `${currentSessionImageIndex + 1}/${
+                                session.list.length
+                              }`;
+                            } else {
+                              return "1/1";
+                            }
+                          })()}
                       </span>
 
                       <div className="flex gap-2">
