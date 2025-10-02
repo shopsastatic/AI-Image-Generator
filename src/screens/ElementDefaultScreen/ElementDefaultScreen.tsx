@@ -2562,7 +2562,7 @@ useEffect(() => {
                         })()}
 
                         {img.platform && (
-                          <div className={`platform-label platform-label-${img.platform.toLowerCase().replace(/\s+/g, '-')}`}>
+                          <div className={`platform-label platform-label-grid platform-label-${img.platform.toLowerCase().replace(/\s+/g, '-')}`}>
                             {img.platform === 'nano-banana' ? 'Nano Banana' : 
                             img.platform === 'seedream' ? 'Seedream' : 
                             'OpenAI'}
