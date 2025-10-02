@@ -120,6 +120,33 @@ export const ElementDefaultScreen = (): JSX.Element => {
     navigate("/project-management");
   };
 
+const sortImagesByPromptGroups = <T extends { prompt?: string }>(images: T[]): T[] => {
+  if (!images || images.length === 0) return images;
+
+  // Tạo map để group theo prompt
+  const groupedByPrompt = new Map<string, T[]>();
+  
+  images.forEach((img) => {
+    const prompt = img.prompt || '';
+    if (!groupedByPrompt.has(prompt)) {
+      groupedByPrompt.set(prompt, []);
+    }
+    groupedByPrompt.get(prompt)!.push(img);
+  });
+
+  // Convert map thành array và sort theo size của group (giảm dần)
+  const sortedGroups = Array.from(groupedByPrompt.entries())
+    .sort((a, b) => b[1].length - a[1].length);
+
+  // Flatten lại thành array phẳng
+  const result: T[] = [];
+  sortedGroups.forEach(([_, group]) => {
+    result.push(...group);
+  });
+
+  return result;
+};
+
   // FIX: Add handlers for model and HD mode changes
   const handleApiChange = useCallback((apis: string[]) => {
     console.log("🔄 Selected APIs changed to:", apis);
@@ -1416,63 +1443,34 @@ useEffect(() => {
 
   const handleHistoryItemClick = (item: any) => {
     // Log dữ liệu debug
-    console.log("🎯 History session clicked:", item.id);
-    console.log("📊 Session data:", {
-      id: item.id,
-      describe: item.describe,
-      platform: item.platform,
-      imageCount: item.list ? item.list.length : 0,
-    });
-
     if (!item.list || item.list.length === 0) {
-      console.log("⚠️ No images found in this session");
-      return;
-    }
+    console.log("⚠️ No images found in this session");
+    return;
+  }
 
-    // Đã xử lý hình ảnh đầu tiên
-    console.log(`🖼️ First image:`, {
-      prompt: item.list[0].prompt
-        ? `${item.list[0].prompt.substring(0, 50)}...`
-        : "None",
-      size: item.list[0].size,
-      timestamp: item.list[0].timestamp,
-    });
+  // ✅ FIX: Ensure platform is preserved
+  const sortedList = sortImagesByPromptGroups(item.list);
 
-    // Kiểm tra trùng lặp trong selectedSessions
-    const sessionIndex = selectedSessions.findIndex(
-      (s) => s.sessionId === item.id
-    );
-
-    if (sessionIndex !== -1) {
-      console.log(
-        "⚠️ Session already in selectedSessions, will not add duplicate"
-      );
-      return;
-    }
-
-    // Tạo session mới với thông tin đầy đủ
-    const newSession = {
-      sessionId: item.id,
-      clickedAt: Date.now(),
-      currentImageIndex: 0,
-      describe: item.describe || "Image session",
-      list: item.list.map((img: any) => {
-        // Validate and fix any missing properties
-        return {
-          imageBase64: img.imageBase64 || "",
-          prompt: img.prompt || "",
-          platform: img.platform || "",
-          claudeResponse: img.claudeResponse || "",
-          timestamp: img.timestamp || new Date().toISOString(),
-          size: img.size || "Square",
-          quality: img.quality || "Standard",
-          AdCreativeA: img.AdCreativeA || "",
-          AdCreativeB: img.AdCreativeB || "",
-          targeting: img.targeting || "",
-          imageName: img.imageName || "",
-        };
-      }),
-    };
+  // ✅ FIX: Ensure platform is preserved
+  const newSession = {
+    sessionId: item.id,
+    clickedAt: Date.now(),
+    currentImageIndex: 0,
+    describe: item.describe || "Image session",
+    list: sortedList.map((img: any) => ({
+      imageBase64: img.imageBase64 || "",
+      prompt: img.prompt || "",
+      platform: img.platform || "",
+      claudeResponse: img.claudeResponse || "",
+      timestamp: img.timestamp || new Date().toISOString(),
+      size: img.size || "Square",
+      quality: img.quality || "Low",
+      AdCreativeA: img.AdCreativeA || "",
+      AdCreativeB: img.AdCreativeB || "",
+      targeting: img.targeting || "",
+      imageName: img.imageName || "",
+    })),
+  };
 
     console.log(`✅ Adding new session to selectedSessions: ${item.id}`);
 
@@ -1496,7 +1494,7 @@ useEffect(() => {
       imageUrl: firstImage.imageBase64,
       clickedAt: Date.now(),
       prompt: firstImage.prompt || "",
-      platform: firstImage.pplatform || "",
+      platform: firstImage.platform || "", // ← FIX: Đảm bảo platform được truyền
       size: firstImage.size || "Square",
       quality: firstImage.quality || "Standard",
       sessionId: item.id,
@@ -1662,15 +1660,18 @@ useEffect(() => {
     );
     if (!currentSession || currentSession.list.length <= 1) return;
 
+    // ✅ Sort list trước khi navigate
+    const sortedList = sortImagesByPromptGroups(currentSession.list);
+    
     let newIndex;
     if (direction === "prev") {
       newIndex =
         currentSessionImageIndex === 0
-          ? currentSession.list.length - 1
+          ? sortedList.length - 1
           : currentSessionImageIndex - 1;
     } else {
       newIndex =
-        currentSessionImageIndex === currentSession.list.length - 1
+        currentSessionImageIndex === sortedList.length - 1
           ? 0
           : currentSessionImageIndex + 1;
     }
@@ -2531,329 +2532,305 @@ useEffect(() => {
                     </div>
                   ))}
 
-                  {selectedImages.map((img, index) => (
-                    <div
-                      key={`img-${index}-${img.clickedAt}`}
-                      className={`image-items image-item-${index + 1}`}
-                      onClick={() => viewImage(index)}
-                    >
-                      {(() => {
-                        if (img.sessionId) {
-                          const session = selectedSessions.find(
-                            (s) => s.sessionId === img.sessionId
-                          );
-                          if (session && session.list.length > 1) {
-                            return (
-                              <div className="overlay-item-count">
-                                {session.list.length}
-                              </div>
+                  {sortImagesByPromptGroups(selectedImages).map((img, sortedIndex) => {
+                    // Tìm index gốc trong selectedImages array
+                    const originalIndex = selectedImages.findIndex(
+                      original => original.imageUrl === img.imageUrl && 
+                                  original.clickedAt === img.clickedAt
+                    );
+
+                    return (
+                      <div
+                        key={`img-${sortedIndex}-${img.clickedAt}`}
+                        className={`image-items image-item-${sortedIndex + 1}`}
+                        onClick={() => viewImage(originalIndex)}
+                      >
+                        {(() => {
+                          if (img.sessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === img.sessionId
                             );
+                            if (session && session.list.length > 1) {
+                              return (
+                                <div className="overlay-item-count">
+                                  {session.list.length}
+                                </div>
+                              );
+                            }
                           }
-                        }
-                        return null;
-                      })()}
+                          return null;
+                        })()}
 
-                      {img.platform && (
-                        <div className="platform-label">
-                          {img.platform === 'nano-banana' ? 'Nano Banana' : 
-                          img.platform === 'seedream' ? 'Seedream' : 
-                          'OpenAI'}
-                        </div>
-                      )}
-
-                      <SafeImage
-                        src={img.imageUrl}
-                        alt={`Generated image ${index + 1}`}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "contain",
-                        }}
-                        selectedImages={selectedImages}
-                        selectedSessions={selectedSessions}
-                      />
-
-                      <div className="image-actions-overlay">
-                        <div className="actions-header">
-                          <button
-                            className="image-remove-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeSelectedImage(index);
-                            }}
-                            title="Remove"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="20"
-                              height="20"
-                              fill="currentColor"
-                              viewBox="0 0 16 16"
-                            >
-                              <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
-                            </svg>
-                          </button>
-
-                          <div className="image-navigation-buttons">
-                            {hasMultipleInSession(index) && (
-                              <>
-                                <button
-                                  className="image-nav-btn prev"
-                                  onClick={(e) =>
-                                    navigateImageThumbnail(index, "prev", e)
-                                  }
-                                  title="Previous in session"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="18px"
-                                    height="18px"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M15.707 4.293a1 1 0 0 1 0 1.414L9.414 12l6.293 6.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 0 1 1.414 0Z"
-                                      clipRule="evenodd"
-                                    ></path>
-                                  </svg>
-                                </button>
-
-                                <button
-                                  className="image-nav-btn next"
-                                  onClick={(e) =>
-                                    navigateImageThumbnail(index, "next", e)
-                                  }
-                                  title="Next in session"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="18"
-                                    height="18"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z"
-                                      clipRule="evenodd"
-                                    ></path>
-                                  </svg>
-                                </button>
-                              </>
-                            )}
+                        {img.platform && (
+                          <div className={`platform-label platform-label-${img.platform.toLowerCase().replace(/\s+/g, '-')}`}>
+                            {img.platform === 'nano-banana' ? 'Nano Banana' : 
+                            img.platform === 'seedream' ? 'Seedream' : 
+                            'OpenAI'}
                           </div>
-                        </div>
+                        )}
 
-                        <div className="image-actions">
-                          <div className="image-actions-left">
+                        <SafeImage
+                          src={img.imageUrl}
+                          alt={`Generated image ${sortedIndex + 1}`}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                          }}
+                          selectedImages={selectedImages}
+                          selectedSessions={selectedSessions}
+                        />
+
+                        <div className="image-actions-overlay">
+                          <div className="actions-header">
                             <button
-                              className="image-action-btn"
+                              className="image-remove-btn"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const image = selectedImages[index];
-                                let promptText = "";
+                                removeSelectedImage(originalIndex);
+                              }}
+                              title="Remove"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="20"
+                                height="20"
+                                fill="currentColor"
+                                viewBox="0 0 16 16"
+                              >
+                                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                              </svg>
+                            </button>
 
-                                if (image.sessionId) {
-                                  const session = selectedSessions.find(
-                                    (s) => s.sessionId === image.sessionId
-                                  );
+                            <div className="image-navigation-buttons">
+                              {hasMultipleInSession(originalIndex) && (
+                                <>
+                                  <button
+                                    className="image-nav-btn prev"
+                                    onClick={(e) =>
+                                      navigateImageThumbnail(originalIndex, "prev", e)
+                                    }
+                                    title="Previous in session"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      width="18px"
+                                      height="18px"
+                                      fill="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M15.707 4.293a1 1 0 0 1 0 1.414L9.414 12l6.293 6.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 0 1 1.414 0Z"
+                                        clipRule="evenodd"
+                                      ></path>
+                                    </svg>
+                                  </button>
 
-                                  if (
-                                    session &&
-                                    image.imageIndex !== undefined
-                                  ) {
-                                    promptText =
-                                      session.list[image.imageIndex].prompt;
+                                  <button
+                                    className="image-nav-btn next"
+                                    onClick={(e) =>
+                                      navigateImageThumbnail(originalIndex, "next", e)
+                                    }
+                                    title="Next in session"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      width="18"
+                                      height="18"
+                                      fill="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z"
+                                        clipRule="evenodd"
+                                      ></path>
+                                    </svg>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="image-actions">
+                            <div className="image-actions-left">
+                              <button
+                                className="image-action-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const image = selectedImages[originalIndex];
+                                  let promptText = "";
+
+                                  if (image.sessionId) {
+                                    const session = selectedSessions.find(
+                                      (s) => s.sessionId === image.sessionId
+                                    );
+
+                                    if (session && image.imageIndex !== undefined) {
+                                      promptText = session.list[image.imageIndex].prompt;
+                                    } else if (image.prompt) {
+                                      promptText = image.prompt;
+                                    }
                                   } else if (image.prompt) {
                                     promptText = image.prompt;
                                   }
-                                } else if (image.prompt) {
-                                  promptText = image.prompt;
-                                }
 
-                                if (promptText) {
-                                  // Convert HTML to plain text with double line breaks
-                                  let textToCopy = promptText;
-                                  if (
-                                    promptText.includes("<") &&
-                                    promptText.includes(">")
-                                  ) {
-                                    const div = document.createElement("div");
-                                    div.innerHTML = promptText
-                                      .replace(
-                                        /<(li|h[1-6]|p|div)>/gi,
-                                        "\n\n<$1>"
-                                      )
-                                      .replace(/<br\s*\/?>/gi, "\n\n");
-                                    textToCopy = div.innerText
-                                      .replace(/\n{2,}/g, "\n\n")
-                                      .replace(/^\n+|\n+$/g, "");
+                                  if (promptText) {
+                                    let textToCopy = promptText;
+                                    if (promptText.includes("<") && promptText.includes(">")) {
+                                      const div = document.createElement("div");
+                                      div.innerHTML = promptText
+                                        .replace(/<(li|h[1-6]|p|div)>/gi, "\n\n<$1>")
+                                        .replace(/<br\s*\/?>/gi, "\n\n");
+                                      textToCopy = div.innerText
+                                        .replace(/\n{2,}/g, "\n\n")
+                                        .replace(/^\n+|\n+$/g, "");
+                                    }
+
+                                    navigator.clipboard
+                                      .writeText(textToCopy)
+                                      .then(() => {
+                                        const notification = document.createElement("div");
+                                        notification.textContent = "Prompt copied!";
+                                        notification.className = "copy-notification";
+                                        document.body.appendChild(notification);
+                                        setTimeout(() => {
+                                          document.body.removeChild(notification);
+                                        }, 2000);
+                                      })
+                                      .catch((err) => {
+                                        console.error("Failed to copy text: ", err);
+                                      });
                                   }
-
-                                  navigator.clipboard
-                                    .writeText(textToCopy)
-                                    .then(() => {
-                                      const notification =
-                                        document.createElement("div");
-                                      notification.textContent =
-                                        "Prompt copied!";
-                                      notification.className =
-                                        "copy-notification";
-                                      document.body.appendChild(notification);
-                                      setTimeout(() => {
-                                        document.body.removeChild(notification);
-                                      }, 2000);
-                                    })
-                                    .catch((err) => {
-                                      console.error(
-                                        "Failed to copy text: ",
-                                        err
-                                      );
-                                    });
-                                }
-                              }}
-                              title="Copy prompt"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="1em"
-                                height="1em"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
+                                }}
+                                title="Copy prompt"
                               >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M7 5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-2v2a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h2V5Zm2 2h5a3 3 0 0 1 3 3v5h2a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v2ZM5 9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5Z"
-                                  clipRule="evenodd"
-                                ></path>
-                              </svg>
-                            </button>
-                          </div>
-                          <div className="image-actions-right">
-                            <button
-                              className="image-action-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="1em"
+                                  height="1em"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M7 5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-2v2a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h2V5Zm2 2h5a3 3 0 0 1 3 3v5h2a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v2ZM5 9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5Z"
+                                    clipRule="evenodd"
+                                  ></path>
+                                </svg>
+                              </button>
+                            </div>
+                            <div className="image-actions-right">
+                              <button
+                                className="image-action-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const image = selectedImages[originalIndex];
+                                  let claudeResponse = "";
+                                  let imageIndex = 0;
+                                  let imageName = "";
 
-                                const image = selectedImages[index];
-                                let claudeResponse = "";
-                                let imageIndex = 0;
-                                let imageName = "";
+                                  if (image.sessionId) {
+                                    const session = selectedSessions.find(
+                                      (s) => s.sessionId === image.sessionId
+                                    );
 
-                                if (image.sessionId) {
-                                  const session = selectedSessions.find(
-                                    (s) => s.sessionId === image.sessionId
-                                  );
-
-                                  if (session) {
-                                    if (image.imageIndex !== undefined) {
-                                      imageIndex = image.imageIndex;
-                                      const imageData =
-                                        session.list[imageIndex];
-                                      imageName = imageData?.imageName || "";
-                                      claudeResponse =
-                                        imageData?.claudeResponse || "";
-                                    } else {
-                                      const foundIndex = session.list.findIndex(
-                                        (img) =>
-                                          img.imageBase64 === image.imageUrl ||
-                                          img.prompt === image.prompt
-                                      );
-                                      if (foundIndex !== -1) {
-                                        imageIndex = foundIndex;
-                                        const imageData =
-                                          session.list[foundIndex];
+                                    if (session) {
+                                      if (image.imageIndex !== undefined) {
+                                        imageIndex = image.imageIndex;
+                                        const imageData = session.list[imageIndex];
                                         imageName = imageData?.imageName || "";
-                                        claudeResponse =
-                                          imageData?.claudeResponse || "";
+                                        claudeResponse = imageData?.claudeResponse || "";
+                                      } else {
+                                        const foundIndex = session.list.findIndex(
+                                          (img) =>
+                                            img.imageBase64 === image.imageUrl ||
+                                            img.prompt === image.prompt
+                                        );
+                                        if (foundIndex !== -1) {
+                                          imageIndex = foundIndex;
+                                          const imageData = session.list[foundIndex];
+                                          imageName = imageData?.imageName || "";
+                                          claudeResponse = imageData?.claudeResponse || "";
+                                        }
                                       }
                                     }
+                                  } else {
+                                    imageName = image.imageName || "";
+                                    claudeResponse = image.claudeResponse || "";
                                   }
-                                } else {
-                                  // Fix: Lấy trực tiếp từ image object
-                                  imageName = image.imageName || "";
-                                  claudeResponse = image.claudeResponse || "";
-                                }
 
-                                console.log("📂 Download params:", {
-                                  imageName,
-                                  claudeResponse: claudeResponse?.substring(
-                                    0,
-                                    100
-                                  ),
-                                  imageIndex,
-                                });
+                                  downloadImage(
+                                    image.imageUrl,
+                                    claudeResponse,
+                                    imageIndex,
+                                    imageName
+                                  );
+                                }}
+                                title="Download"
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="18px"
+                                  height="18px"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
+                                </svg>
+                              </button>
 
-                                downloadImage(
-                                  image.imageUrl,
-                                  claudeResponse,
-                                  imageIndex,
-                                  imageName
-                                );
-                              }}
-                              title="Download"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="18px"
-                                height="18px"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
+                              <button
+                                className="image-action-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addImageToPrompt(img.imageUrl);
+                                }}
+                                title="Add to prompt"
                               >
-                                <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
-                              </svg>
-                            </button>
-
-                            <button
-                              className="image-action-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                addImageToPrompt(img.imageUrl);
-                              }}
-                              title="Add to prompt"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="18px"
-                                height="18px"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="18px"
+                                  height="18px"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z"
+                                    clipRule="evenodd"
+                                  ></path>
+                                </svg>
+                              </button>
+                              <button
+                                className="image-action-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  editPrompt(img.prompt);
+                                }}
+                                title="Edit prompt"
                               >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z"
-                                  clipRule="evenodd"
-                                ></path>
-                              </svg>
-                            </button>
-                            <button
-                              className="image-action-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                editPrompt(img.prompt);
-                              }}
-                              title="Edit prompt"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="18px"
-                                height="18px"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M13.293 4.293a4.536 4.536 0 1 1 6.414 6.414l-1 1-7.547 7.547a3 3 0 0 1-1.628.838l-5.368.894a1 1 0 0 1-1.15-1.15l.894-5.368a3 3 0 0 1 .838-1.628l8.547-8.547ZM13 7.414l-6.84 6.84a1 1 0 0 0-.279.543l-.664 3.986 3.986-.664a1 1 0 0 0 .543-.28L16.586 11 13 7.414Zm5 2.172L14.414 6l.293-.293a2.536 2.536 0 0 1 3.586 3.586L18 9.586Z"
-                                  clipRule="evenodd"
-                                ></path>
-                              </svg>
-                            </button>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="18px"
+                                  height="18px"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M13.293 4.293a4.536 4.536 0 1 1 6.414 6.414l-1 1-7.547 7.547a3 3 0 0 1-1.628.838l-5.368.894a1 1 0 0 1-1.15-1.15l.894-5.368a3 3 0 0 1 .838-1.628l8.547-8.547ZM13 7.414l-6.84 6.84a1 1 0 0 0-.279.543l-.664 3.986 3.986-.664a1 1 0 0 0 .543-.28L16.586 11 13 7.414Zm5 2.172L14.414 6l.293-.293a2.536 2.536 0 0 1 3.586 3.586L18 9.586Z"
+                                    clipRule="evenodd"
+                                  ></path>
+                                </svg>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {!expandedGrid &&
                     Array(
@@ -3234,31 +3211,25 @@ useEffect(() => {
                     ) : null;
                   })()}
 
-                  {currentSessionId &&
-                    (() => {
-                      const session = selectedSessions.find(
-                        (s) => s.sessionId === currentSessionId
+                  {currentSessionId && (() => {
+                    const session = selectedSessions.find(
+                      (s) => s.sessionId === currentSessionId
+                    );
+                    
+                    if (session && session.list[currentSessionImageIndex]) {
+                      // ✅ Sort session list by prompt groups
+                      const sortedList = sortImagesByPromptGroups(session.list);
+                      const currentImage = sortedList[currentSessionImageIndex];
+                      
+                      return (
+                        <img
+                          src={currentImage.imageBase64}
+                          alt="Enlarged view"
+                          className="image-viewer-img"
+                        />
                       );
-                      if (session && session.list[currentSessionImageIndex]) {
-                        return (
-                          <img
-                            src={
-                              session.list[currentSessionImageIndex].imageBase64
-                            }
-                            alt="Enlarged view"
-                            className="image-viewer-img"
-                          />
-                        );
-                      } else {
-                        return (
-                          <img
-                            src={selectedImages[currentViewImageIndex].imageUrl}
-                            alt="Enlarged view"
-                            className="image-viewer-img"
-                          />
-                        );
-                      }
-                    })()}
+                    }
+                  })()}
                 </div>
 
                 <div className="image-viewer-right">
