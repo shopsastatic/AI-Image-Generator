@@ -879,14 +879,12 @@ useEffect(() => {
       let uploadedImageUrls = [];
 
       if (uploadedImages.length > 0) {
-
         const uploadPromises = uploadedImages.map(
           async (base64Image, index) => {
             try {
               const blob = await fetch(base64Image).then((r) => r.blob());
 
               const formData = new FormData();
-              // FIXED: Field name là 'filename'
               formData.append("filename", blob, `reference-image-${index}.png`);
 
               const response = await fetch(
@@ -984,15 +982,12 @@ useEffect(() => {
 
             const data = await response.json();
 
-            // Kiểm tra nếu data[0].data không null
             if (data && data[0] && data[0].data != null) {
               clearInterval(generateImagePool);
 
-              // Xử lý data để hiển thị
               const imagesData = data[0].data;
               console.log("📦 Received images data:", imagesData);
 
-              // Flatten tất cả images từ các platforms
               const allImages = imagesData.flatMap((platformData: any) =>
                 platformData.images.map((img: any) => ({
                   imageUrl: img.url,
@@ -1003,15 +998,12 @@ useEffect(() => {
                 }))
               );
 
-              // Tải và convert images thành base64
               const processedImages = await Promise.all(
                 allImages.map(async (img: any) => {
                   try {
-                    // Fetch image từ URL
                     const imgResponse = await fetch(img.imageUrl);
                     const blob = await imgResponse.blob();
 
-                    // Convert blob thành base64
                     return new Promise<any>((resolve) => {
                       const reader = new FileReader();
                       reader.onloadend = () => {
@@ -1033,7 +1025,6 @@ useEffect(() => {
                 })
               );
 
-              // Lọc bỏ images bị lỗi
               const validImages = processedImages.filter((img) => img !== null);
 
               if (validImages.length === 0) {
@@ -1046,11 +1037,15 @@ useEffect(() => {
                 return;
               }
 
-              // Tạo session data
+              // ✅ FIX: Sort images ngay sau khi có validImages
+              const sortedValidImages = sortImagesByPromptGroups(validImages);
+              console.log("🔄 Images sorted by prompt groups");
+
+              // ✅ FIX: Dùng sortedValidImages thay vì validImages
               const sessionData = {
                 sessionId: sessionId,
                 describe: currentPromptText,
-                images: validImages.map(img => ({
+                images: sortedValidImages.map(img => ({
                   imageBase64: img.imageBase64,
                   prompt: img.prompt,
                   platform: img.platform,
@@ -1060,18 +1055,17 @@ useEffect(() => {
                 })),
               };
 
-              // Lưu vào storage
               try {
                 await storageManager.saveSession(sessionData);
                 console.log(
-                  `✅ Session saved with ${validImages.length} images`
+                  `✅ Session saved with ${sortedValidImages.length} images`
                 );
 
                 showNotification(
                   "success",
                   "Images Generated!",
-                  `Successfully generated ${validImages.length} image${
-                    validImages.length > 1 ? "s" : ""
+                  `Successfully generated ${sortedValidImages.length} image${
+                    sortedValidImages.length > 1 ? "s" : ""
                   }`
                 );
               } catch (storageError) {
@@ -1083,9 +1077,9 @@ useEffect(() => {
                 );
               }
 
-              // Convert images thành blob URLs để hiển thị
+              // ✅ FIX: Convert sortedValidImages thay vì validImages
               const convertedImages = await Promise.all(
-                validImages.map(async (img: any) => {
+                sortedValidImages.map(async (img: any) => {
                   try {
                     const compressed = await ImageCompressor.compressImage(
                       img.imageBase64
@@ -1111,7 +1105,6 @@ useEffect(() => {
                 })
               );
 
-              // Tạo session mới cho UI
               const newSession = {
                 sessionId: sessionId,
                 clickedAt: Date.now(),
@@ -1120,7 +1113,6 @@ useEffect(() => {
                 list: convertedImages,
               };
 
-              // Update selectedSessions
               setSelectedSessions((prevSessions) => {
                 const existingIndex = prevSessions.findIndex(
                   (s) => s.sessionId === sessionId
@@ -1135,7 +1127,6 @@ useEffect(() => {
                 return [newSession, ...prevSessions];
               });
 
-              // Thêm ảnh đầu tiên vào selectedImages
               if (convertedImages.length > 0) {
                 setSelectedImages((prevImages) => {
                   const firstImageObj = {
@@ -1149,12 +1140,10 @@ useEffect(() => {
                     imageIndex: 0,
                   };
 
-                  // Xóa các ảnh cũ từ session này nếu có
                   const filteredImages = prevImages.filter(
                     (img) => img.sessionId !== sessionId
                   );
 
-                  // Thêm ảnh mới vào đầu
                   const loadingItems = filteredImages.filter((img) =>
                     loadingSessions.some(
                       (session) => session.sessionId === img.sessionId
@@ -1176,14 +1165,11 @@ useEffect(() => {
                 });
               }
 
-              // Update history
               window.dispatchEvent(new Event("historyUpdated"));
-
-              // Remove loading session
               removeLoadingSession(sessionId);
 
               console.log(
-                `✅ Successfully processed ${validImages.length} images`
+                `✅ Successfully processed ${sortedValidImages.length} images`
               );
             }
           } catch (error) {

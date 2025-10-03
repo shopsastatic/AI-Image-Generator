@@ -787,7 +787,7 @@ class ImageCompressor {
   /**
    * Nén ảnh để giảm kích thước lưu trữ
    */
-  static async compressImage(dataUrl: string, quality = 0.8, maxWidth = 1200): Promise<{blob: Blob, dataUrl: string, width: number, height: number}> {
+  static async compressImage(dataUrl: string, quality = 1.0, maxWidth = 1200): Promise<{blob: Blob, dataUrl: string, width: number, height: number}> {
     return new Promise((resolve, reject) => {
       try {
         // Bỏ qua nếu không phải data URL hợp lệ
