@@ -1,0 +1,472 @@
+/* ===== TAB SIDEBAR COMPONENT ===== */
+.tab-sidebar {
+    position      : fixed;
+    left          : 0;
+    top           : 0;
+    width         : 320px;
+    height        : 100vh;
+    background    : linear-gradient(0%);
+    border-right  : 1px solid var(--border-color);
+    display       : flex;
+    flex-direction: column;
+    z-index       : 1000;
+    box-shadow    : 2px 0 10px rgba(0, 0, 0, 0.1);
+    transition    : var(--transition-standard);
+    overflow      : hidden;
+    background    : #f8f8f8;
+}
+
+.tab-sidebar.collapsed {
+    width: 60px;
+}
+
+/* Header */
+.tab-sidebar-header {
+    display        : flex;
+    align-items    : center;
+    justify-content: space-between;
+    padding        : 16px;
+    background     : rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-bottom  : 1px solid rgba(255, 255, 255, 0.2);
+    min-height     : 60px;
+}
+
+.tab-sidebar-title {
+    color      : #000;
+    font-weight: 600;
+    font-size  : 14px;
+    white-space: nowrap;
+    overflow   : hidden;
+}
+
+.tab-sidebar.collapsed .tab-sidebar-title {
+    display: none;
+}
+
+.tab-sidebar-controls {
+    display: flex;
+    gap    : 8px;
+}
+
+.tab-control-btn {
+    width          : 28px;
+    height         : 28px;
+    border         : none;
+    background     : rgba(255, 255, 255, 0.2);
+    color          : white;
+    border-radius  : 6px;
+    cursor         : pointer;
+    display        : flex;
+    align-items    : center;
+    justify-content: center;
+    font-size      : 14px;
+    font-weight    : bold;
+    transition     : all 0.2s ease;
+}
+
+.tab-control-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform : scale(1.05);
+}
+
+/* Tabs Container */
+.tabs-container {
+    flex          : 1;
+    overflow-y    : auto;
+    padding       : 8px;
+    display       : flex;
+    flex-direction: column;
+    gap           : 4px;
+}
+
+.tabs-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tabs-container::-webkit-scrollbar-track {
+    background   : rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+.tabs-container::-webkit-scrollbar-thumb {
+    background   : rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+.tabs-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+/* ✅ THÊM MỚI: Empty state styles */
+.empty-tabs-state {
+    display        : flex;
+    flex-direction : column;
+    align-items    : center;
+    justify-content: center;
+    padding        : 40px 20px;
+    text-align     : center;
+    color          : rgba(255, 255, 255, 0.8);
+    height         : 200px;
+}
+
+.empty-icon {
+    font-size    : 48px;
+    margin-bottom: 16px;
+    opacity      : 0.7;
+}
+
+.empty-message {
+    font-size    : 16px;
+    margin-bottom: 20px;
+    opacity      : 0.8;
+}
+
+.create-first-tab-btn {
+    background     : rgba(255, 255, 255, 0.2);
+    color          : white;
+    border         : 1px solid rgba(255, 255, 255, 0.3);
+    padding        : 12px 24px;
+    border-radius  : 8px;
+    font-size      : 14px;
+    font-weight    : 500;
+    cursor         : pointer;
+    transition     : all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.create-first-tab-btn:hover {
+    background  : rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform   : translateY(-2px);
+    box-shadow  : 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Tab Item */
+.tab-item {
+    display      : flex;
+    align-items  : center;
+    padding      : 12px;
+    background   : rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    cursor       : pointer;
+    transition   : all 0.2s ease;
+    position     : relative;
+    border       : 1px solid transparent;
+    gap          : 12px;
+}
+
+.tab-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform : translateX(4px);
+}
+
+.tab-item.active {
+    background  : rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow  : 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tab-item.active::before {
+    content      : '';
+    position     : absolute;
+    left         : 0;
+    top          : 50%;
+    transform    : translateY(-50%);
+    width        : 4px;
+    height       : 60%;
+    background   : white;
+    border-radius: 0 2px 2px 0;
+}
+
+/* Tab Thumbnail */
+.tab-thumbnail {
+    width          : 40px;
+    height         : 30px;
+    border-radius  : 4px;
+    overflow       : hidden;
+    background     : rgba(255, 255, 255, 0.2);
+    display        : flex;
+    align-items    : center;
+    justify-content: center;
+    flex-shrink    : 0;
+}
+
+.tab-thumbnail img {
+    width     : 100%;
+    height    : 100%;
+    object-fit: cover;
+}
+
+.tab-thumbnail-placeholder {
+    color    : rgba(255, 255, 255, 0.7);
+    font-size: 16px;
+}
+
+/* Tab Info */
+.tab-info {
+    flex          : 1;
+    min-width     : 0;
+    display       : flex;
+    flex-direction: column;
+}
+
+.tab-title {
+    font-size    : 13px;
+    font-weight  : 500;
+    white-space  : nowrap;
+    overflow     : hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+    color        : #000;
+}
+
+.tab-meta {
+    display    : flex;
+    align-items: center;
+    gap        : 8px;
+    font-size  : 11px;
+    opacity    : 0.7;
+}
+
+.tab-timestamp {
+    color: #000;
+}
+
+.tab-history-count {
+    background   : rgba(255, 255, 255, 0.2);
+    padding      : 2px 6px;
+    border-radius: 10px;
+    font-size    : 10px;
+}
+
+/* Tab Close Button */
+
+.tab-history {
+    display: none !important;
+}
+
+.tab-close-btn {
+    width          : 20px;
+    height         : 20px;
+    border         : none;
+    background     : rgba(255, 255, 255, 0.2);
+    color          : white;
+    border-radius  : 50%;
+    cursor         : pointer;
+    display        : flex;
+    align-items    : center;
+    justify-content: center;
+    font-size      : 14px;
+    opacity        : 0;
+    transition     : all 0.2s ease;
+    flex-shrink    : 0;
+}
+
+.tab-item:hover .tab-close-btn {
+    opacity: 1;
+}
+
+.tab-close-btn:hover {
+    background: rgba(255, 255, 255, 0.4);
+    transform : scale(1.1);
+}
+
+/* Tab History */
+.tab-history {
+    border-top    : 1px solid rgba(255, 255, 255, 0.2);
+    background    : rgba(0, 0, 0, 0.1);
+    max-height    : 200px;
+    display       : flex;
+    flex-direction: column;
+}
+
+.tab-history-header {
+    padding      : 12px 16px;
+    color        : white;
+    font-size    : 12px;
+    font-weight  : 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tab-history-list {
+    flex      : 1;
+    overflow-y: auto;
+    padding   : 8px;
+}
+
+.tab-history-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.tab-history-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.tab-history-list::-webkit-scrollbar-thumb {
+    background   : rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+}
+
+/* History Item */
+.history-item {
+    display      : flex;
+    align-items  : center;
+    padding      : 8px;
+    border-radius: 6px;
+    cursor       : pointer;
+    transition   : all 0.2s ease;
+    gap          : 8px;
+    margin-bottom: 4px;
+}
+
+.history-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.history-thumbnail {
+    width          : 24px;
+    height         : 18px;
+    border-radius  : 3px;
+    overflow       : hidden;
+    background     : rgba(255, 255, 255, 0.2);
+    display        : flex;
+    align-items    : center;
+    justify-content: center;
+    flex-shrink    : 0;
+}
+
+.history-thumbnail img {
+    width     : 100%;
+    height    : 100%;
+    object-fit: cover;
+}
+
+.history-thumbnail-placeholder {
+    color    : rgba(255, 255, 255, 0.5);
+    font-size: 10px;
+}
+
+.history-info {
+    flex     : 1;
+    min-width: 0;
+    color    : white;
+}
+
+.history-title {
+    font-size    : 11px;
+    white-space  : nowrap;
+    overflow     : hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+
+.history-timestamp {
+    font-size: 9px;
+    opacity  : 0.6;
+}
+
+/* Context Menu */
+.tab-context-menu {
+    background   : white;
+    border-radius: 8px;
+    box-shadow   : 0 4px 20px rgba(0, 0, 0, 0.15);
+    border       : 1px solid var(--border-color);
+    overflow     : hidden;
+    min-width    : 180px;
+    z-index      : 10001;
+}
+
+.context-menu-item {
+    padding      : 12px 16px;
+    cursor       : pointer;
+    font-size    : 13px;
+    display      : flex;
+    align-items  : center;
+    gap          : 8px;
+    transition   : background-color 0.2s ease;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.context-menu-item:last-child {
+    border-bottom: none;
+}
+
+.context-menu-item:hover {
+    background-color: var(--bg-secondary);
+}
+
+.context-menu-item.danger {
+    color: #e53e3e;
+}
+
+.context-menu-item.danger:hover {
+    background-color: #fed7d7;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .tab-sidebar {
+        width: 280px;
+    }
+
+    .tab-sidebar.collapsed {
+        width: 50px;
+    }
+
+    .tab-item {
+        padding: 10px;
+    }
+
+    .tab-thumbnail {
+        width : 32px;
+        height: 24px;
+    }
+}
+
+/* Animation for tab switching */
+@keyframes tabSwitchIn {
+    from {
+        opacity  : 0;
+        transform: translateX(-10px);
+    }
+
+    to {
+        opacity  : 1;
+        transform: translateX(0);
+    }
+}
+
+.tab-item.active {
+    animation: tabSwitchIn 0.3s ease-out;
+}
+
+/* Loading state */
+.tab-item.loading {
+    opacity       : 0.6;
+    pointer-events: none;
+}
+
+.tab-item.loading::after {
+    content      : '';
+    position     : absolute;
+    right        : 8px;
+    top          : 50%;
+    transform    : translateY(-50%);
+    width        : 12px;
+    height       : 12px;
+    border       : 2px solid rgba(255, 255, 255, 0.3);
+    border-top   : 2px solid white;
+    border-radius: 50%;
+    animation    : spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: translateY(-50%) rotate(0deg);
+    }
+
+    100% {
+        transform: translateY(-50%) rotate(360deg);
+    }
+}

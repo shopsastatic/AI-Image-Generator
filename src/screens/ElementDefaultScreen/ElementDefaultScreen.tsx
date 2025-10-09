@@ -1,2184 +1,2746 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./default.css";
-import "./style.css";
 import HistorySidebar from "./HistorySideBar";
 import ImageInfoDropdown from "./ImageInfoDropdown";
 import ImageSizeSelector from "./ImageSizeSelector";
+import TabSidebar, {
+    TabWorkspaceData,
+    createDefaultWorkspaceData,
+} from "./TabSidebar";
+import UploadedFilesPanel from "./UploadedFilesPanel";
+import "./default.css";
 import {
-  storageManager,
-  StorageMigration,
-  ImageCompressor,
+    ImageCompressor,
+    StorageMigration,
+    storageManager,
 } from "./storageUtils";
+import "./style.css";
 
 interface LoadingSession {
-  sessionId: string;
-  prompt: string;
-  platform: string;
-  startTime: number;
-  jobId: string | null;
-  countdown: number;
+    sessionId: string;
+    prompt: string;
+    platform: string;
+    startTime: number;
+    jobId: string | null;
+    countdown: number;
 }
 
 export const ElementDefaultScreen = (): JSX.Element => {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<{
-    email: string;
-    role: string;
-  } | null>(null);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(
-    null
-  );
-  const navigate = useNavigate();
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+    const [currentUser, setCurrentUser] = useState<{
+        email: string;
+        role: string;
+    } | null>(null);
+    const [pollingInterval, setPollingInterval] =
+        useState<NodeJS.Timeout | null>(null);
+    const navigate = useNavigate();
 
-  const [imageSizes, setImageSizes] = useState<{
-    Square: number;
-    Portrait: number;
-    Landscape: number;
-  }>({
-    Square: 0,
-    Portrait: 0,
-    Landscape: 0,
-  });
-
-  const [selectedCategory, setSelectedCategory] = useState<{
-    category: string;
-    subcategory: string;
-  }>({
-    category: "google_prompt",
-    subcategory: "",
-  });
-
-  // FIX: Add states for model and HD mode
-  const [selectedApis, setSelectedApis] = useState<string[]>(["nano", "seed"]);
-  const [selectedAspectRatio, setSelectedAspectRatio] =
-    useState<string>("Square HD");
-
-  const [instructionsContent, setInstructionsContent] = useState("");
-
-  const [numberOfImages, setNumberOfImages] = useState<number>(1);
-  const [selectedQuality, setSelectedQuality] = useState<string>("Low");
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
-  const [showHistorySidebar, setShowHistorySidebar] = useState<boolean>(false);
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [promptText, setPromptText] = useState<string>("");
-  const [storageReady, setStorageReady] = useState(false);
-  const [currentLoadingPrompt, setCurrentLoadingPrompt] = useState<string>("");
-  const [expandedGrid, setExpandedGrid] = useState<boolean>(false);
-  const [baseGridCount, setBaseGridCount] = useState<number>(8);
-
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [countdown, setCountdown] = useState<number>(0);
-  const [loadingStatus, setLoadingStatus] = useState<string>("");
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
-
-  const [loadingSessions, setLoadingSessions] = useState<LoadingSession[]>([]);
-
-  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
-
-  const [selectedSessions, setSelectedSessions] = useState<
-    Array<{
-      sessionId: string;
-      clickedAt: number;
-      currentImageIndex: number;
-      describe?: string;
-      list: Array<{
-        imageBase64: string;
-        prompt: string;
-        platform: string;
-        claudeResponse?: string;
-        timestamp: string;
-        size: string;
-        quality: string;
-        AdCreativeA?: string;
-        AdCreativeB?: string;
-      }>;
-    }>
-  >([]);
-
-  const [selectedImages, setSelectedImages] = useState<
-    Array<{
-      imageUrl: string;
-      clickedAt: number;
-      prompt?: string;
-      platform?: string;
-      claudeResponse?: string;
-      size?: string;
-      quality?: string;
-      sessionId?: string;
-      imageIndex?: number;
-    }>
-  >([]);
-
-  const handleCategoryChange = (category: string, subcategory: string) => {
-    setSelectedCategory({ category, subcategory });
-  };
-
-  const handleNavigateToProjectManagement = () => {
-    navigate("/project-management");
-  };
-
-const sortImagesByPromptGroups = <T extends { prompt?: string }>(images: T[]): T[] => {
-  if (!images || images.length === 0) return images;
-
-  // Tạo map để group theo prompt
-  const groupedByPrompt = new Map<string, T[]>();
-  
-  images.forEach((img) => {
-    const prompt = img.prompt || '';
-    if (!groupedByPrompt.has(prompt)) {
-      groupedByPrompt.set(prompt, []);
-    }
-    groupedByPrompt.get(prompt)!.push(img);
-  });
-
-  // Convert map thành array và sort theo size của group (giảm dần)
-  const sortedGroups = Array.from(groupedByPrompt.entries())
-    .sort((a, b) => b[1].length - a[1].length);
-
-  // Flatten lại thành array phẳng
-  const result: T[] = [];
-  sortedGroups.forEach(([_, group]) => {
-    result.push(...group);
-  });
-
-  return result;
-};
-
-  // FIX: Add handlers for model and HD mode changes
-  const handleApiChange = useCallback((apis: string[]) => {
-    console.log("🔄 Selected APIs changed to:", apis);
-    setSelectedApis(apis);
-  }, []);
-
-  const handleAspectRatioChange = useCallback((aspectRatio: string) => {
-    console.log("🔄 Selected Aspect Ratio changed to:", aspectRatio);
-    setSelectedAspectRatio(aspectRatio);
-  }, []);
-
-  const [currentViewImageIndex, setCurrentViewImageIndex] = useState<
-    number | null
-  >(null);
-
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [currentSessionImageIndex, setCurrentSessionImageIndex] =
-    useState<number>(0);
-
-  const [promptExpanded, setPromptExpanded] = useState<boolean>(false);
-
-  const [gridItemCount, setGridItemCount] = useState<number>(8);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imagesContainerRef = useRef<HTMLDivElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-  const suggestionButtonRef = useRef<HTMLImageElement>(null);
-  const historySidebarRef = useRef<HTMLDivElement>(null);
-  const historyButtonRef = useRef<HTMLButtonElement>(null);
-  const promptTextRef = useRef<HTMLDivElement>(null);
-  const gridContainerRef = useRef<HTMLDivElement>(null);
-  const submitButtonRef = useRef<HTMLDivElement>(null);
-
-  const sessionCountdownRefs = useRef<Record<string, NodeJS.Timeout>>({});
-  const pollingIntervalRefs = useRef<Record<string, NodeJS.Timeout>>({});
-
-  const suggestionItems = [
-    "Logo",
-    "Business Card",
-    "Furniture Design",
-    "Handbag matching outfit",
-    "Speaker Ad",
-    "Sneakers design",
-    "3D City",
-    "Glass Speaker",
-    "Chocolate Bar",
-  ];
-
-  const getSizeNameForIndex = (index: number): string => {
-    const sizesArray: string[] = [];
-
-    for (let i = 0; i < imageSizes.Square; i++) {
-      sizesArray.push("Square");
-    }
-
-    for (let i = 0; i < imageSizes.Portrait; i++) {
-      sizesArray.push("Portrait");
-    }
-
-    for (let i = 0; i < imageSizes.Landscape; i++) {
-      sizesArray.push("Landscape");
-    }
-
-    const totalAssigned = sizesArray.length;
-    const remaining = numberOfImages - totalAssigned;
-    for (let i = 0; i < remaining; i++) {
-      sizesArray.push("Square");
-    }
-
-    return sizesArray[index] || "Square";
-  };
-
-  const getTotalSelectedImages = (): number => {
-    return imageSizes.Square + imageSizes.Portrait + imageSizes.Landscape;
-  };
-
-  const canIncreaseSize = (sizeType: string): boolean => {
-    const currentTotal = getTotalSelectedImages();
-    return currentTotal < numberOfImages;
-  };
-
-  const generateImageSizesString = (): string => {
-    const totalSelected = getTotalSelectedImages();
-    const totalNeeded = numberOfImages;
-
-    if (totalSelected === 0) {
-      return "auto";
-    }
-
-    const sizesArray: string[] = [];
-
-    for (let i = 0; i < imageSizes.Square; i++) {
-      sizesArray.push("Square");
-    }
-    for (let i = 0; i < imageSizes.Portrait; i++) {
-      sizesArray.push("Portrait");
-    }
-    for (let i = 0; i < imageSizes.Landscape; i++) {
-      sizesArray.push("Landscape");
-    }
-
-    const remaining = totalNeeded - totalSelected;
-    for (let i = 0; i < remaining; i++) {
-      sizesArray.push("auto");
-    }
-
-    return sizesArray.join(", ");
-  };
-
-  useEffect(() => {
-    const currentTotal = getTotalSelectedImages();
-    if (currentTotal > numberOfImages) {
-      setImageSizes({
+    const [imageSizes, setImageSizes] = useState<{
+        Square: number;
+        Portrait: number;
+        Landscape: number;
+    }>({
         Square: 0,
         Portrait: 0,
         Landscape: 0,
-      });
-    }
-  }, [numberOfImages]);
-
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        const response = await fetch("/api/auth/verify");
-        const data = await response.json();
-        if (data.success) {
-          setCurrentUser(data.user);
-        }
-      } catch (error) {
-        console.error("Failed to fetch user info:", error);
-      }
-    };
-
-    fetchUserInfo();
-  }, []);
-
-  // ✅ Auto-load PROMPT CONTENT into textarea
-useEffect(() => {
-  const loadInstructions = async () => {
-    if (!selectedCategory.category) return;
-
-    // ✅ Xóa sạch textarea ngay
-    if (textareaRef.current) {
-      textareaRef.current.value = '';
-      setPromptText('');
-      adjustHeight();
-    }
-
-    try {
-      console.log('🔄 Loading instructions for:', selectedCategory);
-
-      const response = await fetch('/api/instructions/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: selectedCategory.category,
-          subcategory: selectedCategory.subcategory || '',
-          selectedModel: selectedApis[0] || 'claude-sonnet',
-        }),
-      });
-
-      if (!response.ok) {
-        console.error('Failed to load instructions');
-        return;
-      }
-
-      const data = await response.json();
-      console.log('📚 Instructions loaded:', data);
-
-      // ✅ Parse content
-      const parseContent = (rawContent: string) => {
-        if (!rawContent) return { promptContent: '', instructions: '' };
-        
-        if (rawContent.includes('--- PROMPT CONTENT ---')) {
-          const parts = rawContent.split('--- INSTRUCTIONS ---');
-          return {
-            promptContent: parts[0].replace('--- PROMPT CONTENT ---', '').trim(),
-            instructions: parts[1] ? parts[1].trim() : ''
-          };
-        }
-        return { 
-          promptContent: '', 
-          instructions: rawContent 
-        };
-      };
-
-      // ✅ Parse system_prompt or user_prompt
-      let parsedContent = { promptContent: '', instructions: '' };
-      
-      if (data.system_prompt) {
-        parsedContent = parseContent(data.system_prompt);
-      } else if (data.user_prompt) {
-        parsedContent = parseContent(data.user_prompt);
-      }
-
-      console.log('📝 Parsed content:', {
-        promptContentLength: parsedContent.promptContent.length,
-        instructionsLength: parsedContent.instructions.length
-      });
-
-      // ✅ FIX: Lấy PROMPT CONTENT thay vì instructions
-      if (parsedContent.promptContent && parsedContent.promptContent.trim()) {
-        if (textareaRef.current) {
-          textareaRef.current.value = parsedContent.promptContent;
-          setPromptText(parsedContent.promptContent);
-          adjustHeight();
-        }
-        
-        console.log(`✅ Loaded ${parsedContent.promptContent.length} characters of PROMPT CONTENT into textarea`);
-      } else {
-        console.log('⚠️ No prompt content found - textarea remains empty');
-      }
-
-    } catch (error) {
-      console.error('Error loading instructions:', error);
-    }
-  };
-
-  loadInstructions();
-}, [selectedCategory, selectedApis]);
-
-  useEffect(() => {
-    const initStorage = async () => {
-      try {
-        await storageManager.init();
-        await StorageMigration.migrateFromOldLocalStorage(storageManager);
-        setStorageReady(true);
-      } catch (error) {
-        console.error("Storage initialization failed:", error);
-        setStorageReady(true);
-      }
-    };
-
-    initStorage();
-  }, []);
-
-  const getFirst10Words = (text: string): string => {
-    return text.split(" ").slice(0, 10).join(" ") + "...";
-  };
-
-  const startJobPolling = useCallback((jobId: string, sessionId: string) => {
-    // Xóa interval cũ của job này nếu có
-    if (pollingIntervalRefs.current[sessionId]) {
-      clearInterval(pollingIntervalRefs.current[sessionId]);
-      delete pollingIntervalRefs.current[sessionId];
-    }
-
-    const pollJob = async () => {
-      try {
-        const response = await fetch(`/api/image-generation/status/${jobId}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to check job status");
-        }
-
-        // Cập nhật trạng thái loading session
-        setLoadingSessions((prev) =>
-          prev.map((session) => {
-            if (session.sessionId === sessionId) {
-              let status = "Queued...";
-
-              switch (data.status) {
-                case "pending":
-                  status = "Job queued...";
-                  break;
-                case "processing":
-                  status = data.progress.currentStep || "Processing...";
-                  break;
-                case "completed":
-                  // Sẽ được xử lý bên dưới
-                  break;
-                case "failed":
-                  status = `Failed: ${data.error || "Unknown error"}`;
-                  break;
-                case "cancelled":
-                  status = "Cancelled";
-                  break;
-              }
-
-              return { ...session, status };
-            }
-            return session;
-          })
-        );
-
-        switch (data.status) {
-          case "completed":
-            await handleJobCompleted(jobId, sessionId);
-            return;
-          case "failed":
-            handleJobFailed(data.error || "Job failed", sessionId);
-            return;
-          case "cancelled":
-            handleJobCancelled(sessionId);
-            return;
-        }
-      } catch (error) {
-        console.error(`Polling error for job ${jobId}:`, error);
-        handleJobFailed(error.message, sessionId);
-      }
-    };
-
-    pollJob(); // Gọi ngay lần đầu
-
-    // Tạo interval mới cho job này và lưu vào refs
-    const interval = setInterval(pollJob, 4000);
-    pollingIntervalRefs.current[sessionId] = interval;
-
-    // Cập nhật state để React biết về việc thay đổi polling
-    setPollingInterval(interval); // Vẫn giữ biến này cho backwards compatibility
-  }, []);
-
-  const stopJobPolling = useCallback((sessionId: string) => {
-    if (pollingIntervalRefs.current[sessionId]) {
-      clearInterval(pollingIntervalRefs.current[sessionId]);
-      delete pollingIntervalRefs.current[sessionId];
-      console.log(`🛑 Stopped polling for session: ${sessionId}`);
-    }
-  }, []);
-
-  // FIX: Improved handleJobCompleted
-  const handleJobCompleted = async (jobId: string, sessionId: string) => {
-    try {
-      console.log("🎯 Job completed, fetching results:", jobId);
-
-      const response = await fetch(`/api/image-generation/results/${jobId}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch job results");
-      }
-
-      console.log("📦 Results received:", data);
-      await processJobResults(data, sessionId);
-    } catch (error) {
-      console.error("Failed to fetch job results:", error);
-      handleJobFailed(error.message, sessionId);
-    } finally {
-      // Dừng polling chỉ cho job này
-      stopJobPolling(sessionId);
-      removeLoadingSession(sessionId);
-    }
-  };
-
-  const handleJobFailed = (error: string, sessionId: string) => {
-    showNotification("error", "Generation Failed!", error);
-    removeLoadingSession(sessionId);
-  };
-
-  const handleJobCancelled = (sessionId: string) => {
-    removeLoadingSession(sessionId);
-  };
-
-  const removeLoadingSession = (sessionId: string) => {
-    // Clear countdown interval
-    if (sessionCountdownRefs.current[sessionId]) {
-      clearInterval(sessionCountdownRefs.current[sessionId]);
-      delete sessionCountdownRefs.current[sessionId];
-    }
-
-    // Clear polling interval
-    if (pollingIntervalRefs.current[sessionId]) {
-      clearInterval(pollingIntervalRefs.current[sessionId]);
-      delete pollingIntervalRefs.current[sessionId];
-    }
-
-    // Xóa session khỏi loadingSessions
-    setLoadingSessions((prev) =>
-      prev.filter((session) => session.sessionId !== sessionId)
-    );
-  };
-
-  const editPromptFromLoadingSession = (session: LoadingSession) => {
-    if (session.prompt && textareaRef.current) {
-      textareaRef.current.value = session.prompt;
-      setPromptText(session.prompt);
-
-      const event = new Event("input", { bubbles: true });
-      textareaRef.current.dispatchEvent(event);
-      adjustHeight();
-    }
-  };
-
-  // FIX: Complete rewrite of processJobResults
-  const processJobResults = async (jobData: any, sessionId: string) => {
-    try {
-      const { results, claudeResponse } = jobData;
-
-      console.log("🔄 Processing job results for session:", sessionId);
-      console.log(
-        "📝 Claude response received:",
-        claudeResponse ? "YES" : "NO"
-      );
-      console.log("📊 Total results received:", results?.length || 0);
-
-      // Tìm prompt từ loading session
-      const loadingSession = loadingSessions.find(
-        (session) => session.sessionId === sessionId
-      );
-      const promptFromLoadingSession = loadingSession?.prompt || "";
-
-      // ✅ FIX: Filter chỉ lấy những ảnh thành công và hợp lệ
-      const successfulImages = results
-        .filter((img: any) => {
-          // Kiểm tra có imageBase64 và là data URL hợp lệ
-          if (!img.imageBase64 || !img.imageBase64.startsWith("data:")) {
-            console.log("❌ Rejected: Invalid imageBase64 format");
-            return false;
-          }
-
-          // Loại bỏ placeholder errors
-          if (
-            img.imageBase64.includes(
-              "PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM"
-            )
-          ) {
-            console.log("❌ Rejected: Error placeholder detected");
-            return false;
-          }
-
-          // Loại bỏ specific error placeholder
-          if (
-            img.imageBase64 ===
-            "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4="
-          ) {
-            console.log("❌ Rejected: Specific error placeholder");
-            return false;
-          }
-
-          // Kiểm tra kích thước tối thiểu (optional)
-          if (img.imageBase64.length < 1000) {
-            console.log("❌ Rejected: Image data too small");
-            return false;
-          }
-
-          console.log("✅ Accepted: Valid image");
-          return true;
-        })
-        .map((img: any) => ({
-          ...img,
-          claudeResponse: claudeResponse, // Attach Claude response
-        }));
-
-      console.log(
-        `📈 Filtered results: ${successfulImages.length}/${
-          results?.length || 0
-        } successful images`
-      );
-
-      // ✅ FIX: Chỉ tiếp tục nếu có ít nhất 1 ảnh thành công
-      if (successfulImages.length === 0) {
-        console.warn("⚠️ No successful images to save for session:", sessionId);
-
-        // Hiển thị notification cho user
-        showNotification(
-          "warning",
-          "Generation Failed!",
-          "All images failed to generate. Please try again with a different prompt."
-        );
-
-        // Không tạo session, chỉ remove loading session
-        removeLoadingSession(sessionId);
-        return;
-      }
-
-      // Determine describe
-      let describeToUse = promptFromLoadingSession;
-      if (!describeToUse || describeToUse.trim() === "") {
-        describeToUse =
-          jobData.originalPrompt || jobData.userPrompt || "Generated images";
-        console.log("⚠️ Using fallback describe:", describeToUse);
-      }
-
-      console.log("🔍 Final describe to use:", describeToUse);
-
-      // Create session data with only successful images
-      const sessionData = {
-        sessionId: sessionId,
-        describe: describeToUse,
-        images: successfulImages,
-      };
-
-      // Save to storage
-      try {
-        await storageManager.saveSession(sessionData);
-        console.log(
-          `✅ Session saved with ${successfulImages.length} successful images`
-        );
-
-        // Show success notification with count
-        showNotification(
-          "success",
-          "Images Generated!",
-          `Successfully generated ${successfulImages.length} image${
-            successfulImages.length > 1 ? "s" : ""
-          }`
-        );
-      } catch (storageError) {
-        console.error("Storage save failed:", storageError);
-        showNotification(
-          "error",
-          "Storage Full!",
-          "Your images were generated but couldn't be saved due to storage limits."
-        );
-      }
-
-      // Convert images to blob URLs for display
-      const convertedImages = await Promise.all(
-        successfulImages.map(async (img: any) => {
-          try {
-            const compressed = await ImageCompressor.compressImage(
-              img.imageBase64
-            );
-            const blobUrl = URL.createObjectURL(compressed.blob);
-
-            return {
-              ...img,
-              imageBase64: blobUrl,
-              originalBase64: img.imageBase64,
-              isBlob: true,
-              claudeResponse: img.claudeResponse,
-            };
-          } catch (error) {
-            console.warn("Failed to convert to blob, using base64:", error);
-            return {
-              ...img,
-              isBlob: false,
-              claudeResponse: img.claudeResponse,
-            };
-          }
-        })
-      );
-
-      // Create new session for UI
-      const newSession = {
-        sessionId: sessionId,
-        clickedAt: Date.now(),
-        currentImageIndex: 0,
-        describe: describeToUse,
-        list: convertedImages,
-      };
-
-      // Update selectedSessions
-      setSelectedSessions((prevSessions) => {
-        const existingIndex = prevSessions.findIndex(
-          (s) => s.sessionId === sessionId
-        );
-
-        if (existingIndex !== -1) {
-          console.log("🔄 Updating existing session:", sessionId);
-          const updatedSessions = [...prevSessions];
-          updatedSessions[existingIndex] = newSession;
-          return updatedSessions;
-        }
-
-        console.log("➕ Adding new session:", sessionId);
-        return [newSession, ...prevSessions];
-      });
-
-      // Add first image to selectedImages if exists
-      if (convertedImages.length > 0) {
-        setSelectedImages((prevImages) => {
-          const firstImageObj = {
-            imageUrl: convertedImages[0].imageBase64,
-            clickedAt: Date.now(),
-            prompt: convertedImages[0].prompt,
-            platform: convertedImages[0].platform,
-            size: convertedImages[0].size,
-            quality: convertedImages[0].quality,
-            sessionId: sessionId,
-            imageIndex: 0,
-            claudeResponse: convertedImages[0].claudeResponse,
-            AdCreativeA: convertedImages[0].AdCreativeA,
-            AdCreativeB: convertedImages[0].AdCreativeB,
-            targeting: convertedImages[0].targeting,
-            imageName: convertedImages[0].imageName,
-          };
-
-          // Remove any existing images from this session
-          const filteredImages = prevImages.filter(
-            (img) => img.sessionId !== sessionId
-          );
-
-          // Add new image at the beginning, right after any loading items
-          const loadingItems = filteredImages.filter((img) =>
-            loadingSessions.some(
-              (session) => session.sessionId === img.sessionId
-            )
-          );
-
-          const regularItems = filteredImages.filter(
-            (img) =>
-              !loadingSessions.some(
-                (session) => session.sessionId === img.sessionId
-              )
-          );
-
-          return [...loadingItems, firstImageObj, ...regularItems].slice(
-            0,
-            gridItemCount
-          );
-        });
-      }
-
-      window.dispatchEvent(new Event("historyUpdated"));
-      console.log(
-        `✅ Job results processed successfully: ${successfulImages.length} images saved`
-      );
-    } catch (error) {
-      console.error("Error processing job results:", error);
-
-      // Show error notification
-      showNotification(
-        "error",
-        "Processing Error!",
-        "Failed to process generated images. Please try again."
-      );
-
-      // Remove loading session on error
-      removeLoadingSession(sessionId);
-      throw error;
-    }
-  };
-
-  const cleanupBlobUrls = () => {
-    // Clean up blob URLs in selectedImages
-    selectedImages.forEach((img) => {
-      if (img.imageUrl && img.imageUrl.startsWith("blob:")) {
-        try {
-          URL.revokeObjectURL(img.imageUrl);
-        } catch (e) {
-          // Ignore errors
-        }
-      }
     });
 
-    // Clean up blob URLs in selectedSessions
-    selectedSessions.forEach((session) => {
-      if (session.list) {
-        session.list.forEach((img) => {
-          if (
-            img.isBlob &&
-            img.imageBase64 &&
-            img.imageBase64.startsWith("blob:")
-          ) {
-            try {
-              URL.revokeObjectURL(img.imageBase64);
-            } catch (e) {
-              // Ignore errors
-            }
-          }
-        });
-      }
+    const [selectedCategory, setSelectedCategory] = useState<{
+        category: string;
+        subcategory: string;
+    }>({
+        category: "google_prompt",
+        subcategory: "",
     });
-  };
 
-  const cancelImageGeneration = async (sessionId?: string) => {
-    if (!sessionId && loadingSessions.length > 0) {
-      // Cancel session mới nhất nếu không có sessionId
-      sessionId = loadingSessions[loadingSessions.length - 1].sessionId;
-    }
+    // FIX: Add states for model and HD mode
+    const [selectedApis, setSelectedApis] = useState<string[]>([
+        "nano",
+        "seed",
+    ]);
+    const [selectedAspectRatio, setSelectedAspectRatio] =
+        useState<string>("Square HD");
 
-    if (!sessionId) return;
+    const [instructionsContent, setInstructionsContent] = useState("");
 
-    const loadingSession = loadingSessions.find(
-      (session) => session.sessionId === sessionId
+    const [numberOfImages, setNumberOfImages] = useState<number>(1);
+    const [selectedQuality, setSelectedQuality] = useState<string>("Low");
+    const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+    const [showHistorySidebar, setShowHistorySidebar] =
+        useState<boolean>(false);
+    const [showUploadedFilesPanel, setShowUploadedFilesPanel] =
+        useState<boolean>(false);
+    const [isDragOver, setIsDragOver] = useState<boolean>(false);
+    const [showUserDropdown, setShowUserDropdown] = useState(false);
+    const [promptText, setPromptText] = useState<string>("");
+    const [storageReady, setStorageReady] = useState(false);
+    const [currentLoadingPrompt, setCurrentLoadingPrompt] =
+        useState<string>("");
+    const [expandedGrid, setExpandedGrid] = useState<boolean>(false);
+    const [baseGridCount, setBaseGridCount] = useState<number>(8);
+
+    // ✅ THÊM MỚI: TabSidebar states
+    const [showTabSidebar, setShowTabSidebar] = useState<boolean>(true);
+    const [currentTabId, setCurrentTabId] = useState<string | null>(null);
+    const [currentWorkspaceData, setCurrentWorkspaceData] =
+        useState<TabWorkspaceData>(createDefaultWorkspaceData());
+    const [currentPageData, setCurrentPageData] = useState<{
+        title: string;
+        thumbnail?: string;
+        url: string;
+    }>({
+        title: "AI Image Generator",
+        url: "/main",
+    });
+
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [countdown, setCountdown] = useState<number>(0);
+    const [loadingStatus, setLoadingStatus] = useState<string>("");
+    const countdownRef = useRef<NodeJS.Timeout | null>(null);
+
+    const [loadingSessions, setLoadingSessions] = useState<LoadingSession[]>(
+        []
     );
 
-    if (loadingSession?.jobId) {
-      try {
-        await fetch(`/api/image-generation/cancel/${loadingSession.jobId}`, {
-          method: "POST",
-        });
-      } catch (error) {
-        console.error("Error cancelling job:", error);
-      }
-    }
+    const [loadingSessionId, setLoadingSessionId] = useState<string | null>(
+        null
+    );
 
-    removeLoadingSession(sessionId);
-  };
+    const [selectedSessions, setSelectedSessions] = useState<
+        Array<{
+            sessionId: string;
+            clickedAt: number;
+            currentImageIndex: number;
+            describe?: string;
+            list: Array<{
+                imageBase64: string;
+                prompt: string;
+                platform: string;
+                claudeResponse?: string;
+                timestamp: string;
+                size: string;
+                quality: string;
+                AdCreativeA?: string;
+                AdCreativeB?: string;
+            }>;
+        }>
+    >([]);
 
-  const startSessionCountdown = (sessionId: string) => {
-    // Tạo interval cho session này
-    const intervalId = setInterval(() => {
-      setLoadingSessions((prev) =>
-        prev.map((session) => {
-          if (session.sessionId === sessionId) {
-            return { ...session, countdown: session.countdown + 1 };
-          }
-          return session;
-        })
-      );
-    }, 1000);
+    const [selectedImages, setSelectedImages] = useState<
+        Array<{
+            imageUrl: string;
+            clickedAt: number;
+            prompt?: string;
+            platform?: string;
+            claudeResponse?: string;
+            size?: string;
+            quality?: string;
+            sessionId?: string;
+            imageIndex?: number;
+        }>
+    >([]);
 
-    // Lưu intervalId để có thể clear sau này
-    sessionCountdownRefs.current[sessionId] = intervalId;
-  };
+    // ✅ THÊM MỚI: UI State cho tab workspace
+    const [showImageInfo, setShowImageInfo] = useState<boolean>(false);
+    const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+    const [activeSession, setActiveSession] = useState<string | null>(null);
+    const [selectedImageSize, setSelectedImageSize] = useState<{
+        width: number;
+        height: number;
+        platform: string;
+    }>({
+        width: 1024,
+        height: 1024,
+        platform: "openai",
+    });
 
-  // FIX: Improved handleFormSubmit with better state management
-  const handleFormSubmit = async () => {
-    if (!promptText.trim()) return;
-
-    const sessionId = `session-${Date.now()}-${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    const currentPromptText = promptText.trim();
-    startSessionCountdown(sessionId);
-
-    const newLoadingSession = {
-      sessionId,
-      prompt: currentPromptText,
-      startTime: Date.now(),
-      jobId: null,
-      countdown: 0,
+    const handleCategoryChange = (category: string, subcategory: string) => {
+        setSelectedCategory({ category, subcategory });
     };
 
-    setLoadingSessions((prev) => [newLoadingSession, ...prev]);
-    setCurrentLoadingPrompt(currentPromptText);
+    const handleNavigateToProjectManagement = () => {
+        navigate("/project-management");
+    };
 
-    setPromptText("");
-    if (textareaRef.current) {
-      textareaRef.current.value = "";
-      textareaRef.current.style.height = "auto";
-      adjustHeight();
-    }
-    setUploadedImages([]);
+    const sortImagesByPromptGroups = <T extends { prompt?: string }>(
+        images: T[]
+    ): T[] => {
+        if (!images || images.length === 0) return images;
 
-    try {
-      let uploadedImageUrls = [];
+        // Tạo map để group theo prompt
+        const groupedByPrompt = new Map<string, T[]>();
 
-      if (uploadedImages.length > 0) {
-        const uploadPromises = uploadedImages.map(
-          async (base64Image, index) => {
+        images.forEach((img) => {
+            const prompt = img.prompt || "";
+            if (!groupedByPrompt.has(prompt)) {
+                groupedByPrompt.set(prompt, []);
+            }
+            groupedByPrompt.get(prompt)!.push(img);
+        });
+
+        // Convert map thành array và sort theo size của group (giảm dần)
+        const sortedGroups = Array.from(groupedByPrompt.entries()).sort(
+            (a, b) => b[1].length - a[1].length
+        );
+
+        // Flatten lại thành array phẳng
+        const result: T[] = [];
+        sortedGroups.forEach(([_, group]) => {
+            result.push(...group);
+        });
+
+        return result;
+    };
+
+    // FIX: Add handlers for model and HD mode changes
+    const handleApiChange = useCallback((apis: string[]) => {
+        console.log("🔄 Selected APIs changed to:", apis);
+        setSelectedApis(apis);
+    }, []);
+
+    const handleAspectRatioChange = useCallback((aspectRatio: string) => {
+        console.log("🔄 Selected Aspect Ratio changed to:", aspectRatio);
+        setSelectedAspectRatio(aspectRatio);
+    }, []);
+
+    const [currentViewImageIndex, setCurrentViewImageIndex] = useState<
+        number | null
+    >(null);
+
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(
+        null
+    );
+    const [currentSessionImageIndex, setCurrentSessionImageIndex] =
+        useState<number>(0);
+
+    const [promptExpanded, setPromptExpanded] = useState<boolean>(false);
+
+    const [gridItemCount, setGridItemCount] = useState<number>(8);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const imagesContainerRef = useRef<HTMLDivElement>(null);
+    const suggestionsRef = useRef<HTMLDivElement>(null);
+    const suggestionButtonRef = useRef<HTMLImageElement>(null);
+    const historySidebarRef = useRef<HTMLDivElement>(null);
+    const historyButtonRef = useRef<HTMLButtonElement>(null);
+    const promptTextRef = useRef<HTMLDivElement>(null);
+    const gridContainerRef = useRef<HTMLDivElement>(null);
+    const submitButtonRef = useRef<HTMLDivElement>(null);
+
+    const sessionCountdownRefs = useRef<Record<string, NodeJS.Timeout>>({});
+    const pollingIntervalRefs = useRef<Record<string, NodeJS.Timeout>>({});
+
+    const suggestionItems = [
+        "Logo",
+        "Business Card",
+        "Furniture Design",
+        "Handbag matching outfit",
+        "Speaker Ad",
+        "Sneakers design",
+        "3D City",
+        "Glass Speaker",
+        "Chocolate Bar",
+    ];
+
+    const getSizeNameForIndex = (index: number): string => {
+        const sizesArray: string[] = [];
+
+        for (let i = 0; i < imageSizes.Square; i++) {
+            sizesArray.push("Square");
+        }
+
+        for (let i = 0; i < imageSizes.Portrait; i++) {
+            sizesArray.push("Portrait");
+        }
+
+        for (let i = 0; i < imageSizes.Landscape; i++) {
+            sizesArray.push("Landscape");
+        }
+
+        const totalAssigned = sizesArray.length;
+        const remaining = numberOfImages - totalAssigned;
+        for (let i = 0; i < remaining; i++) {
+            sizesArray.push("Square");
+        }
+
+        return sizesArray[index] || "Square";
+    };
+
+    const getTotalSelectedImages = (): number => {
+        return imageSizes.Square + imageSizes.Portrait + imageSizes.Landscape;
+    };
+
+    const canIncreaseSize = (sizeType: string): boolean => {
+        const currentTotal = getTotalSelectedImages();
+        return currentTotal < numberOfImages;
+    };
+
+    const generateImageSizesString = (): string => {
+        const totalSelected = getTotalSelectedImages();
+        const totalNeeded = numberOfImages;
+
+        if (totalSelected === 0) {
+            return "auto";
+        }
+
+        const sizesArray: string[] = [];
+
+        for (let i = 0; i < imageSizes.Square; i++) {
+            sizesArray.push("Square");
+        }
+        for (let i = 0; i < imageSizes.Portrait; i++) {
+            sizesArray.push("Portrait");
+        }
+        for (let i = 0; i < imageSizes.Landscape; i++) {
+            sizesArray.push("Landscape");
+        }
+
+        const remaining = totalNeeded - totalSelected;
+        for (let i = 0; i < remaining; i++) {
+            sizesArray.push("auto");
+        }
+
+        return sizesArray.join(", ");
+    };
+
+    useEffect(() => {
+        const currentTotal = getTotalSelectedImages();
+        if (currentTotal > numberOfImages) {
+            setImageSizes({
+                Square: 0,
+                Portrait: 0,
+                Landscape: 0,
+            });
+        }
+    }, [numberOfImages]);
+
+    useEffect(() => {
+        const fetchUserInfo = async () => {
             try {
-              const blob = await fetch(base64Image).then((r) => r.blob());
-
-              const formData = new FormData();
-              formData.append("filename", blob, `reference-image-${index}.png`);
-
-              const response = await fetch(
-                "https://prod.api.market/api/v1/magicapi/image-upload/upload",
-                {
-                  method: "POST",
-                  headers: {
-                    "x-magicapi-key": "cmfxojr010001jo04ld19izzv",
-                  },
-                  body: formData,
+                const response = await fetch("/api/auth/verify");
+                const data = await response.json();
+                if (data.success) {
+                    setCurrentUser(data.user);
                 }
-              );
-
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Upload failed for image ${index}:`, errorText);
-                return null;
-              }
-
-              const data = await response.json();
-              console.log(`✅ Image ${index} uploaded:`, data.url);
-              return data.url;
             } catch (error) {
-              console.error(`Failed to upload image ${index}:`, error);
-              return null;
+                console.error("Failed to fetch user info:", error);
             }
-          }
-        );
+        };
 
-        const results = await Promise.all(uploadPromises);
-        uploadedImageUrls = results.filter((url) => url !== null);
+        fetchUserInfo();
+    }, []);
 
-        console.log(
-          `✅ Uploaded ${uploadedImageUrls.length}/${uploadedImages.length} images`
-        );
+    // ✅ Auto-load PROMPT CONTENT into textarea
+    useEffect(() => {
+        const loadInstructions = async () => {
+            if (!selectedCategory.category) return;
 
-        if (uploadedImageUrls.length === 0) {
-          throw new Error("All image uploads failed");
-        }
-      }
+            // ✅ Xóa sạch textarea ngay
+            if (textareaRef.current) {
+                textareaRef.current.value = "";
+                setPromptText("");
+                adjustHeight();
+            }
 
-      console.log("📚 Loading instructions...");
+            try {
+                console.log("🔄 Loading instructions for:", selectedCategory);
 
-      const instructionResponse = await fetch("/api/instructions/resolve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: selectedCategory.category,
-          subcategory: selectedCategory.subcategory || "",
-          selectedModel: selectedApis[0] || "claude-sonnet",
-        }),
-      });
+                const response = await fetch("/api/instructions/resolve", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        category: selectedCategory.category,
+                        subcategory: selectedCategory.subcategory || "",
+                        selectedModel: selectedApis[0] || "claude-sonnet",
+                    }),
+                });
 
-      if (!instructionResponse.ok) {
-        throw new Error("Failed to load instructions");
-      }
+                if (!response.ok) {
+                    console.error("Failed to load instructions");
+                    return;
+                }
 
-      const instructionData = await instructionResponse.json();
+                const data = await response.json();
+                console.log("📚 Instructions loaded:", data);
 
-      const generateResponse = await fetch(
-        "https://n8n.misencorp.com/webhook/ms-image-generator",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            userPrompt: currentPromptText,
-            userPromptInstruction: instructionData.user_prompt,
-            systemPromptInstruction: instructionData.system_prompt,
-            uploadedImageUrls,
-            numberOfImages,
-            imageSizesString: generateImageSizesString(),
-            selectedQuality,
-            selectedCategory,
-            selectedApis,
-            selectedAspectRatio,
-          }),
-        }
-      );
+                // ✅ Parse content
+                const parseContent = (rawContent: string) => {
+                    if (!rawContent)
+                        return { promptContent: "", instructions: "" };
 
-      const generateData = await generateResponse.json();
+                    if (rawContent.includes("--- PROMPT CONTENT ---")) {
+                        const parts = rawContent.split("--- INSTRUCTIONS ---");
+                        return {
+                            promptContent: parts[0]
+                                .replace("--- PROMPT CONTENT ---", "")
+                                .trim(),
+                            instructions: parts[1] ? parts[1].trim() : "",
+                        };
+                    }
+                    return {
+                        promptContent: "",
+                        instructions: rawContent,
+                    };
+                };
 
-      var jobId = generateData[0]?.job_id;
+                // ✅ Parse system_prompt or user_prompt
+                let parsedContent = { promptContent: "", instructions: "" };
 
-      if (jobId) {
-        let generateImagePool = setInterval(async function () {
-          try {
-            const response = await fetch(
-              `https://n8n.misencorp.com/webhook/get_image_queue?job_id=${jobId}`,
-              {
-                method: "GET",
-                headers: { "Content-Type": "application/json" },
-              }
+                if (data.system_prompt) {
+                    parsedContent = parseContent(data.system_prompt);
+                } else if (data.user_prompt) {
+                    parsedContent = parseContent(data.user_prompt);
+                }
+
+                console.log("📝 Parsed content:", {
+                    promptContentLength: parsedContent.promptContent.length,
+                    instructionsLength: parsedContent.instructions.length,
+                });
+
+                // ✅ FIX: Lấy PROMPT CONTENT thay vì instructions
+                if (
+                    parsedContent.promptContent &&
+                    parsedContent.promptContent.trim()
+                ) {
+                    if (textareaRef.current) {
+                        textareaRef.current.value = parsedContent.promptContent;
+                        setPromptText(parsedContent.promptContent);
+                        adjustHeight();
+                    }
+
+                    console.log(
+                        `✅ Loaded ${parsedContent.promptContent.length} characters of PROMPT CONTENT into textarea`
+                    );
+                } else {
+                    console.log(
+                        "⚠️ No prompt content found - textarea remains empty"
+                    );
+                }
+            } catch (error) {
+                console.error("Error loading instructions:", error);
+            }
+        };
+
+        loadInstructions();
+    }, [selectedCategory, selectedApis]);
+
+    useEffect(() => {
+        const initStorage = async () => {
+            try {
+                await storageManager.init();
+                await StorageMigration.migrateFromOldLocalStorage(
+                    storageManager
+                );
+                setStorageReady(true);
+            } catch (error) {
+                console.error("Storage initialization failed:", error);
+                setStorageReady(true);
+            }
+        };
+
+        initStorage();
+    }, []);
+
+    // ✅ THÊM MỚI: useEffect để xử lý scroll shadow cho textarea
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const handleScroll = () => {
+            const { scrollTop, scrollHeight, clientHeight } = textarea;
+            const hasScroll = scrollHeight > clientHeight;
+
+            // Remove all scroll classes first
+            textarea.classList.remove(
+                "has-scroll",
+                "scrolled-top",
+                "scrolled-middle",
+                "scrolled-bottom"
             );
 
+            if (!hasScroll) {
+                return; // No scroll needed, no shadows
+            }
+
+            textarea.classList.add("has-scroll");
+
+            if (scrollTop === 0) {
+                // At the top
+                textarea.classList.add("scrolled-top");
+            } else if (scrollTop + clientHeight >= scrollHeight - 1) {
+                // At the bottom (với tolerance 1px)
+                textarea.classList.add("scrolled-bottom");
+            } else {
+                // In the middle
+                textarea.classList.add("scrolled-middle");
+            }
+        };
+
+        const handleInput = () => {
+            // Delay để đảm bảo height đã được adjust
+            setTimeout(handleScroll, 0);
+        };
+
+        // Add event listeners
+        textarea.addEventListener("scroll", handleScroll);
+        textarea.addEventListener("input", handleInput);
+
+        // Initial check
+        handleScroll();
+
+        // Cleanup
+        return () => {
+            textarea.removeEventListener("scroll", handleScroll);
+            textarea.removeEventListener("input", handleInput);
+        };
+    }, []); // Empty dependency array vì chỉ cần setup một lần
+
+    const getFirst10Words = (text: string): string => {
+        return text.split(" ").slice(0, 10).join(" ") + "...";
+    };
+
+    const startJobPolling = useCallback((jobId: string, sessionId: string) => {
+        // Xóa interval cũ của job này nếu có
+        if (pollingIntervalRefs.current[sessionId]) {
+            clearInterval(pollingIntervalRefs.current[sessionId]);
+            delete pollingIntervalRefs.current[sessionId];
+        }
+
+        const pollJob = async () => {
+            try {
+                const response = await fetch(
+                    `/api/image-generation/status/${jobId}`
+                );
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "Failed to check job status");
+                }
+
+                // Cập nhật trạng thái loading session
+                setLoadingSessions((prev) =>
+                    prev.map((session) => {
+                        if (session.sessionId === sessionId) {
+                            let status = "Queued...";
+
+                            switch (data.status) {
+                                case "pending":
+                                    status = "Job queued...";
+                                    break;
+                                case "processing":
+                                    status =
+                                        data.progress.currentStep ||
+                                        "Processing...";
+                                    break;
+                                case "completed":
+                                    // Sẽ được xử lý bên dưới
+                                    break;
+                                case "failed":
+                                    status = `Failed: ${
+                                        data.error || "Unknown error"
+                                    }`;
+                                    break;
+                                case "cancelled":
+                                    status = "Cancelled";
+                                    break;
+                            }
+
+                            return { ...session, status };
+                        }
+                        return session;
+                    })
+                );
+
+                switch (data.status) {
+                    case "completed":
+                        await handleJobCompleted(jobId, sessionId);
+                        return;
+                    case "failed":
+                        handleJobFailed(data.error || "Job failed", sessionId);
+                        return;
+                    case "cancelled":
+                        handleJobCancelled(sessionId);
+                        return;
+                }
+            } catch (error) {
+                console.error(`Polling error for job ${jobId}:`, error);
+                handleJobFailed(error.message, sessionId);
+            }
+        };
+
+        pollJob(); // Gọi ngay lần đầu
+
+        // Tạo interval mới cho job này và lưu vào refs
+        const interval = setInterval(pollJob, 4000);
+        pollingIntervalRefs.current[sessionId] = interval;
+
+        // Cập nhật state để React biết về việc thay đổi polling
+        setPollingInterval(interval); // Vẫn giữ biến này cho backwards compatibility
+    }, []);
+
+    const stopJobPolling = useCallback((sessionId: string) => {
+        if (pollingIntervalRefs.current[sessionId]) {
+            clearInterval(pollingIntervalRefs.current[sessionId]);
+            delete pollingIntervalRefs.current[sessionId];
+            console.log(`🛑 Stopped polling for session: ${sessionId}`);
+        }
+    }, []);
+
+    // FIX: Improved handleJobCompleted
+    const handleJobCompleted = async (jobId: string, sessionId: string) => {
+        try {
+            console.log("🎯 Job completed, fetching results:", jobId);
+
+            const response = await fetch(
+                `/api/image-generation/results/${jobId}`
+            );
             const data = await response.json();
 
-            if (data && data[0] && data[0].data != null) {
-              clearInterval(generateImagePool);
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to fetch job results");
+            }
 
-              const imagesData = data[0].data;
-              console.log("📦 Received images data:", imagesData);
+            console.log("📦 Results received:", data);
+            await processJobResults(data, sessionId);
+        } catch (error) {
+            console.error("Failed to fetch job results:", error);
+            handleJobFailed(error.message, sessionId);
+        } finally {
+            // Dừng polling chỉ cho job này
+            stopJobPolling(sessionId);
+            removeLoadingSession(sessionId);
+        }
+    };
 
-              const allImages = imagesData.flatMap((platformData: any) =>
-                platformData.images.map((img: any) => ({
-                  imageUrl: img.url,
-                  prompt: img.prompt,
-                  platform: img.platform || "legacy",
-                  size: "Square",
-                  quality: selectedQuality,
-                }))
-              );
+    const handleJobFailed = (error: string, sessionId: string) => {
+        showNotification("error", "Generation Failed!", error);
+        removeLoadingSession(sessionId);
+    };
 
-              const processedImages = await Promise.all(
-                allImages.map(async (img: any) => {
-                  try {
-                    const imgResponse = await fetch(img.imageUrl);
-                    const blob = await imgResponse.blob();
+    const handleJobCancelled = (sessionId: string) => {
+        removeLoadingSession(sessionId);
+    };
 
-                    return new Promise<any>((resolve) => {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        resolve({
-                          imageBase64: reader.result as string,
-                          prompt: img.prompt,
-                          platform: img.platform,
-                          size: img.size,
-                          quality: img.quality,
-                          timestamp: new Date().toISOString(),
-                        });
-                      };
-                      reader.readAsDataURL(blob);
-                    });
-                  } catch (error) {
-                    console.error("Error processing image:", error);
-                    return null;
-                  }
+    const removeLoadingSession = (sessionId: string) => {
+        // Clear countdown interval
+        if (sessionCountdownRefs.current[sessionId]) {
+            clearInterval(sessionCountdownRefs.current[sessionId]);
+            delete sessionCountdownRefs.current[sessionId];
+        }
+
+        // Clear polling interval
+        if (pollingIntervalRefs.current[sessionId]) {
+            clearInterval(pollingIntervalRefs.current[sessionId]);
+            delete pollingIntervalRefs.current[sessionId];
+        }
+
+        // Xóa session khỏi loadingSessions
+        setLoadingSessions((prev) =>
+            prev.filter((session) => session.sessionId !== sessionId)
+        );
+    };
+
+    const editPromptFromLoadingSession = (session: LoadingSession) => {
+        if (session.prompt && textareaRef.current) {
+            textareaRef.current.value = session.prompt;
+            setPromptText(session.prompt);
+
+            const event = new Event("input", { bubbles: true });
+            textareaRef.current.dispatchEvent(event);
+            adjustHeight();
+        }
+    };
+
+    // FIX: Complete rewrite of processJobResults
+    const processJobResults = async (jobData: any, sessionId: string) => {
+        try {
+            const { results, claudeResponse } = jobData;
+
+            console.log("🔄 Processing job results for session:", sessionId);
+            console.log(
+                "📝 Claude response received:",
+                claudeResponse ? "YES" : "NO"
+            );
+            console.log("📊 Total results received:", results?.length || 0);
+
+            // Tìm prompt từ loading session
+            const loadingSession = loadingSessions.find(
+                (session) => session.sessionId === sessionId
+            );
+            const promptFromLoadingSession = loadingSession?.prompt || "";
+
+            // ✅ FIX: Filter chỉ lấy những ảnh thành công và hợp lệ
+            const successfulImages = results
+                .filter((img: any) => {
+                    // Kiểm tra có imageBase64 và là data URL hợp lệ
+                    if (
+                        !img.imageBase64 ||
+                        !img.imageBase64.startsWith("data:")
+                    ) {
+                        console.log("❌ Rejected: Invalid imageBase64 format");
+                        return false;
+                    }
+
+                    // Loại bỏ placeholder errors
+                    if (
+                        img.imageBase64.includes(
+                            "PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM"
+                        )
+                    ) {
+                        console.log("❌ Rejected: Error placeholder detected");
+                        return false;
+                    }
+
+                    // Loại bỏ specific error placeholder
+                    if (
+                        img.imageBase64 ===
+                        "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZTZlNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNDAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNkNjZkMDAiPkFQSSBFcnJvcjwvdGV4dD48dGV4dCB4PSI1MCUiIHk9IjYwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZDY2ZDAwIj5DbGljayB0byByZXRyeTwvdGV4dD48L3N2Zz4="
+                    ) {
+                        console.log("❌ Rejected: Specific error placeholder");
+                        return false;
+                    }
+
+                    // Kiểm tra kích thước tối thiểu (optional)
+                    if (img.imageBase64.length < 1000) {
+                        console.log("❌ Rejected: Image data too small");
+                        return false;
+                    }
+
+                    console.log("✅ Accepted: Valid image");
+                    return true;
                 })
-              );
+                .map((img: any) => ({
+                    ...img,
+                    claudeResponse: claudeResponse, // Attach Claude response
+                }));
 
-              const validImages = processedImages.filter((img) => img !== null);
+            console.log(
+                `📈 Filtered results: ${successfulImages.length}/${
+                    results?.length || 0
+                } successful images`
+            );
 
-              if (validImages.length === 0) {
-                showNotification(
-                  "error",
-                  "Generation Failed!",
-                  "Failed to process generated images. Please try again."
+            // ✅ FIX: Chỉ tiếp tục nếu có ít nhất 1 ảnh thành công
+            if (successfulImages.length === 0) {
+                console.warn(
+                    "⚠️ No successful images to save for session:",
+                    sessionId
                 );
+
+                // Hiển thị notification cho user
+                showNotification(
+                    "warning",
+                    "Generation Failed!",
+                    "All images failed to generate. Please try again with a different prompt."
+                );
+
+                // Không tạo session, chỉ remove loading session
                 removeLoadingSession(sessionId);
                 return;
-              }
+            }
 
-              // ✅ FIX: Sort images ngay sau khi có validImages
-              const sortedValidImages = sortImagesByPromptGroups(validImages);
-              console.log("🔄 Images sorted by prompt groups");
+            // Determine describe
+            let describeToUse = promptFromLoadingSession;
+            if (!describeToUse || describeToUse.trim() === "") {
+                describeToUse =
+                    jobData.originalPrompt ||
+                    jobData.userPrompt ||
+                    "Generated images";
+                console.log("⚠️ Using fallback describe:", describeToUse);
+            }
 
-              // ✅ FIX: Dùng sortedValidImages thay vì validImages
-              const sessionData = {
+            console.log("🔍 Final describe to use:", describeToUse);
+
+            // Create session data with only successful images
+            const sessionData = {
                 sessionId: sessionId,
-                describe: currentPromptText,
-                images: sortedValidImages.map(img => ({
-                  imageBase64: img.imageBase64,
-                  prompt: img.prompt,
-                  platform: img.platform,
-                  size: img.size,
-                  quality: img.quality,
-                  timestamp: img.timestamp,
-                })),
-              };
+                describe: describeToUse,
+                images: successfulImages,
+            };
 
-              try {
+            // Save to storage
+            try {
                 await storageManager.saveSession(sessionData);
                 console.log(
-                  `✅ Session saved with ${sortedValidImages.length} images`
+                    `✅ Session saved with ${successfulImages.length} successful images`
                 );
 
+                // Show success notification with count
                 showNotification(
-                  "success",
-                  "Images Generated!",
-                  `Successfully generated ${sortedValidImages.length} image${
-                    sortedValidImages.length > 1 ? "s" : ""
-                  }`
+                    "success",
+                    "Images Generated!",
+                    `Successfully generated ${successfulImages.length} image${
+                        successfulImages.length > 1 ? "s" : ""
+                    }`
                 );
-              } catch (storageError) {
+            } catch (storageError) {
                 console.error("Storage save failed:", storageError);
                 showNotification(
-                  "error",
-                  "Storage Full!",
-                  "Your images were generated but couldn't be saved due to storage limits."
+                    "error",
+                    "Storage Full!",
+                    "Your images were generated but couldn't be saved due to storage limits."
                 );
-              }
+            }
 
-              // ✅ FIX: Convert sortedValidImages thay vì validImages
-              const convertedImages = await Promise.all(
-                sortedValidImages.map(async (img: any) => {
-                  try {
-                    const compressed = await ImageCompressor.compressImage(
-                      img.imageBase64
-                    );
-                    const blobUrl = URL.createObjectURL(compressed.blob);
+            // Convert images to blob URLs for display
+            const convertedImages = await Promise.all(
+                successfulImages.map(async (img: any) => {
+                    try {
+                        const compressed = await ImageCompressor.compressImage(
+                            img.imageBase64
+                        );
+                        const blobUrl = URL.createObjectURL(compressed.blob);
 
-                    return {
-                      ...img,
-                      imageBase64: blobUrl,
-                      originalBase64: img.imageBase64,
-                      isBlob: true,
-                    };
-                  } catch (error) {
-                    console.warn(
-                      "Failed to convert to blob, using base64:",
-                      error
-                    );
-                    return {
-                      ...img,
-                      isBlob: false,
-                    };
-                  }
+                        return {
+                            ...img,
+                            imageBase64: blobUrl,
+                            originalBase64: img.imageBase64,
+                            isBlob: true,
+                            claudeResponse: img.claudeResponse,
+                        };
+                    } catch (error) {
+                        console.warn(
+                            "Failed to convert to blob, using base64:",
+                            error
+                        );
+                        return {
+                            ...img,
+                            isBlob: false,
+                            claudeResponse: img.claudeResponse,
+                        };
+                    }
                 })
-              );
+            );
 
-              const newSession = {
+            // Create new session for UI
+            const newSession = {
                 sessionId: sessionId,
                 clickedAt: Date.now(),
                 currentImageIndex: 0,
-                describe: currentPromptText,
+                describe: describeToUse,
                 list: convertedImages,
-              };
+            };
 
-              setSelectedSessions((prevSessions) => {
+            // Update selectedSessions
+            setSelectedSessions((prevSessions) => {
                 const existingIndex = prevSessions.findIndex(
-                  (s) => s.sessionId === sessionId
+                    (s) => s.sessionId === sessionId
                 );
 
                 if (existingIndex !== -1) {
-                  const updatedSessions = [...prevSessions];
-                  updatedSessions[existingIndex] = newSession;
-                  return updatedSessions;
+                    console.log("🔄 Updating existing session:", sessionId);
+                    const updatedSessions = [...prevSessions];
+                    updatedSessions[existingIndex] = newSession;
+                    return updatedSessions;
                 }
 
+                console.log("➕ Adding new session:", sessionId);
                 return [newSession, ...prevSessions];
-              });
+            });
 
-              if (convertedImages.length > 0) {
+            // Add first image to selectedImages if exists
+            if (convertedImages.length > 0) {
                 setSelectedImages((prevImages) => {
-                  const firstImageObj = {
-                    imageUrl: convertedImages[0].imageBase64,
-                    clickedAt: Date.now(),
-                    prompt: convertedImages[0].prompt,
-                    platform: convertedImages[0].platform,
-                    size: convertedImages[0].size,
-                    quality: convertedImages[0].quality,
-                    sessionId: sessionId,
-                    imageIndex: 0,
-                  };
+                    const firstImageObj = {
+                        imageUrl: convertedImages[0].imageBase64,
+                        clickedAt: Date.now(),
+                        prompt: convertedImages[0].prompt,
+                        platform: convertedImages[0].platform,
+                        size: convertedImages[0].size,
+                        quality: convertedImages[0].quality,
+                        sessionId: sessionId,
+                        imageIndex: 0,
+                        claudeResponse: convertedImages[0].claudeResponse,
+                        AdCreativeA: convertedImages[0].AdCreativeA,
+                        AdCreativeB: convertedImages[0].AdCreativeB,
+                        targeting: convertedImages[0].targeting,
+                        imageName: convertedImages[0].imageName,
+                    };
 
-                  const filteredImages = prevImages.filter(
-                    (img) => img.sessionId !== sessionId
-                  );
+                    // Remove any existing images from this session
+                    const filteredImages = prevImages.filter(
+                        (img) => img.sessionId !== sessionId
+                    );
 
-                  const loadingItems = filteredImages.filter((img) =>
-                    loadingSessions.some(
-                      (session) => session.sessionId === img.sessionId
-                    )
-                  );
+                    // Add new image at the beginning, right after any loading items
+                    const loadingItems = filteredImages.filter((img) =>
+                        loadingSessions.some(
+                            (session) => session.sessionId === img.sessionId
+                        )
+                    );
 
-                  const regularItems = filteredImages.filter(
-                    (img) =>
-                      !loadingSessions.some(
-                        (session) => session.sessionId === img.sessionId
-                      )
-                  );
+                    const regularItems = filteredImages.filter(
+                        (img) =>
+                            !loadingSessions.some(
+                                (session) => session.sessionId === img.sessionId
+                            )
+                    );
 
-                  return [
-                    ...loadingItems,
-                    firstImageObj,
-                    ...regularItems,
-                  ].slice(0, gridItemCount);
+                    return [
+                        ...loadingItems,
+                        firstImageObj,
+                        ...regularItems,
+                    ].slice(0, gridItemCount);
                 });
-              }
-
-              window.dispatchEvent(new Event("historyUpdated"));
-              removeLoadingSession(sessionId);
-
-              console.log(
-                `✅ Successfully processed ${sortedValidImages.length} images`
-              );
             }
-          } catch (error) {
-            console.error("Polling error:", error);
-            clearInterval(generateImagePool);
-            showNotification(
-              "error",
-              "Generation Failed!",
-              "An error occurred while generating images. Please try again."
+
+            window.dispatchEvent(new Event("historyUpdated"));
+            console.log(
+                `✅ Job results processed successfully: ${successfulImages.length} images saved`
             );
-            removeLoadingSession(sessionId);
-          }
-        }, 5000);
-      } else {
-        console.error("No jobId received");
-        showNotification(
-          "error",
-          "Submission Failed!",
-          "Failed to start image generation. Please try again."
-        );
-        removeLoadingSession(sessionId);
-      }
-
-      setLoadingSessions((prev) =>
-        prev.map((session) =>
-          session.sessionId === sessionId ? { ...session, jobId } : session
-        )
-      );
-    } catch (error) {
-      console.error("❌ Submission failed:", error);
-      setLoadingSessions((prev) =>
-        prev.filter((session) => session.sessionId !== sessionId)
-      );
-      showNotification("error", "Submission Failed!", error.message);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      // Clear tất cả các countdown intervals
-      Object.values(sessionCountdownRefs.current).forEach((intervalId) => {
-        clearInterval(intervalId);
-      });
-
-      // Clear tất cả các polling intervals
-      Object.values(pollingIntervalRefs.current).forEach((intervalId) => {
-        clearInterval(intervalId);
-      });
-
-      // Clear polling interval cũ (nếu còn)
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-
-      // Clean up blob URLs
-      cleanupBlobUrls();
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
-      if (currentJobId) {
-        try {
-          await fetch(`/api/image-generation/cancel/${currentJobId}`, {
-            method: "POST",
-          });
         } catch (error) {
-          console.error("Error cancelling job on page unload:", error);
+            console.error("Error processing job results:", error);
+
+            // Show error notification
+            showNotification(
+                "error",
+                "Processing Error!",
+                "Failed to process generated images. Please try again."
+            );
+
+            // Remove loading session on error
+            removeLoadingSession(sessionId);
+            throw error;
         }
-      }
     };
 
-    const handleUnload = async () => {
-      if (currentJobId) {
-        navigator.sendBeacon(
-          `/api/image-generation/cancel/${currentJobId}`,
-          JSON.stringify({})
-        );
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    window.addEventListener("unload", handleUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("unload", handleUnload);
-      stopJobPolling();
-    };
-  }, [currentJobId, stopJobPolling]);
-
-  // FIX: Better cleanup on unmount
-  useEffect(() => {
-    return () => {
-      // Only cleanup when component actually unmounts
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
-
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
-    };
-  }, []);
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && promptText.trim() && !e.shiftKey) {
-      e.preventDefault();
-      handleFormSubmit();
-    }
-  };
-
-  const navigateImageThumbnail = (
-    index: number,
-    direction: "prev" | "next",
-    e: React.MouseEvent
-  ) => {
-    e.stopPropagation();
-
-    const currentImage = selectedImages[index];
-    if (!currentImage?.sessionId) return;
-
-    const session = selectedSessions.find(
-      (s) => s.sessionId === currentImage.sessionId
-    );
-    if (!session || session.list.length <= 1) return;
-
-    let currentImageIndexInSession = -1;
-
-    if (currentImage.imageIndex !== undefined) {
-      currentImageIndexInSession = currentImage.imageIndex;
-    } else {
-      for (let i = 0; i < session.list.length; i++) {
-        if (
-          session.list[i].imageBase64 === currentImage.imageUrl &&
-          session.list[i].prompt === currentImage.prompt
-        ) {
-          currentImageIndexInSession = i;
-          break;
-        }
-      }
-
-      if (currentImageIndexInSession === -1) {
-        currentImageIndexInSession = session.list.findIndex(
-          (img) => img.imageBase64 === currentImage.imageUrl
-        );
-      }
-    }
-
-    if (currentImageIndexInSession === -1) return;
-
-    const totalImagesInSession = session.list.length;
-    let nextImageIndexInSession;
-
-    if (direction === "prev") {
-      nextImageIndexInSession =
-        currentImageIndexInSession === 0
-          ? totalImagesInSession - 1
-          : currentImageIndexInSession - 1;
-    } else {
-      nextImageIndexInSession =
-        currentImageIndexInSession === totalImagesInSession - 1
-          ? 0
-          : currentImageIndexInSession + 1;
-    }
-
-    const nextImageData = session.list[nextImageIndexInSession];
-
-    const nextImageObject = {
-      imageUrl: nextImageData.imageBase64,
-      clickedAt: Date.now(),
-      prompt: nextImageData.prompt,
-      platform: nextImageData.platform,
-      size: nextImageData.size,
-      quality: nextImageData.quality,
-      sessionId: currentImage.sessionId,
-      imageIndex: nextImageIndexInSession,
-    };
-
-    const updatedImages = [...selectedImages];
-    updatedImages[index] = nextImageObject;
-    setSelectedImages(updatedImages);
-  };
-
-  const calculateOptimalGridSize = useCallback(() => {
-    if (!gridContainerRef.current) return;
-
-    const container = gridContainerRef.current;
-    const rect = container.getBoundingClientRect();
-    const containerWidth = rect.width;
-    const containerHeight = rect.height;
-
-    const minItemSize = 200;
-    const gap = 16;
-
-    const columnsCount = Math.max(2, Math.floor(containerWidth / minItemSize));
-
-    const maxRowsBasedOnHeight = Math.max(
-      2,
-      Math.floor(containerHeight / minItemSize)
-    );
-
-    const rowsCount = Math.min(
-      maxRowsBasedOnHeight,
-      Math.ceil(48 / columnsCount)
-    );
-
-    const newGridCount = columnsCount * rowsCount;
-
-    setBaseGridCount(newGridCount);
-
-    if (!expandedGrid) {
-      setGridItemCount(newGridCount);
-    }
-  }, [expandedGrid]);
-
-  useEffect(() => {
-    calculateOptimalGridSize();
-
-    let resizeTimeout: NodeJS.Timeout;
-    const handleResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        calculateOptimalGridSize();
-      }, 100);
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      clearTimeout(resizeTimeout);
-    };
-  }, [calculateOptimalGridSize]);
-
-  useEffect(() => {
-    if (!expandedGrid) {
-      setGridItemCount(baseGridCount);
-    }
-  }, [baseGridCount, expandedGrid]);
-
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      calculateOptimalGridSize();
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [selectedImages.length, calculateOptimalGridSize]);
-
-  useEffect(() => {
-    if (gridContainerRef.current) {
-      calculateOptimalGridSize();
-    }
-  }, [selectedImages, calculateOptimalGridSize]);
-
-  const handleHistoryItemClick = (item: any) => {
-    // Log dữ liệu debug
-    if (!item.list || item.list.length === 0) {
-    console.log("⚠️ No images found in this session");
-    return;
-  }
-
-  // ✅ FIX: Ensure platform is preserved
-  const sortedList = sortImagesByPromptGroups(item.list);
-
-  // ✅ FIX: Ensure platform is preserved
-  const newSession = {
-    sessionId: item.id,
-    clickedAt: Date.now(),
-    currentImageIndex: 0,
-    describe: item.describe || "Image session",
-    list: sortedList.map((img: any) => ({
-      imageBase64: img.imageBase64 || "",
-      prompt: img.prompt || "",
-      platform: img.platform || "",
-      claudeResponse: img.claudeResponse || "",
-      timestamp: img.timestamp || new Date().toISOString(),
-      size: img.size || "Square",
-      quality: img.quality || "Low",
-      AdCreativeA: img.AdCreativeA || "",
-      AdCreativeB: img.AdCreativeB || "",
-      targeting: img.targeting || "",
-      imageName: img.imageName || "",
-    })),
-  };
-
-    console.log(`✅ Adding new session to selectedSessions: ${item.id}`);
-
-    // Update selectedSessions với Promise.resolve để tránh race condition
-    setSelectedSessions((prevSessions) => {
-      // Double-check to prevent duplicates (for safety)
-      if (prevSessions.some((s) => s.sessionId === item.id)) {
-        console.log(
-          "🔄 Last moment duplicate check prevented a duplicate session"
-        );
-        return prevSessions;
-      }
-      return [newSession, ...prevSessions];
-    });
-
-    // Add image to grid
-    const firstImage = item.list[0];
-
-    // Create image object with proper validation
-    const newImageObj = {
-      imageUrl: firstImage.imageBase64,
-      clickedAt: Date.now(),
-      prompt: firstImage.prompt || "",
-      platform: firstImage.platform || "", // ← FIX: Đảm bảo platform được truyền
-      size: firstImage.size || "Square",
-      quality: firstImage.quality || "Standard",
-      sessionId: item.id,
-      imageIndex: 0,
-      claudeResponse: firstImage.claudeResponse || "",
-      AdCreativeA: firstImage.AdCreativeA || "",
-      AdCreativeB: firstImage.AdCreativeB || "",
-      targeting: firstImage.targeting || "",
-      imageName: firstImage.imageName || "",
-    };
-
-    // Add to selectedImages, ensuring no duplicates
-    setSelectedImages((prevImages) => {
-      // Check for existing image from same session
-      if (
-        prevImages.some(
-          (img) => img.sessionId === item.id && img.imageIndex === 0
-        )
-      ) {
-        console.log("⚠️ Image already exists in grid, will not add duplicate");
-        return prevImages;
-      }
-
-      const updatedImages = [newImageObj, ...prevImages];
-
-      // Expand grid if needed
-      if (updatedImages.length > baseGridCount) {
-        setExpandedGrid(true);
-        setGridItemCount(updatedImages.length);
-      }
-
-      return updatedImages;
-    });
-  };
-
-  useEffect(() => {
-    function handleClickOutside(event: any) {
-      if (showUserDropdown && !event.target.closest(".background-wrapper")) {
-        setShowUserDropdown(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showUserDropdown]);
-
-  const removeSelectedImage = (indexToRemove: number) => {
-    const imageToRemove = selectedImages[indexToRemove];
-
-    // Revoke blob URL if needed
-    if (imageToRemove.imageUrl && imageToRemove.imageUrl.startsWith("blob:")) {
-      try {
-        URL.revokeObjectURL(imageToRemove.imageUrl);
-      } catch (e) {
-        // Ignore errors
-      }
-    }
-
-    // Update selectedImages state
-    setSelectedImages((prevImages) =>
-      prevImages.filter((_, index) => index !== indexToRemove)
-    );
-
-    // Remove from sessions if this is the last image from this session
-    if (imageToRemove.sessionId) {
-      const sessionImages = selectedImages.filter(
-        (img) => img.sessionId === imageToRemove.sessionId
-      );
-
-      if (sessionImages.length === 1) {
-        setSelectedSessions((prevSessions) =>
-          prevSessions.filter(
-            (session) => session.sessionId !== imageToRemove.sessionId
-          )
-        );
-      }
-    }
-
-    // Update viewer state if needed
-    if (currentViewImageIndex === indexToRemove) {
-      setCurrentViewImageIndex(null);
-      setCurrentSessionId(null);
-    } else if (
-      currentViewImageIndex !== null &&
-      currentViewImageIndex > indexToRemove
-    ) {
-      setCurrentViewImageIndex(currentViewImageIndex - 1);
-    }
-  };
-
-  const clearAllImages = () => {
-    // Clean up all blob URLs first
-    cleanupBlobUrls();
-
-    // Then clear state
-    setSelectedImages([]);
-    setSelectedSessions([]);
-    setCurrentViewImageIndex(null);
-    setCurrentSessionId(null);
-  };
-
-  const viewImage = (index: number) => {
-    const selectedImage = selectedImages[index];
-    console.log("🔍 viewImage called with index:", index);
-    console.log("🔍 selectedImage:", selectedImage);
-
-    setCurrentViewImageIndex(index);
-    setPromptExpanded(false);
-
-    if (selectedImage && selectedImage.sessionId) {
-      console.log("🔍 Setting currentSessionId to:", selectedImage.sessionId);
-      setCurrentSessionId(selectedImage.sessionId);
-
-      const session = selectedSessions.find(
-        (s) => s.sessionId === selectedImage.sessionId
-      );
-
-      console.log("🔍 Found session:", session ? "YES" : "NO");
-      if (session) {
-        console.log("🔍 Session data:", {
-          sessionId: session.sessionId,
-          describe: session.describe,
-          imageCount: session.list.length,
+    const cleanupBlobUrls = () => {
+        // Clean up blob URLs in selectedImages
+        selectedImages.forEach((img) => {
+            if (img.imageUrl && img.imageUrl.startsWith("blob:")) {
+                try {
+                    URL.revokeObjectURL(img.imageUrl);
+                } catch (e) {
+                    // Ignore errors
+                }
+            }
         });
 
-        if (selectedImage.imageIndex !== undefined) {
-          console.log(
-            "🔍 Using predefined imageIndex:",
-            selectedImage.imageIndex
-          );
-          setCurrentSessionImageIndex(selectedImage.imageIndex);
-        } else {
-          const imageIndex = session.list.findIndex(
-            (img) => img.imageBase64 === selectedImage.imageUrl
-          );
-          console.log("🔍 Found imageIndex:", imageIndex);
-          if (imageIndex !== -1) {
-            setCurrentSessionImageIndex(imageIndex);
-          }
+        // Clean up blob URLs in selectedSessions
+        selectedSessions.forEach((session) => {
+            if (session.list) {
+                session.list.forEach((img) => {
+                    if (
+                        img.isBlob &&
+                        img.imageBase64 &&
+                        img.imageBase64.startsWith("blob:")
+                    ) {
+                        try {
+                            URL.revokeObjectURL(img.imageBase64);
+                        } catch (e) {
+                            // Ignore errors
+                        }
+                    }
+                });
+            }
+        });
+    };
+
+    const cancelImageGeneration = async (sessionId?: string) => {
+        if (!sessionId && loadingSessions.length > 0) {
+            // Cancel session mới nhất nếu không có sessionId
+            sessionId = loadingSessions[loadingSessions.length - 1].sessionId;
         }
-      }
-    } else {
-      console.log("⚠️ No sessionId found in selectedImage");
-      setCurrentSessionId(null);
-    }
 
-    setTimeout(checkPromptHeight, 100);
-  };
+        if (!sessionId) return;
 
-  const closeImageViewer = () => {
-    setCurrentViewImageIndex(null);
-    setCurrentSessionId(null);
-    setPromptExpanded(false);
-  };
-
-  const navigateImage = (direction: "prev" | "next") => {
-    if (currentSessionId === null) return;
-
-    const currentSession = selectedSessions.find(
-      (s) => s.sessionId === currentSessionId
-    );
-    if (!currentSession || currentSession.list.length <= 1) return;
-
-    // ✅ Sort list trước khi navigate
-    const sortedList = sortImagesByPromptGroups(currentSession.list);
-    
-    let newIndex;
-    if (direction === "prev") {
-      newIndex =
-        currentSessionImageIndex === 0
-          ? sortedList.length - 1
-          : currentSessionImageIndex - 1;
-    } else {
-      newIndex =
-        currentSessionImageIndex === sortedList.length - 1
-          ? 0
-          : currentSessionImageIndex + 1;
-    }
-
-    setCurrentSessionImageIndex(newIndex);
-
-    const newImageData = currentSession.list[newIndex];
-
-    const existingImageIndex = selectedImages.findIndex(
-      (img) =>
-        img.sessionId === currentSessionId &&
-        img.imageUrl === newImageData.imageBase64
-    );
-
-    if (existingImageIndex !== -1) {
-      setCurrentViewImageIndex(existingImageIndex);
-    }
-
-    setPromptExpanded(false);
-    setTimeout(checkPromptHeight, 100);
-  };
-
-  const hasMultipleInSession = (index: number): boolean => {
-    const image = selectedImages[index];
-    if (!image || !image.sessionId) return false;
-
-    const session = selectedSessions.find(
-      (s) => s.sessionId === image.sessionId
-    );
-    return session ? session.list.length > 1 : false;
-  };
-
-  const checkPromptHeight = () => {
-    if (promptTextRef.current) {
-      const isOverflowing =
-        promptTextRef.current.scrollHeight > promptTextRef.current.clientHeight;
-      const showMoreBtn = document.getElementById("show-more-btn");
-
-      if (showMoreBtn) {
-        showMoreBtn.style.display = isOverflowing ? "block" : "none";
-      }
-    }
-  };
-
-  const togglePromptExpand = () => {
-    setPromptExpanded(!promptExpanded);
-  };
-
-  const addImageToPrompt = (imageUrl: string) => {
-    setUploadedImages((prev) => [...prev, imageUrl]);
-  };
-
-  const editPrompt = (prompt: string = "") => {
-    if (textareaRef.current && prompt) {
-      // Convert HTML to plain text if needed
-      let cleanPrompt = prompt;
-      if (prompt.includes("<") && prompt.includes(">")) {
-        const div = document.createElement("div");
-        div.innerHTML = prompt
-          .replace(/<(li|h[1-6]|p|div)>/gi, "\n\n<$1>")
-          .replace(/<br\s*\/?>/gi, "\n\n");
-        cleanPrompt = div.innerText
-          .replace(/\n{2,}/g, "\n\n")
-          .replace(/^\n+|\n+$/g, "");
-      }
-
-      textareaRef.current.value = cleanPrompt;
-      setPromptText(cleanPrompt);
-      const event = new Event("input", { bubbles: true });
-      textareaRef.current.dispatchEvent(event);
-      adjustHeight();
-    }
-  };
-
-  const downloadImage = async (
-    imageUrl: string,
-    claudeResponse?: string,
-    imageIndex?: number,
-    imageName?: string // Thêm param imageName trực tiếp
-  ) => {
-    try {
-      let fileName = "";
-
-      // Fix: Ưu tiên imageName từ Claude response trước
-      if (imageName && imageName.trim()) {
-        fileName = cleanFileName(imageName);
-        console.log("🏷️ Using imageName from Claude:", fileName);
-      } else if (claudeResponse) {
-        fileName = extractImageNameFromClaudeResponse(
-          claudeResponse,
-          imageIndex || 0
+        const loadingSession = loadingSessions.find(
+            (session) => session.sessionId === sessionId
         );
-        console.log("📝 Extracted from Claude response:", fileName);
-      } else {
-        fileName = `ai-image-${Date.now()}`;
-        console.log("🔄 Using fallback name:", fileName);
-      }
 
-      // Đảm bảo có extension
-      if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        fileName = `${fileName}.png`;
-      }
+        if (loadingSession?.jobId) {
+            try {
+                await fetch(
+                    `/api/image-generation/cancel/${loadingSession.jobId}`,
+                    {
+                        method: "POST",
+                    }
+                );
+            } catch (error) {
+                console.error("Error cancelling job:", error);
+            }
+        }
 
-      if (imageUrl.startsWith("data:")) {
-        const link = document.createElement("a");
-        link.href = imageUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        return;
-      }
+        removeLoadingSession(sessionId);
+    };
 
-      const response = await fetch(imageUrl, { mode: "cors" });
+    const startSessionCountdown = (sessionId: string) => {
+        // Tạo interval cho session này
+        const intervalId = setInterval(() => {
+            setLoadingSessions((prev) =>
+                prev.map((session) => {
+                    if (session.sessionId === sessionId) {
+                        return { ...session, countdown: session.countdown + 1 };
+                    }
+                    return session;
+                })
+            );
+        }, 1000);
 
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch image: ${response.status} ${response.statusText}`
+        // Lưu intervalId để có thể clear sau này
+        sessionCountdownRefs.current[sessionId] = intervalId;
+    };
+
+    // ✅ THÊM MỚI: Tab handlers
+    const handleTabChange = useCallback(
+        (tabId: string, workspaceData: TabWorkspaceData) => {
+            console.log(
+                "🔄 Switching to tab:",
+                tabId,
+                "with data:",
+                workspaceData
+            );
+            setCurrentTabId(tabId);
+
+            // ✅ Cập nhật TOÀN BỘ state với workspace data từ tab
+            if (workspaceData) {
+                setPromptText(workspaceData.promptText);
+                setUploadedImages(workspaceData.uploadedImages);
+                setSelectedImages(workspaceData.selectedImages);
+                setLoadingSessions(workspaceData.loadingSessions);
+                setSelectedSessions(workspaceData.selectedSessions);
+
+                // ✅ Cập nhật UI state
+                if (workspaceData.uiState) {
+                    setShowImageInfo(workspaceData.uiState.showImageInfo);
+                    setActiveDropdown(workspaceData.uiState.activeDropdown);
+                    setActiveSession(workspaceData.uiState.activeSession);
+                    setSelectedImageSize(
+                        workspaceData.uiState.selectedImageSize
+                    );
+                }
+
+                setCurrentWorkspaceData(workspaceData);
+                console.log("✅ Tab content updated successfully!");
+            }
+        },
+        []
+    );
+
+    // ✅ Handle workspace data updates
+    const handleTabWorkspaceUpdate = useCallback(
+        (tabId: string, workspaceData: TabWorkspaceData) => {
+            setCurrentWorkspaceData(workspaceData);
+            console.log("📦 Workspace updated for tab:", tabId, workspaceData);
+        },
+        []
+    );
+
+    // ✅ THÊM MỚI: Auto-sync workspace data khi state thay đổi
+    useEffect(() => {
+        if (currentTabId) {
+            const updatedWorkspaceData: TabWorkspaceData = {
+                selectedImages,
+                loadingSessions,
+                promptText,
+                uploadedImages,
+                selectedSessions,
+                uiState: {
+                    showImageInfo,
+                    activeDropdown,
+                    activeSession,
+                    selectedImageSize,
+                },
+            };
+
+            // Chỉ cập nhật nếu có thay đổi thực sự
+            if (
+                JSON.stringify(updatedWorkspaceData) !==
+                JSON.stringify(currentWorkspaceData)
+            ) {
+                setCurrentWorkspaceData(updatedWorkspaceData);
+                handleTabWorkspaceUpdate(currentTabId, updatedWorkspaceData);
+            }
+        }
+    }, [
+        selectedImages,
+        loadingSessions,
+        promptText,
+        uploadedImages,
+        selectedSessions,
+        showImageInfo,
+        activeDropdown,
+        activeSession,
+        selectedImageSize,
+        currentTabId,
+        currentWorkspaceData,
+        handleTabWorkspaceUpdate,
+    ]);
+
+    const updatePageData = useCallback(
+        (newData: { title: string; thumbnail?: string; url: string }) => {
+            setCurrentPageData(newData);
+        },
+        []
+    );
+
+    // ✅ THÊM MỚI: Tự động cập nhật page data khi có thay đổi trong workspace
+    useEffect(() => {
+        const generateThumbnail = async () => {
+            try {
+                // Tạo thumbnail từ first generated image nếu có
+                if (selectedImages.length > 0) {
+                    const firstImage = selectedImages[0];
+                    updatePageData({
+                        title: `Workspace (${selectedImages.length} images)`,
+                        thumbnail: firstImage.imageUrl,
+                        url: "/workspace",
+                    });
+                } else {
+                    updatePageData({
+                        title: "AI Image Generator",
+                        url: "/main",
+                    });
+                }
+            } catch (error) {
+                console.error("❌ Error generating thumbnail:", error);
+            }
+        };
+
+        generateThumbnail();
+    }, [selectedImages, updatePageData]);
+
+    // FIX: Improved handleFormSubmit with better state management
+    const handleFormSubmit = async () => {
+        if (!promptText.trim()) return;
+
+        const sessionId = `session-${Date.now()}-${Math.random()
+            .toString(36)
+            .substr(2, 9)}`;
+        const currentPromptText = promptText.trim();
+        startSessionCountdown(sessionId);
+
+        const newLoadingSession = {
+            sessionId,
+            prompt: currentPromptText,
+            startTime: Date.now(),
+            jobId: null,
+            countdown: 0,
+        };
+
+        setLoadingSessions((prev) => [newLoadingSession, ...prev]);
+        setCurrentLoadingPrompt(currentPromptText);
+
+        setPromptText("");
+        if (textareaRef.current) {
+            textareaRef.current.value = "";
+            textareaRef.current.style.height = "auto";
+            adjustHeight();
+        }
+        setUploadedImages([]);
+
+        try {
+            let uploadedImageUrls = [];
+
+            if (uploadedImages.length > 0) {
+                const uploadPromises = uploadedImages.map(
+                    async (base64Image, index) => {
+                        try {
+                            const blob = await fetch(base64Image).then((r) =>
+                                r.blob()
+                            );
+
+                            const formData = new FormData();
+                            formData.append(
+                                "filename",
+                                blob,
+                                `reference-image-${index}.png`
+                            );
+
+                            const response = await fetch(
+                                "https://prod.api.market/api/v1/magicapi/image-upload/upload",
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        "x-magicapi-key":
+                                            "cmfxojr010001jo04ld19izzv",
+                                    },
+                                    body: formData,
+                                }
+                            );
+
+                            if (!response.ok) {
+                                const errorText = await response.text();
+                                console.error(
+                                    `Upload failed for image ${index}:`,
+                                    errorText
+                                );
+                                return null;
+                            }
+
+                            const data = await response.json();
+                            console.log(
+                                `✅ Image ${index} uploaded:`,
+                                data.url
+                            );
+                            return data.url;
+                        } catch (error) {
+                            console.error(
+                                `Failed to upload image ${index}:`,
+                                error
+                            );
+                            return null;
+                        }
+                    }
+                );
+
+                const results = await Promise.all(uploadPromises);
+                uploadedImageUrls = results.filter((url) => url !== null);
+
+                console.log(
+                    `✅ Uploaded ${uploadedImageUrls.length}/${uploadedImages.length} images`
+                );
+
+                if (uploadedImageUrls.length === 0) {
+                    throw new Error("All image uploads failed");
+                }
+            }
+
+            console.log("📚 Loading instructions...");
+
+            const instructionResponse = await fetch(
+                "/api/instructions/resolve",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        category: selectedCategory.category,
+                        subcategory: selectedCategory.subcategory || "",
+                        selectedModel: selectedApis[0] || "claude-sonnet",
+                    }),
+                }
+            );
+
+            if (!instructionResponse.ok) {
+                throw new Error("Failed to load instructions");
+            }
+
+            const instructionData = await instructionResponse.json();
+
+            const generateResponse = await fetch(
+                "https://n8n.misencorp.com/webhook/ms-image-generator",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        sessionId,
+                        userPrompt: currentPromptText,
+                        userPromptInstruction: instructionData.user_prompt,
+                        systemPromptInstruction: instructionData.system_prompt,
+                        uploadedImageUrls,
+                        numberOfImages,
+                        imageSizesString: generateImageSizesString(),
+                        selectedQuality,
+                        selectedCategory,
+                        selectedApis,
+                        selectedAspectRatio,
+                    }),
+                }
+            );
+
+            const generateData = await generateResponse.json();
+
+            var jobId = generateData[0]?.job_id;
+
+            if (jobId) {
+                let generateImagePool = setInterval(async function () {
+                    try {
+                        const response = await fetch(
+                            `https://n8n.misencorp.com/webhook/get_image_queue?job_id=${jobId}`,
+                            {
+                                method: "GET",
+                                headers: { "Content-Type": "application/json" },
+                            }
+                        );
+
+                        const data = await response.json();
+
+                        if (data && data[0] && data[0].data != null) {
+                            clearInterval(generateImagePool);
+
+                            const imagesData = data[0].data;
+                            console.log("📦 Received images data:", imagesData);
+
+                            const allImages = imagesData.flatMap(
+                                (platformData: any) =>
+                                    platformData.images.map((img: any) => ({
+                                        imageUrl: img.url,
+                                        prompt: img.prompt,
+                                        platform: img.platform || "legacy",
+                                        size: "Square",
+                                        quality: selectedQuality,
+                                    }))
+                            );
+
+                            const processedImages = await Promise.all(
+                                allImages.map(async (img: any) => {
+                                    try {
+                                        const imgResponse = await fetch(
+                                            img.imageUrl
+                                        );
+                                        const blob = await imgResponse.blob();
+
+                                        return new Promise<any>((resolve) => {
+                                            const reader = new FileReader();
+                                            reader.onloadend = () => {
+                                                resolve({
+                                                    imageBase64:
+                                                        reader.result as string,
+                                                    prompt: img.prompt,
+                                                    platform: img.platform,
+                                                    size: img.size,
+                                                    quality: img.quality,
+                                                    timestamp:
+                                                        new Date().toISOString(),
+                                                });
+                                            };
+                                            reader.readAsDataURL(blob);
+                                        });
+                                    } catch (error) {
+                                        console.error(
+                                            "Error processing image:",
+                                            error
+                                        );
+                                        return null;
+                                    }
+                                })
+                            );
+
+                            const validImages = processedImages.filter(
+                                (img) => img !== null
+                            );
+
+                            if (validImages.length === 0) {
+                                showNotification(
+                                    "error",
+                                    "Generation Failed!",
+                                    "Failed to process generated images. Please try again."
+                                );
+                                removeLoadingSession(sessionId);
+                                return;
+                            }
+
+                            // ✅ FIX: Sort images ngay sau khi có validImages
+                            const sortedValidImages =
+                                sortImagesByPromptGroups(validImages);
+                            console.log("🔄 Images sorted by prompt groups");
+
+                            // ✅ FIX: Dùng sortedValidImages thay vì validImages
+                            const sessionData = {
+                                sessionId: sessionId,
+                                describe: currentPromptText,
+                                images: sortedValidImages.map((img) => ({
+                                    imageBase64: img.imageBase64,
+                                    prompt: img.prompt,
+                                    platform: img.platform,
+                                    size: img.size,
+                                    quality: img.quality,
+                                    timestamp: img.timestamp,
+                                })),
+                            };
+
+                            try {
+                                await storageManager.saveSession(sessionData);
+                                console.log(
+                                    `✅ Session saved with ${sortedValidImages.length} images`
+                                );
+
+                                showNotification(
+                                    "success",
+                                    "Images Generated!",
+                                    `Successfully generated ${
+                                        sortedValidImages.length
+                                    } image${
+                                        sortedValidImages.length > 1 ? "s" : ""
+                                    }`
+                                );
+                            } catch (storageError) {
+                                console.error(
+                                    "Storage save failed:",
+                                    storageError
+                                );
+                                showNotification(
+                                    "error",
+                                    "Storage Full!",
+                                    "Your images were generated but couldn't be saved due to storage limits."
+                                );
+                            }
+
+                            // ✅ FIX: Convert sortedValidImages thay vì validImages
+                            const convertedImages = await Promise.all(
+                                sortedValidImages.map(async (img: any) => {
+                                    try {
+                                        const compressed =
+                                            await ImageCompressor.compressImage(
+                                                img.imageBase64
+                                            );
+                                        const blobUrl = URL.createObjectURL(
+                                            compressed.blob
+                                        );
+
+                                        return {
+                                            ...img,
+                                            imageBase64: blobUrl,
+                                            originalBase64: img.imageBase64,
+                                            isBlob: true,
+                                        };
+                                    } catch (error) {
+                                        console.warn(
+                                            "Failed to convert to blob, using base64:",
+                                            error
+                                        );
+                                        return {
+                                            ...img,
+                                            isBlob: false,
+                                        };
+                                    }
+                                })
+                            );
+
+                            const newSession = {
+                                sessionId: sessionId,
+                                clickedAt: Date.now(),
+                                currentImageIndex: 0,
+                                describe: currentPromptText,
+                                list: convertedImages,
+                            };
+
+                            setSelectedSessions((prevSessions) => {
+                                const existingIndex = prevSessions.findIndex(
+                                    (s) => s.sessionId === sessionId
+                                );
+
+                                if (existingIndex !== -1) {
+                                    const updatedSessions = [...prevSessions];
+                                    updatedSessions[existingIndex] = newSession;
+                                    return updatedSessions;
+                                }
+
+                                return [newSession, ...prevSessions];
+                            });
+
+                            if (convertedImages.length > 0) {
+                                setSelectedImages((prevImages) => {
+                                    const firstImageObj = {
+                                        imageUrl:
+                                            convertedImages[0].imageBase64,
+                                        clickedAt: Date.now(),
+                                        prompt: convertedImages[0].prompt,
+                                        platform: convertedImages[0].platform,
+                                        size: convertedImages[0].size,
+                                        quality: convertedImages[0].quality,
+                                        sessionId: sessionId,
+                                        imageIndex: 0,
+                                    };
+
+                                    const filteredImages = prevImages.filter(
+                                        (img) => img.sessionId !== sessionId
+                                    );
+
+                                    const loadingItems = filteredImages.filter(
+                                        (img) =>
+                                            loadingSessions.some(
+                                                (session) =>
+                                                    session.sessionId ===
+                                                    img.sessionId
+                                            )
+                                    );
+
+                                    const regularItems = filteredImages.filter(
+                                        (img) =>
+                                            !loadingSessions.some(
+                                                (session) =>
+                                                    session.sessionId ===
+                                                    img.sessionId
+                                            )
+                                    );
+
+                                    return [
+                                        ...loadingItems,
+                                        firstImageObj,
+                                        ...regularItems,
+                                    ].slice(0, gridItemCount);
+                                });
+                            }
+
+                            window.dispatchEvent(new Event("historyUpdated"));
+                            removeLoadingSession(sessionId);
+
+                            console.log(
+                                `✅ Successfully processed ${sortedValidImages.length} images`
+                            );
+                        }
+                    } catch (error) {
+                        console.error("Polling error:", error);
+                        clearInterval(generateImagePool);
+                        showNotification(
+                            "error",
+                            "Generation Failed!",
+                            "An error occurred while generating images. Please try again."
+                        );
+                        removeLoadingSession(sessionId);
+                    }
+                }, 5000);
+            } else {
+                console.error("No jobId received");
+                showNotification(
+                    "error",
+                    "Submission Failed!",
+                    "Failed to start image generation. Please try again."
+                );
+                removeLoadingSession(sessionId);
+            }
+
+            setLoadingSessions((prev) =>
+                prev.map((session) =>
+                    session.sessionId === sessionId
+                        ? { ...session, jobId }
+                        : session
+                )
+            );
+        } catch (error) {
+            console.error("❌ Submission failed:", error);
+            setLoadingSessions((prev) =>
+                prev.filter((session) => session.sessionId !== sessionId)
+            );
+            showNotification("error", "Submission Failed!", error.message);
+        }
+    };
+
+    useEffect(() => {
+        return () => {
+            // Clear tất cả các countdown intervals
+            Object.values(sessionCountdownRefs.current).forEach(
+                (intervalId) => {
+                    clearInterval(intervalId);
+                }
+            );
+
+            // Clear tất cả các polling intervals
+            Object.values(pollingIntervalRefs.current).forEach((intervalId) => {
+                clearInterval(intervalId);
+            });
+
+            // Clear polling interval cũ (nếu còn)
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            // Clean up blob URLs
+            cleanupBlobUrls();
+        };
+    }, []);
+
+    useEffect(() => {
+        const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
+            if (currentJobId) {
+                try {
+                    await fetch(
+                        `/api/image-generation/cancel/${currentJobId}`,
+                        {
+                            method: "POST",
+                        }
+                    );
+                } catch (error) {
+                    console.error(
+                        "Error cancelling job on page unload:",
+                        error
+                    );
+                }
+            }
+        };
+
+        const handleUnload = async () => {
+            if (currentJobId) {
+                navigator.sendBeacon(
+                    `/api/image-generation/cancel/${currentJobId}`,
+                    JSON.stringify({})
+                );
+            }
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        window.addEventListener("unload", handleUnload);
+
+        return () => {
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+            window.removeEventListener("unload", handleUnload);
+            stopJobPolling();
+        };
+    }, [currentJobId, stopJobPolling]);
+
+    // FIX: Better cleanup on unmount
+    useEffect(() => {
+        return () => {
+            // Only cleanup when component actually unmounts
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+                countdownRef.current = null;
+            }
+
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                setPollingInterval(null);
+            }
+        };
+    }, []);
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter" && promptText.trim() && !e.shiftKey) {
+            e.preventDefault();
+            handleFormSubmit();
+        }
+    };
+
+    const navigateImageThumbnail = (
+        index: number,
+        direction: "prev" | "next",
+        e: React.MouseEvent
+    ) => {
+        e.stopPropagation();
+
+        const currentImage = selectedImages[index];
+        if (!currentImage?.sessionId) return;
+
+        const session = selectedSessions.find(
+            (s) => s.sessionId === currentImage.sessionId
         );
-      }
+        if (!session || session.list.length <= 1) return;
 
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
+        let currentImageIndexInSession = -1;
 
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName;
+        if (currentImage.imageIndex !== undefined) {
+            currentImageIndexInSession = currentImage.imageIndex;
+        } else {
+            for (let i = 0; i < session.list.length; i++) {
+                if (
+                    session.list[i].imageBase64 === currentImage.imageUrl &&
+                    session.list[i].prompt === currentImage.prompt
+                ) {
+                    currentImageIndexInSession = i;
+                    break;
+                }
+            }
 
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+            if (currentImageIndexInSession === -1) {
+                currentImageIndexInSession = session.list.findIndex(
+                    (img) => img.imageBase64 === currentImage.imageUrl
+                );
+            }
+        }
 
-      URL.revokeObjectURL(blobUrl);
+        if (currentImageIndexInSession === -1) return;
 
-      console.log("✅ Downloaded:", fileName);
-    } catch (error) {
-      console.error("Error downloading image:", error);
-      window.open(imageUrl, "_blank");
-    }
-  };
+        const totalImagesInSession = session.list.length;
+        let nextImageIndexInSession;
 
-  const toggleSuggestions = () => {
-    setShowSuggestions(!showSuggestions);
-  };
+        if (direction === "prev") {
+            nextImageIndexInSession =
+                currentImageIndexInSession === 0
+                    ? totalImagesInSession - 1
+                    : currentImageIndexInSession - 1;
+        } else {
+            nextImageIndexInSession =
+                currentImageIndexInSession === totalImagesInSession - 1
+                    ? 0
+                    : currentImageIndexInSession + 1;
+        }
 
-  const toggleHistorySidebar = () => {
-    setShowHistorySidebar(!showHistorySidebar);
-  };
+        const nextImageData = session.list[nextImageIndexInSession];
 
-  const adjustHeight = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+        const nextImageObject = {
+            imageUrl: nextImageData.imageBase64,
+            clickedAt: Date.now(),
+            prompt: nextImageData.prompt,
+            platform: nextImageData.platform,
+            size: nextImageData.size,
+            quality: nextImageData.quality,
+            sessionId: currentImage.sessionId,
+            imageIndex: nextImageIndexInSession,
+        };
 
-    textarea.style.height = "auto";
-    textarea.style.overflowY = "hidden";
+        const updatedImages = [...selectedImages];
+        updatedImages[index] = nextImageObject;
+        setSelectedImages(updatedImages);
+    };
 
-    requestAnimationFrame(() => {
-      const scrollHeight = textarea.scrollHeight;
-      const maxHeight = 126;
-      const minHeight = 40;
+    const calculateOptimalGridSize = useCallback(() => {
+        if (!gridContainerRef.current) return;
 
-      if (!textarea.value.trim()) {
-        textarea.style.height = `${minHeight}px`;
-        textarea.style.overflowY = "hidden";
-        return;
-      }
+        const container = gridContainerRef.current;
+        const rect = container.getBoundingClientRect();
+        const containerWidth = rect.width;
+        const containerHeight = rect.height;
 
-      textarea.style.height = `${minHeight}px`;
-      const isOverflowing = textarea.scrollHeight > minHeight;
+        const minItemSize = 200;
+        const gap = 16;
 
-      if (!isOverflowing) {
-        textarea.style.height = `${minHeight}px`;
-        textarea.style.overflowY = "hidden";
-      } else {
+        const columnsCount = Math.max(
+            2,
+            Math.floor(containerWidth / minItemSize)
+        );
+
+        const maxRowsBasedOnHeight = Math.max(
+            2,
+            Math.floor(containerHeight / minItemSize)
+        );
+
+        const rowsCount = Math.min(
+            maxRowsBasedOnHeight,
+            Math.ceil(48 / columnsCount)
+        );
+
+        const newGridCount = columnsCount * rowsCount;
+
+        setBaseGridCount(newGridCount);
+
+        if (!expandedGrid) {
+            setGridItemCount(newGridCount);
+        }
+    }, [expandedGrid]);
+
+    useEffect(() => {
+        calculateOptimalGridSize();
+
+        let resizeTimeout: NodeJS.Timeout;
+        const handleResize = () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                calculateOptimalGridSize();
+            }, 100);
+        };
+
+        window.addEventListener("resize", handleResize);
+
+        return () => {
+            window.removeEventListener("resize", handleResize);
+            clearTimeout(resizeTimeout);
+        };
+    }, [calculateOptimalGridSize]);
+
+    useEffect(() => {
+        if (!expandedGrid) {
+            setGridItemCount(baseGridCount);
+        }
+    }, [baseGridCount, expandedGrid]);
+
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            calculateOptimalGridSize();
+        }, 100);
+
+        return () => clearTimeout(timeoutId);
+    }, [selectedImages.length, calculateOptimalGridSize]);
+
+    useEffect(() => {
+        if (gridContainerRef.current) {
+            calculateOptimalGridSize();
+        }
+    }, [selectedImages, calculateOptimalGridSize]);
+
+    const handleHistoryItemClick = (item: any) => {
+        // Log dữ liệu debug
+        if (!item.list || item.list.length === 0) {
+            console.log("⚠️ No images found in this session");
+            return;
+        }
+
+        // ✅ FIX: Ensure platform is preserved
+        const sortedList = sortImagesByPromptGroups(item.list);
+
+        // ✅ FIX: Ensure platform is preserved
+        const newSession = {
+            sessionId: item.id,
+            clickedAt: Date.now(),
+            currentImageIndex: 0,
+            describe: item.describe || "Image session",
+            list: sortedList.map((img: any) => ({
+                imageBase64: img.imageBase64 || "",
+                prompt: img.prompt || "",
+                platform: img.platform || "",
+                claudeResponse: img.claudeResponse || "",
+                timestamp: img.timestamp || new Date().toISOString(),
+                size: img.size || "Square",
+                quality: img.quality || "Low",
+                AdCreativeA: img.AdCreativeA || "",
+                AdCreativeB: img.AdCreativeB || "",
+                targeting: img.targeting || "",
+                imageName: img.imageName || "",
+            })),
+        };
+
+        console.log(`✅ Adding new session to selectedSessions: ${item.id}`);
+
+        // Update selectedSessions với Promise.resolve để tránh race condition
+        setSelectedSessions((prevSessions) => {
+            // Double-check to prevent duplicates (for safety)
+            if (prevSessions.some((s) => s.sessionId === item.id)) {
+                console.log(
+                    "🔄 Last moment duplicate check prevented a duplicate session"
+                );
+                return prevSessions;
+            }
+            return [newSession, ...prevSessions];
+        });
+
+        // Add image to grid
+        const firstImage = item.list[0];
+
+        // Create image object with proper validation
+        const newImageObj = {
+            imageUrl: firstImage.imageBase64,
+            clickedAt: Date.now(),
+            prompt: firstImage.prompt || "",
+            platform: firstImage.platform || "", // ← FIX: Đảm bảo platform được truyền
+            size: firstImage.size || "Square",
+            quality: firstImage.quality || "Standard",
+            sessionId: item.id,
+            imageIndex: 0,
+            claudeResponse: firstImage.claudeResponse || "",
+            AdCreativeA: firstImage.AdCreativeA || "",
+            AdCreativeB: firstImage.AdCreativeB || "",
+            targeting: firstImage.targeting || "",
+            imageName: firstImage.imageName || "",
+        };
+
+        // Add to selectedImages, ensuring no duplicates
+        setSelectedImages((prevImages) => {
+            // Check for existing image from same session
+            if (
+                prevImages.some(
+                    (img) => img.sessionId === item.id && img.imageIndex === 0
+                )
+            ) {
+                console.log(
+                    "⚠️ Image already exists in grid, will not add duplicate"
+                );
+                return prevImages;
+            }
+
+            const updatedImages = [newImageObj, ...prevImages];
+
+            // Expand grid if needed
+            if (updatedImages.length > baseGridCount) {
+                setExpandedGrid(true);
+                setGridItemCount(updatedImages.length);
+            }
+
+            return updatedImages;
+        });
+    };
+
+    useEffect(() => {
+        function handleClickOutside(event: any) {
+            if (
+                showUserDropdown &&
+                !event.target.closest(".background-wrapper")
+            ) {
+                setShowUserDropdown(false);
+            }
+        }
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [showUserDropdown]);
+
+    const removeSelectedImage = (indexToRemove: number) => {
+        const imageToRemove = selectedImages[indexToRemove];
+
+        // Revoke blob URL if needed
+        if (
+            imageToRemove.imageUrl &&
+            imageToRemove.imageUrl.startsWith("blob:")
+        ) {
+            try {
+                URL.revokeObjectURL(imageToRemove.imageUrl);
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+
+        // Update selectedImages state
+        setSelectedImages((prevImages) =>
+            prevImages.filter((_, index) => index !== indexToRemove)
+        );
+
+        // Remove from sessions if this is the last image from this session
+        if (imageToRemove.sessionId) {
+            const sessionImages = selectedImages.filter(
+                (img) => img.sessionId === imageToRemove.sessionId
+            );
+
+            if (sessionImages.length === 1) {
+                setSelectedSessions((prevSessions) =>
+                    prevSessions.filter(
+                        (session) =>
+                            session.sessionId !== imageToRemove.sessionId
+                    )
+                );
+            }
+        }
+
+        // Update viewer state if needed
+        if (currentViewImageIndex === indexToRemove) {
+            setCurrentViewImageIndex(null);
+            setCurrentSessionId(null);
+        } else if (
+            currentViewImageIndex !== null &&
+            currentViewImageIndex > indexToRemove
+        ) {
+            setCurrentViewImageIndex(currentViewImageIndex - 1);
+        }
+    };
+
+    const clearAllImages = () => {
+        // Clean up all blob URLs first
+        cleanupBlobUrls();
+
+        // Then clear state
+        setSelectedImages([]);
+        setSelectedSessions([]);
+        setCurrentViewImageIndex(null);
+        setCurrentSessionId(null);
+    };
+
+    const viewImage = (index: number) => {
+        const selectedImage = selectedImages[index];
+        console.log("🔍 viewImage called with index:", index);
+        console.log("🔍 selectedImage:", selectedImage);
+
+        setCurrentViewImageIndex(index);
+        setPromptExpanded(false);
+
+        if (selectedImage && selectedImage.sessionId) {
+            console.log(
+                "🔍 Setting currentSessionId to:",
+                selectedImage.sessionId
+            );
+            setCurrentSessionId(selectedImage.sessionId);
+
+            const session = selectedSessions.find(
+                (s) => s.sessionId === selectedImage.sessionId
+            );
+
+            console.log("🔍 Found session:", session ? "YES" : "NO");
+            if (session) {
+                console.log("🔍 Session data:", {
+                    sessionId: session.sessionId,
+                    describe: session.describe,
+                    imageCount: session.list.length,
+                });
+
+                if (selectedImage.imageIndex !== undefined) {
+                    console.log(
+                        "🔍 Using predefined imageIndex:",
+                        selectedImage.imageIndex
+                    );
+                    setCurrentSessionImageIndex(selectedImage.imageIndex);
+                } else {
+                    const imageIndex = session.list.findIndex(
+                        (img) => img.imageBase64 === selectedImage.imageUrl
+                    );
+                    console.log("🔍 Found imageIndex:", imageIndex);
+                    if (imageIndex !== -1) {
+                        setCurrentSessionImageIndex(imageIndex);
+                    }
+                }
+            }
+        } else {
+            console.log("⚠️ No sessionId found in selectedImage");
+            setCurrentSessionId(null);
+        }
+
+        setTimeout(checkPromptHeight, 100);
+    };
+
+    const closeImageViewer = () => {
+        setCurrentViewImageIndex(null);
+        setCurrentSessionId(null);
+        setPromptExpanded(false);
+    };
+
+    const navigateImage = (direction: "prev" | "next") => {
+        if (currentSessionId === null) return;
+
+        const currentSession = selectedSessions.find(
+            (s) => s.sessionId === currentSessionId
+        );
+        if (!currentSession || currentSession.list.length <= 1) return;
+
+        // ✅ Sort list trước khi navigate
+        const sortedList = sortImagesByPromptGroups(currentSession.list);
+
+        let newIndex;
+        if (direction === "prev") {
+            newIndex =
+                currentSessionImageIndex === 0
+                    ? sortedList.length - 1
+                    : currentSessionImageIndex - 1;
+        } else {
+            newIndex =
+                currentSessionImageIndex === sortedList.length - 1
+                    ? 0
+                    : currentSessionImageIndex + 1;
+        }
+
+        setCurrentSessionImageIndex(newIndex);
+
+        const newImageData = currentSession.list[newIndex];
+
+        const existingImageIndex = selectedImages.findIndex(
+            (img) =>
+                img.sessionId === currentSessionId &&
+                img.imageUrl === newImageData.imageBase64
+        );
+
+        if (existingImageIndex !== -1) {
+            setCurrentViewImageIndex(existingImageIndex);
+        }
+
+        setPromptExpanded(false);
+        setTimeout(checkPromptHeight, 100);
+    };
+
+    const hasMultipleInSession = (index: number): boolean => {
+        const image = selectedImages[index];
+        if (!image || !image.sessionId) return false;
+
+        const session = selectedSessions.find(
+            (s) => s.sessionId === image.sessionId
+        );
+        return session ? session.list.length > 1 : false;
+    };
+
+    const checkPromptHeight = () => {
+        if (promptTextRef.current) {
+            const isOverflowing =
+                promptTextRef.current.scrollHeight >
+                promptTextRef.current.clientHeight;
+            const showMoreBtn = document.getElementById("show-more-btn");
+
+            if (showMoreBtn) {
+                showMoreBtn.style.display = isOverflowing ? "block" : "none";
+            }
+        }
+    };
+
+    const togglePromptExpand = () => {
+        setPromptExpanded(!promptExpanded);
+    };
+
+    const addImageToPrompt = (imageUrl: string) => {
+        setUploadedImages((prev) => [...prev, imageUrl]);
+    };
+
+    const editPrompt = (prompt: string = "") => {
+        if (textareaRef.current && prompt) {
+            // Convert HTML to plain text if needed
+            let cleanPrompt = prompt;
+            if (prompt.includes("<") && prompt.includes(">")) {
+                const div = document.createElement("div");
+                div.innerHTML = prompt
+                    .replace(/<(li|h[1-6]|p|div)>/gi, "\n\n<$1>")
+                    .replace(/<br\s*\/?>/gi, "\n\n");
+                cleanPrompt = div.innerText
+                    .replace(/\n{2,}/g, "\n\n")
+                    .replace(/^\n+|\n+$/g, "");
+            }
+
+            textareaRef.current.value = cleanPrompt;
+            setPromptText(cleanPrompt);
+            const event = new Event("input", { bubbles: true });
+            textareaRef.current.dispatchEvent(event);
+            adjustHeight();
+        }
+    };
+
+    const downloadImage = async (
+        imageUrl: string,
+        claudeResponse?: string,
+        imageIndex?: number,
+        imageName?: string // Thêm param imageName trực tiếp
+    ) => {
+        try {
+            let fileName = "";
+
+            // Fix: Ưu tiên imageName từ Claude response trước
+            if (imageName && imageName.trim()) {
+                fileName = cleanFileName(imageName);
+                console.log("🏷️ Using imageName from Claude:", fileName);
+            } else if (claudeResponse) {
+                fileName = extractImageNameFromClaudeResponse(
+                    claudeResponse,
+                    imageIndex || 0
+                );
+                console.log("📝 Extracted from Claude response:", fileName);
+            } else {
+                fileName = `ai-image-${Date.now()}`;
+                console.log("🔄 Using fallback name:", fileName);
+            }
+
+            // Đảm bảo có extension
+            if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                fileName = `${fileName}.png`;
+            }
+
+            if (imageUrl.startsWith("data:")) {
+                const link = document.createElement("a");
+                link.href = imageUrl;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                return;
+            }
+
+            const response = await fetch(imageUrl, { mode: "cors" });
+
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to fetch image: ${response.status} ${response.statusText}`
+                );
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.href = blobUrl;
+            link.download = fileName;
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            URL.revokeObjectURL(blobUrl);
+
+            console.log("✅ Downloaded:", fileName);
+        } catch (error) {
+            console.error("Error downloading image:", error);
+            window.open(imageUrl, "_blank");
+        }
+    };
+
+    const toggleSuggestions = () => {
+        setShowSuggestions(!showSuggestions);
+    };
+
+    const toggleHistorySidebar = () => {
+        setShowHistorySidebar(!showHistorySidebar);
+    };
+
+    // ✅ THÊM MỚI: Toggle function cho TabSidebar
+    const toggleTabSidebar = () => {
+        setShowTabSidebar(!showTabSidebar);
+    };
+
+    const toggleUploadedFilesPanel = () => {
+        setShowUploadedFilesPanel(!showUploadedFilesPanel);
+    };
+
+    const handleUploadedFileSelect = (file: any) => {
+        console.log("🔍 Selected file:", file);
+        // Thêm file đã chọn vào uploadedImages
+        setUploadedImages((prev) => [...prev, file.imageBase64]);
+        setShowUploadedFilesPanel(false);
+    };
+
+    const adjustHeight = useCallback(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
         textarea.style.height = "auto";
-        const actualScrollHeight = textarea.scrollHeight;
+        textarea.style.overflowY = "hidden";
 
-        if (actualScrollHeight > maxHeight) {
-          textarea.style.height = `${maxHeight}px`;
-          textarea.style.overflowY = "auto";
-        } else {
-          textarea.style.height = `${actualScrollHeight}px`;
-          textarea.style.overflowY = "hidden";
+        requestAnimationFrame(() => {
+            const scrollHeight = textarea.scrollHeight;
+            const maxHeight = 400; // ✅ Tăng từ 126px lên 400px
+            const minHeight = 40;
+
+            if (!textarea.value.trim()) {
+                textarea.style.height = `${minHeight}px`;
+                textarea.style.overflowY = "hidden";
+                // ✅ Trigger scroll check sau khi adjust height
+                setTimeout(() => {
+                    const event = new Event("input");
+                    textarea.dispatchEvent(event);
+                }, 0);
+                return;
+            }
+
+            textarea.style.height = `${minHeight}px`;
+            const isOverflowing = textarea.scrollHeight > minHeight;
+
+            if (!isOverflowing) {
+                textarea.style.height = `${minHeight}px`;
+                textarea.style.overflowY = "hidden";
+            } else {
+                textarea.style.height = "auto";
+                const actualScrollHeight = textarea.scrollHeight;
+
+                if (actualScrollHeight > maxHeight) {
+                    textarea.style.height = `${maxHeight}px`;
+                    textarea.style.overflowY = "auto";
+                } else {
+                    textarea.style.height = `${actualScrollHeight}px`;
+                    textarea.style.overflowY = "hidden";
+                }
+            }
+
+            // ✅ Trigger scroll check sau khi adjust height
+            setTimeout(() => {
+                const event = new Event("input");
+                textarea.dispatchEvent(event);
+            }, 0);
+        });
+    }, []);
+
+    useEffect(() => {
+        if (textareaRef.current) {
+            if (!promptText.trim()) {
+                textareaRef.current.style.height = "40px";
+                textareaRef.current.style.overflowY = "hidden";
+            } else {
+                adjustHeight();
+            }
         }
-      }
-    });
-  }, []);
+    }, [promptText, adjustHeight]);
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      if (!promptText.trim()) {
-        textareaRef.current.style.height = "40px";
-        textareaRef.current.style.overflowY = "hidden";
-      } else {
-        adjustHeight();
-      }
-    }
-  }, [promptText, adjustHeight]);
-
-  const handleSelectSuggestion = (suggestion: string) => {
-    if (textareaRef.current) {
-      textareaRef.current.value = suggestion;
-      setPromptText(suggestion);
-      const event = new Event("input", { bubbles: true });
-      textareaRef.current.dispatchEvent(event);
-      adjustHeight();
-    }
-    setShowSuggestions(false);
-  };
-
-  const handleUploadClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-
-    if (files && files.length > 0) {
-      Array.from(files).forEach((file) => {
-        if (!file.type.match("image.*")) {
-          alert("Please select a valid image file.");
-          return;
+    const handleSelectSuggestion = (suggestion: string) => {
+        if (textareaRef.current) {
+            textareaRef.current.value = suggestion;
+            setPromptText(suggestion);
+            const event = new Event("input", { bubbles: true });
+            textareaRef.current.dispatchEvent(event);
+            adjustHeight();
         }
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const base64Result = e.target?.result as string;
-          setUploadedImages((prevImages) => [...prevImages, base64Result]);
-        };
-        reader.onerror = () => {
-          alert("Cannot read this file. Please try again!");
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-
-    if (event.target) {
-      event.target.value = "";
-    }
-  };
-
-  const removeImage = (indexToRemove: number) => {
-    setUploadedImages((prevImages) =>
-      prevImages.filter((_, index) => index !== indexToRemove)
-    );
-  };
-
-  useEffect(() => {
-    if (imagesContainerRef.current && uploadedImages.length > 0) {
-      imagesContainerRef.current.scrollLeft =
-        imagesContainerRef.current.scrollWidth;
-    }
-  }, [uploadedImages]);
-
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    adjustHeight();
-
-    const handleResize = () => {
-      adjustHeight();
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [adjustHeight]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        showSuggestions &&
-        suggestionsRef.current &&
-        suggestionButtonRef.current &&
-        !suggestionsRef.current.contains(event.target as Node) &&
-        !suggestionButtonRef.current.contains(event.target as Node)
-      ) {
         setShowSuggestions(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showSuggestions]);
 
-  // Debug useEffect to track currentLoadingPrompt changes
-  useEffect(() => {
-    console.log("🔍 LOADING PROMPT CHANGE:", currentLoadingPrompt);
-    console.log("🔍 LOADING PROMPT LENGTH:", currentLoadingPrompt.length);
-  }, [currentLoadingPrompt]);
+    const handleUploadClick = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
 
-  // Debug useEffect to track state changes
-  useEffect(() => {
-    console.log("🔍 DEBUG State Change - currentSessionId:", currentSessionId);
-    console.log(
-      "🔍 DEBUG State Change - currentViewImageIndex:",
-      currentViewImageIndex
-    );
-    console.log(
-      "🔍 DEBUG State Change - selectedSessions count:",
-      selectedSessions.length
-    );
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        console.log("🔍 Files selected:", files);
 
-    if (currentSessionId) {
-      const session = selectedSessions.find(
-        (s) => s.sessionId === currentSessionId
-      );
-      console.log(
-        "🔍 DEBUG State Change - Current session found:",
-        session ? "YES" : "NO"
-      );
-      if (session) {
-        console.log(
-          "🔍 DEBUG State Change - Current session describe:",
-          session.describe
+        if (files && files.length > 0) {
+            Array.from(files).forEach((file) => {
+                console.log(
+                    "🔍 Processing file:",
+                    file.name,
+                    file.type,
+                    file.size
+                );
+
+                if (!file.type.match("image.*")) {
+                    alert("Please select a valid image file.");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const base64Result = e.target?.result as string;
+                    console.log(
+                        "🔍 Base64 result length:",
+                        base64Result?.length
+                    );
+
+                    setUploadedImages((prevImages) => [
+                        ...prevImages,
+                        base64Result,
+                    ]);
+
+                    // ✅ THÊM MỚI: Lưu file vào storage để tái sử dụng
+                    try {
+                        console.log("🔍 Attempting to save file to storage...");
+                        const fileId = await storageManager.saveUploadedFile(
+                            file,
+                            base64Result
+                        );
+                        console.log(
+                            `✅ Saved uploaded file: ${file.name} with ID: ${fileId}`
+                        );
+                    } catch (error) {
+                        console.error("❌ Error saving uploaded file:", error);
+                    }
+                };
+                reader.onerror = () => {
+                    alert("Cannot read this file. Please try again!");
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        if (event.target) {
+            event.target.value = "";
+        }
+    };
+
+    const removeImage = (indexToRemove: number) => {
+        setUploadedImages((prevImages) =>
+            prevImages.filter((_, index) => index !== indexToRemove)
         );
-      }
-    }
-  }, [currentSessionId, currentViewImageIndex, selectedSessions]);
-
-  useEffect(() => {
-    if (currentViewImageIndex !== null) {
-      setTimeout(checkPromptHeight, 100);
-    }
-  }, [currentViewImageIndex]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (currentViewImageIndex === null) return;
-
-      switch (event.key) {
-        case "Escape":
-          closeImageViewer();
-          break;
-        case "ArrowLeft":
-          navigateImage("prev");
-          break;
-        case "ArrowRight":
-          navigateImage("next");
-          break;
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [currentViewImageIndex, selectedImages]);
-
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const updateTextarea = () => {
-      adjustHeight();
-      setPromptText(textarea.value);
     };
 
-    textarea.addEventListener("input", updateTextarea);
-    textarea.addEventListener("paste", updateTextarea);
-    textarea.addEventListener("cut", updateTextarea);
+    // ✅ THÊM MỚI: Handle paste image
+    const handlePasteImage = useCallback(async (event: ClipboardEvent) => {
+        const items = event.clipboardData?.items;
+        if (!items) return;
 
-    adjustHeight();
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
 
-    return () => {
-      textarea.removeEventListener("input", updateTextarea);
-      textarea.removeEventListener("paste", updateTextarea);
-      textarea.removeEventListener("cut", updateTextarea);
-    };
-  }, [adjustHeight]);
+            // Kiểm tra nếu là file ảnh
+            if (item.type.startsWith("image/")) {
+                event.preventDefault(); // Ngăn paste text mặc định
 
-  const extractImageNameFromClaudeResponse = (
-    claudeResponse: string,
-    imageIndex: number = 0
-  ): string => {
-    if (!claudeResponse) {
-      return `ai-image-${imageIndex + 1}-${Date.now()}`;
-    }
+                const file = item.getAsFile();
+                if (!file) continue;
 
-    try {
-      const jsonMatch =
-        claudeResponse.match(/```json\s*([\s\S]*?)\s*```/) ||
-        claudeResponse.match(/\[\s*{\s*".*?":/);
-
-      if (jsonMatch) {
-        let jsonText = jsonMatch[1] || claudeResponse;
-        jsonText = jsonText
-          .replace(/^[\s\S]*?\[/, "[")
-          .replace(/\][\s\S]*$/, "]");
-
-        const jsonData = JSON.parse(jsonText);
-
-        if (
-          Array.isArray(jsonData) &&
-          jsonData[imageIndex] &&
-          jsonData[imageIndex].imageName
-        ) {
-          const imageName = jsonData[imageIndex].imageName;
-          return cleanFileName(imageName);
+                console.log(
+                    "🔍 Pasted image file:",
+                    file.name,
+                    file.type,
+                    file.size
+                );
+                await processImageFile(file);
+                break; // Chỉ xử lý ảnh đầu tiên
+            }
         }
-      }
+    }, []);
 
-      const imageNamePatterns = [
-        /Image Name[:\-]?\s*["']?([^"'\n\r,]+)["']?/gi,
-        /"imageName"[\s]*:[\s]*["']([^"']+)["']/gi,
-        new RegExp(
-          `(?:Image|Prompt)\\s*${
-            imageIndex + 1
-          }[\\s\\S]*?(?:Image Name|Name)[:\\-]?\\s*["']?([^"'\\n\\r,]+)["']?`,
-          "i"
-        ),
-      ];
+    // ✅ THÊM MỚI: Handle drag and drop
+    const handleDragOver = useCallback((event: DragEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
 
-      for (const pattern of imageNamePatterns) {
-        pattern.lastIndex = 0;
-        const matches = Array.from(claudeResponse.matchAll(pattern));
-
-        if (
-          matches.length > imageIndex &&
-          matches[imageIndex] &&
-          matches[imageIndex][1]
-        ) {
-          const imageName = matches[imageIndex][1].trim();
-          if (imageName && imageName.length > 0) {
-            return cleanFileName(imageName);
-          }
+        // Kiểm tra nếu có file ảnh trong drag
+        if (event.dataTransfer?.types.includes("Files")) {
+            setIsDragOver(true);
         }
-      }
+    }, []);
 
-      const promptPatterns = [
-        /Create an image[^:]*:\s*([^.\n]{20,80})/i,
-        /Visual Composition[^:]*:\s*([^.\n]{20,80})/i,
-        /prompt[^:]*:\s*["']?([^"'\n]{20,80})["']?/i,
-      ];
+    const handleDragLeave = useCallback((event: DragEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
 
-      for (const pattern of promptPatterns) {
-        const match = claudeResponse.match(pattern);
-        if (match && match[1]) {
-          const promptText = match[1].trim();
-          const words = promptText
+        // Chỉ remove drag state nếu rời khỏi container chính
+        const currentTarget = event.currentTarget as HTMLElement;
+        const relatedTarget = event.relatedTarget as HTMLElement;
+
+        if (currentTarget && !currentTarget.contains(relatedTarget)) {
+            setIsDragOver(false);
+        }
+    }, []);
+
+    const handleDrop = useCallback(async (event: DragEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsDragOver(false);
+
+        const files = Array.from(event.dataTransfer?.files || []);
+        const imageFiles = files.filter((file) =>
+            file.type.startsWith("image/")
+        );
+
+        if (imageFiles.length === 0) {
+            alert("Please drop image files only.");
+            return;
+        }
+
+        console.log("🔍 Dropped image files:", imageFiles.length);
+
+        // Xử lý từng file ảnh
+        for (const file of imageFiles) {
+            await processImageFile(file);
+        }
+    }, []);
+
+    // ✅ THÊM MỚI: Shared function để xử lý file ảnh
+    const processImageFile = async (file: File) => {
+        try {
+            // Đọc file thành base64
+            const base64Result = await new Promise<string>(
+                (resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const result = e.target?.result as string;
+                        resolve(result);
+                    };
+                    reader.onerror = () =>
+                        reject(new Error("Failed to read file"));
+                    reader.readAsDataURL(file);
+                }
+            );
+
+            console.log(
+                "🔍 Generated base64 for image, length:",
+                base64Result.length
+            );
+
+            // Thêm vào uploaded images
+            setUploadedImages((prevImages) => [...prevImages, base64Result]);
+
+            // Lưu vào storage để tái sử dụng
+            try {
+                const fileName =
+                    file.name ||
+                    `image-${Date.now()}.${file.type.split("/")[1]}`;
+                const imageFile = new File([file], fileName, {
+                    type: file.type,
+                });
+
+                const fileId = await storageManager.saveUploadedFile(
+                    imageFile,
+                    base64Result
+                );
+                console.log(`✅ Saved image: ${fileName} with ID: ${fileId}`);
+            } catch (error) {
+                console.error("❌ Error saving image:", error);
+            }
+
+            // Hiển thị thông báo
+            const notification = document.createElement("div");
+            notification.textContent = "� Image added successfully!";
+            notification.className = "copy-notification";
+            document.body.appendChild(notification);
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 2000);
+        } catch (error) {
+            console.error("❌ Error processing image:", error);
+            alert("Cannot process this image. Please try again!");
+        }
+    };
+
+    useEffect(() => {
+        if (imagesContainerRef.current && uploadedImages.length > 0) {
+            imagesContainerRef.current.scrollLeft =
+                imagesContainerRef.current.scrollWidth;
+        }
+    }, [uploadedImages]);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        adjustHeight();
+
+        const handleResize = () => {
+            adjustHeight();
+        };
+
+        // ✅ THÊM MỚI: Add paste event listener cho textarea và document
+        const handlePaste = (event: ClipboardEvent) => {
+            handlePasteImage(event);
+        };
+
+        // ✅ THÊM MỚI: Global paste listener cho toàn bộ document
+        const handleGlobalPaste = (event: ClipboardEvent) => {
+            // Chỉ xử lý nếu không phải đang trong input/textarea khác
+            const target = event.target as HTMLElement;
+            if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+                // Chỉ xử lý nếu là textarea prompt của chúng ta
+                if (target === textarea) {
+                    handlePasteImage(event);
+                }
+            } else {
+                // Xử lý paste khi không focus vào input nào
+                handlePasteImage(event);
+            }
+        };
+
+        // ✅ THÊM MỚI: Drag and drop listeners
+        const handleDragOverEvent = (e: Event) =>
+            handleDragOver(e as DragEvent);
+        const handleDragLeaveEvent = (e: Event) =>
+            handleDragLeave(e as DragEvent);
+        const handleDropEvent = (e: Event) => handleDrop(e as DragEvent);
+
+        window.addEventListener("resize", handleResize);
+        textarea.addEventListener("paste", handlePaste);
+        document.addEventListener("paste", handleGlobalPaste);
+        document.addEventListener("dragover", handleDragOverEvent);
+        document.addEventListener("dragleave", handleDragLeaveEvent);
+        document.addEventListener("drop", handleDropEvent);
+
+        return () => {
+            window.removeEventListener("resize", handleResize);
+            textarea.removeEventListener("paste", handlePaste);
+            document.removeEventListener("paste", handleGlobalPaste);
+            document.removeEventListener("dragover", handleDragOverEvent);
+            document.removeEventListener("dragleave", handleDragLeaveEvent);
+            document.removeEventListener("drop", handleDropEvent);
+        };
+    }, [
+        adjustHeight,
+        handlePasteImage,
+        handleDragOver,
+        handleDragLeave,
+        handleDrop,
+    ]);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (
+                showSuggestions &&
+                suggestionsRef.current &&
+                suggestionButtonRef.current &&
+                !suggestionsRef.current.contains(event.target as Node) &&
+                !suggestionButtonRef.current.contains(event.target as Node)
+            ) {
+                setShowSuggestions(false);
+            }
+        }
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [showSuggestions]);
+
+    // Debug useEffect to track currentLoadingPrompt changes
+    useEffect(() => {
+        console.log("🔍 LOADING PROMPT CHANGE:", currentLoadingPrompt);
+        console.log("🔍 LOADING PROMPT LENGTH:", currentLoadingPrompt.length);
+    }, [currentLoadingPrompt]);
+
+    // Debug useEffect to track state changes
+    useEffect(() => {
+        console.log(
+            "🔍 DEBUG State Change - currentSessionId:",
+            currentSessionId
+        );
+        console.log(
+            "🔍 DEBUG State Change - currentViewImageIndex:",
+            currentViewImageIndex
+        );
+        console.log(
+            "🔍 DEBUG State Change - selectedSessions count:",
+            selectedSessions.length
+        );
+
+        if (currentSessionId) {
+            const session = selectedSessions.find(
+                (s) => s.sessionId === currentSessionId
+            );
+            console.log(
+                "🔍 DEBUG State Change - Current session found:",
+                session ? "YES" : "NO"
+            );
+            if (session) {
+                console.log(
+                    "🔍 DEBUG State Change - Current session describe:",
+                    session.describe
+                );
+            }
+        }
+    }, [currentSessionId, currentViewImageIndex, selectedSessions]);
+
+    useEffect(() => {
+        if (currentViewImageIndex !== null) {
+            setTimeout(checkPromptHeight, 100);
+        }
+    }, [currentViewImageIndex]);
+
+    useEffect(() => {
+        function handleKeyDown(event: KeyboardEvent) {
+            if (currentViewImageIndex === null) return;
+
+            switch (event.key) {
+                case "Escape":
+                    closeImageViewer();
+                    break;
+                case "ArrowLeft":
+                    navigateImage("prev");
+                    break;
+                case "ArrowRight":
+                    navigateImage("next");
+                    break;
+            }
+        }
+
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [currentViewImageIndex, selectedImages]);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const updateTextarea = () => {
+            adjustHeight();
+            setPromptText(textarea.value);
+        };
+
+        textarea.addEventListener("input", updateTextarea);
+        textarea.addEventListener("paste", updateTextarea);
+        textarea.addEventListener("cut", updateTextarea);
+
+        adjustHeight();
+
+        return () => {
+            textarea.removeEventListener("input", updateTextarea);
+            textarea.removeEventListener("paste", updateTextarea);
+            textarea.removeEventListener("cut", updateTextarea);
+        };
+    }, [adjustHeight]);
+
+    const extractImageNameFromClaudeResponse = (
+        claudeResponse: string,
+        imageIndex: number = 0
+    ): string => {
+        if (!claudeResponse) {
+            return `ai-image-${imageIndex + 1}-${Date.now()}`;
+        }
+
+        try {
+            const jsonMatch =
+                claudeResponse.match(/```json\s*([\s\S]*?)\s*```/) ||
+                claudeResponse.match(/\[\s*{\s*".*?":/);
+
+            if (jsonMatch) {
+                let jsonText = jsonMatch[1] || claudeResponse;
+                jsonText = jsonText
+                    .replace(/^[\s\S]*?\[/, "[")
+                    .replace(/\][\s\S]*$/, "]");
+
+                const jsonData = JSON.parse(jsonText);
+
+                if (
+                    Array.isArray(jsonData) &&
+                    jsonData[imageIndex] &&
+                    jsonData[imageIndex].imageName
+                ) {
+                    const imageName = jsonData[imageIndex].imageName;
+                    return cleanFileName(imageName);
+                }
+            }
+
+            const imageNamePatterns = [
+                /Image Name[:\-]?\s*["']?([^"'\n\r,]+)["']?/gi,
+                /"imageName"[\s]*:[\s]*["']([^"']+)["']/gi,
+                new RegExp(
+                    `(?:Image|Prompt)\\s*${
+                        imageIndex + 1
+                    }[\\s\\S]*?(?:Image Name|Name)[:\\-]?\\s*["']?([^"'\\n\\r,]+)["']?`,
+                    "i"
+                ),
+            ];
+
+            for (const pattern of imageNamePatterns) {
+                pattern.lastIndex = 0;
+                const matches = Array.from(claudeResponse.matchAll(pattern));
+
+                if (
+                    matches.length > imageIndex &&
+                    matches[imageIndex] &&
+                    matches[imageIndex][1]
+                ) {
+                    const imageName = matches[imageIndex][1].trim();
+                    if (imageName && imageName.length > 0) {
+                        return cleanFileName(imageName);
+                    }
+                }
+            }
+
+            const promptPatterns = [
+                /Create an image[^:]*:\s*([^.\n]{20,80})/i,
+                /Visual Composition[^:]*:\s*([^.\n]{20,80})/i,
+                /prompt[^:]*:\s*["']?([^"'\n]{20,80})["']?/i,
+            ];
+
+            for (const pattern of promptPatterns) {
+                const match = claudeResponse.match(pattern);
+                if (match && match[1]) {
+                    const promptText = match[1].trim();
+                    const words = promptText
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s]/g, "")
+                        .split(/\s+/)
+                        .filter((word) => word.length > 3)
+                        .slice(0, 4)
+                        .join("-");
+
+                    if (words) {
+                        const generatedName = `${words}-${imageIndex + 1}`;
+                        return cleanFileName(generatedName);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error extracting image name:", error);
+        }
+
+        const fallbackName = `ai-image-${imageIndex + 1}-${Date.now()}`;
+        return fallbackName;
+    };
+
+    const cleanFileName = (fileName: string): string => {
+        // First, clean the basic characters
+        let cleaned = fileName
+            .replace(/[<>:"/\\|?*]/g, "")
+            .replace(/\s+/g, "-")
+            .replace(/[-]{2,}/g, "-")
             .toLowerCase()
-            .replace(/[^a-z0-9\s]/g, "")
-            .split(/\s+/)
-            .filter((word) => word.length > 3)
-            .slice(0, 4)
-            .join("-");
+            .replace(/^-+|-+$/g, "");
 
-          if (words) {
-            const generatedName = `${words}-${imageIndex + 1}`;
-            return cleanFileName(generatedName);
-          }
+        // FIX: Increase limit and cut by words instead of hard cut
+        const maxLength = 120; // Increased from 50 to 120
+
+        if (cleaned.length <= maxLength) {
+            return cleaned;
         }
-      }
-    } catch (error) {
-      console.error("Error extracting image name:", error);
-    }
 
-    const fallbackName = `ai-image-${imageIndex + 1}-${Date.now()}`;
-    return fallbackName;
-  };
+        // Cut by words to avoid cutting in the middle of a word
+        const words = cleaned.split("-");
+        let result = "";
 
-  const cleanFileName = (fileName: string): string => {
-    // First, clean the basic characters
-    let cleaned = fileName
-      .replace(/[<>:"/\\|?*]/g, "")
-      .replace(/\s+/g, "-")
-      .replace(/[-]{2,}/g, "-")
-      .toLowerCase()
-      .replace(/^-+|-+$/g, "");
+        for (let i = 0; i < words.length; i++) {
+            const wordToAdd = i === 0 ? words[i] : "-" + words[i];
 
-    // FIX: Increase limit and cut by words instead of hard cut
-    const maxLength = 120; // Increased from 50 to 120
+            if ((result + wordToAdd).length <= maxLength) {
+                result += wordToAdd;
+            } else {
+                break;
+            }
+        }
 
-    if (cleaned.length <= maxLength) {
-      return cleaned;
-    }
+        // If result is still empty or too short, use hard cut as fallback
+        if (result.length < 10) {
+            result = cleaned.substring(0, maxLength);
+        }
 
-    // Cut by words to avoid cutting in the middle of a word
-    const words = cleaned.split("-");
-    let result = "";
-
-    for (let i = 0; i < words.length; i++) {
-      const wordToAdd = i === 0 ? words[i] : "-" + words[i];
-
-      if ((result + wordToAdd).length <= maxLength) {
-        result += wordToAdd;
-      } else {
-        break;
-      }
-    }
-
-    // If result is still empty or too short, use hard cut as fallback
-    if (result.length < 10) {
-      result = cleaned.substring(0, maxLength);
-    }
-
-    // Clean up any trailing dashes
-    return result.replace(/^-+|-+$/g, "");
-  };
-
-  const showNotification = (type: string, title: string, message: string) => {
-    const notification = document.createElement("div");
-
-    // Different colors for different types
-    const colors = {
-      error: { bg: "#ff6b6b", text: "white" },
-      warning: { bg: "#f39c12", text: "white" },
-      success: { bg: "#4CAF50", text: "white" },
-      info: { bg: "#3498db", text: "white" },
+        // Clean up any trailing dashes
+        return result.replace(/^-+|-+$/g, "");
     };
 
-    const color = colors[type as keyof typeof colors] || colors.info;
+    const showNotification = (type: string, title: string, message: string) => {
+        const notification = document.createElement("div");
 
-    notification.innerHTML = `
+        // Different colors for different types
+        const colors = {
+            error: { bg: "#ff6b6b", text: "white" },
+            warning: { bg: "#f39c12", text: "white" },
+            success: { bg: "#4CAF50", text: "white" },
+            info: { bg: "#3498db", text: "white" },
+        };
+
+        const color = colors[type as keyof typeof colors] || colors.info;
+
+        notification.innerHTML = `
       <div style="
         position: fixed; 
         top: 20px; 
@@ -2195,13 +2757,13 @@ useEffect(() => {
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
           <strong style="font-size: 16px;">${title}</strong>
           ${
-            type === "success"
-              ? "✅"
-              : type === "warning"
-              ? "⚠️"
-              : type === "error"
-              ? "❌"
-              : "ℹ️"
+              type === "success"
+                  ? "✅"
+                  : type === "warning"
+                  ? "⚠️"
+                  : type === "error"
+                  ? "❌"
+                  : "ℹ️"
           }
         </div>
         <div style="font-size: 14px; line-height: 1.4; margin-bottom: 12px;">
@@ -2223,1381 +2785,1954 @@ useEffect(() => {
       </div>
     `;
 
-    document.body.appendChild(notification);
+        document.body.appendChild(notification);
 
-    // Auto remove after delay
-    const autoRemoveDelay =
-      type === "error" ? 8000 : type === "warning" ? 6000 : 4000;
-    setTimeout(() => {
-      if (notification.parentElement) {
-        document.body.removeChild(notification);
-      }
-    }, autoRemoveDelay);
-  };
-
-  const SafeImage: React.FC<{
-    src: string;
-    alt: string;
-    className?: string;
-    style?: React.CSSProperties;
-    onClick?: () => void;
-    selectedImages?: any[];
-    selectedSessions?: any[];
-  }> = ({ src, alt, className, style, onClick }) => {
-    const [imageSrc, setImageSrc] = useState<string>(src);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [hasError, setHasError] = useState<boolean>(false);
-    const [retryCount, setRetryCount] = useState<number>(0);
-
-    useEffect(() => {
-      setImageSrc(src);
-      setHasError(false);
-      setIsLoading(false);
-      setRetryCount(0);
-    }, [src]);
-
-    const handleImageError = async () => {
-      if (hasError || retryCount >= 2) {
-        setImageSrc(
-          "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg=="
-        );
-        setIsLoading(false);
-        setHasError(true);
-        return;
-      }
-
-      setIsLoading(true);
-      setHasError(true);
-      setRetryCount((prev) => prev + 1);
-
-      try {
-        const response = await fetch("/api/proxy-image", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ imageUrl: imageSrc }),
-        });
-
-        const data = await response.json();
-
-        if (response.ok && data.success && data.base64) {
-          setImageSrc(data.base64);
-          setHasError(false);
-        } else {
-          throw new Error(data.error || "Conversion failed");
-        }
-      } catch (error) {
-        console.error("SafeImage: Failed to convert image:", error);
-
-        if (!imageSrc.includes("/api/proxy-image-direct")) {
-          try {
-            const encodedUrl = encodeURIComponent(imageSrc);
-            const proxyUrl = `/api/proxy-image-direct?url=${encodedUrl}`;
-
-            setImageSrc(proxyUrl);
-            setHasError(false);
-          } catch (proxyError) {
-            console.error("SafeImage: Direct proxy also failed:", proxyError);
-          }
-        }
-      } finally {
-        setIsLoading(false);
-      }
+        // Auto remove after delay
+        const autoRemoveDelay =
+            type === "error" ? 8000 : type === "warning" ? 6000 : 4000;
+        setTimeout(() => {
+            if (notification.parentElement) {
+                document.body.removeChild(notification);
+            }
+        }, autoRemoveDelay);
     };
 
-    const handleImageLoad = () => {
-      setIsLoading(false);
-      setHasError(false);
+    const SafeImage: React.FC<{
+        src: string;
+        alt: string;
+        className?: string;
+        style?: React.CSSProperties;
+        onClick?: () => void;
+        selectedImages?: any[];
+        selectedSessions?: any[];
+    }> = ({ src, alt, className, style, onClick }) => {
+        const [imageSrc, setImageSrc] = useState<string>(src);
+        const [isLoading, setIsLoading] = useState<boolean>(false);
+        const [hasError, setHasError] = useState<boolean>(false);
+        const [retryCount, setRetryCount] = useState<number>(0);
+
+        useEffect(() => {
+            setImageSrc(src);
+            setHasError(false);
+            setIsLoading(false);
+            setRetryCount(0);
+        }, [src]);
+
+        const handleImageError = async () => {
+            if (hasError || retryCount >= 2) {
+                setImageSrc(
+                    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg=="
+                );
+                setIsLoading(false);
+                setHasError(true);
+                return;
+            }
+
+            setIsLoading(true);
+            setHasError(true);
+            setRetryCount((prev) => prev + 1);
+
+            try {
+                const response = await fetch("/api/proxy-image", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ imageUrl: imageSrc }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success && data.base64) {
+                    setImageSrc(data.base64);
+                    setHasError(false);
+                } else {
+                    throw new Error(data.error || "Conversion failed");
+                }
+            } catch (error) {
+                console.error("SafeImage: Failed to convert image:", error);
+
+                if (!imageSrc.includes("/api/proxy-image-direct")) {
+                    try {
+                        const encodedUrl = encodeURIComponent(imageSrc);
+                        const proxyUrl = `/api/proxy-image-direct?url=${encodedUrl}`;
+
+                        setImageSrc(proxyUrl);
+                        setHasError(false);
+                    } catch (proxyError) {
+                        console.error(
+                            "SafeImage: Direct proxy also failed:",
+                            proxyError
+                        );
+                    }
+                }
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        const handleImageLoad = () => {
+            setIsLoading(false);
+            setHasError(false);
+        };
+
+        return (
+            <div
+                style={{ position: "relative", ...style }}
+                className={className}
+            >
+                {isLoading && (
+                    <div
+                        style={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -50%)",
+                            zIndex: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: "rgba(255, 255, 255, 0.8)",
+                            borderRadius: "4px",
+                            padding: "8px",
+                        }}
+                    >
+                        <div
+                            className="loading-spinner"
+                            style={{
+                                width: "24px",
+                                height: "24px",
+                                border: "2px solid #f3f3f3",
+                                borderTop: "2px solid #3498db",
+                                borderRadius: "50%",
+                                animation: "spin 1s linear infinite",
+                            }}
+                        ></div>
+                    </div>
+                )}
+                <img
+                    src={imageSrc}
+                    alt={alt}
+                    className={className}
+                    style={{
+                        ...style,
+                        opacity: isLoading ? 0.7 : 1,
+                        transition: "opacity 0.3s ease",
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                    }}
+                    onError={handleImageError}
+                    onLoad={handleImageLoad}
+                    onClick={onClick}
+                />
+                {hasError && retryCount >= 2 && (
+                    <div
+                        style={{
+                            position: "absolute",
+                            bottom: "4px",
+                            right: "4px",
+                            fontSize: "10px",
+                            color: "#999",
+                            backgroundColor: "rgba(255, 255, 255, 0.8)",
+                            padding: "2px 4px",
+                            borderRadius: "2px",
+                        }}
+                    >
+                        Failed to load
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
-      <div style={{ position: "relative", ...style }} className={className}>
-        {isLoading && (
-          <div
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              zIndex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255, 255, 255, 0.8)",
-              borderRadius: "4px",
-              padding: "8px",
-            }}
-          >
-            <div
-              className="loading-spinner"
-              style={{
-                width: "24px",
-                height: "24px",
-                border: "2px solid #f3f3f3",
-                borderTop: "2px solid #3498db",
-                borderRadius: "50%",
-                animation: "spin 1s linear infinite",
-              }}
-            ></div>
-          </div>
-        )}
-        <img
-          src={imageSrc}
-          alt={alt}
-          className={className}
-          style={{
-            ...style,
-            opacity: isLoading ? 0.7 : 1,
-            transition: "opacity 0.3s ease",
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-          }}
-          onError={handleImageError}
-          onLoad={handleImageLoad}
-          onClick={onClick}
-        />
-        {hasError && retryCount >= 2 && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "4px",
-              right: "4px",
-              fontSize: "10px",
-              color: "#999",
-              backgroundColor: "rgba(255, 255, 255, 0.8)",
-              padding: "2px 4px",
-              borderRadius: "2px",
-            }}
-          >
-            Failed to load
-          </div>
-        )}
-      </div>
-    );
-  };
+        <div
+            className={`element-default-screen ${
+                showHistorySidebar ? "with-sidebar" : ""
+            } ${showTabSidebar ? "with-tab-sidebar" : ""}`}
+        >
+            {/* ✅ THÊM MỚI: TabSidebar Component */}
+            <TabSidebar
+                isVisible={showTabSidebar}
+                onTabChange={handleTabChange}
+                onTabWorkspaceUpdate={handleTabWorkspaceUpdate}
+                currentPageData={currentPageData}
+                currentWorkspaceData={currentWorkspaceData}
+            />
 
-  return (
-    <div
-      className={`element-default-screen ${
-        showHistorySidebar ? "with-sidebar" : ""
-      }`}
-    >
-      <div className="main-2">
-        <div className="overlap-2">
-          <div className="aside">
-            <div className="img-wrapper">
-              <img className="SVG-4" alt="Svg" src="/img/svg-8.svg" />
-            </div>
-
-            <div className="overlap-3">
-              <div className="link-wrapper">
-                <div className="link">
-                  <img className="SVG-4" alt="Svg" src="/img/svg-7.svg" />
-                </div>
-              </div>
-
-              <img
-                className="mask-group"
-                alt="Mask group"
-                src="/img/mask-group.svg"
-              />
-            </div>
-          </div>
-
-          <div
-            className={`container-wrapper ${
-              showHistorySidebar ? "shifted" : ""
-            }`}
-          >
-            <div className="container-7">
-              <div className="horizontal-border-2">
-                <div className="heading-images-2">Images</div>
-
-                <div className="flex">
-                  {selectedImages.length > 0 && (
-                    <button className="button-5" onClick={clearAllImages}>
-                      <div className="overlap-group-3">
-                        <div
-                          className={`background-8 flex-5 ${
-                            showHistorySidebar ? "active" : ""
-                          }`}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="1em"
-                            height="1em"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M20.719 4.696a1 1 0 0 0-1.415-1.415l-4.796 4.796-.634-.635a3.002 3.002 0 0 0-3.788-.375l-7.64 5.093a1 1 0 0 0-.153 1.541l8.005 8.005a1.002 1.002 0 0 0 1.541-.152l5.093-7.64a3.001 3.001 0 0 0-.375-3.789l-.634-.633 4.796-4.796Zm-9.523 4.037a1 1 0 0 1 1.263.124l2.682 2.684a1 1 0 0 1 .126 1.262l-.414.621-4.278-4.277.62-.414ZM8.877 10.28l-4.305 2.87 1.43 1.43 1.294-1.292a1 1 0 0 1 1.415 1.415l-1.294 1.294 3.433 3.432 2.871-4.306-4.844-4.843Z"
-                              clipRule="evenodd"
-                            ></path>
-                          </svg>
-                          <div className="text-wrapper-6">Clear</div>
-                        </div>
-                      </div>
-                    </button>
-                  )}
-
-                  <button
-                    className="button-5"
-                    onClick={toggleHistorySidebar}
-                    ref={historyButtonRef}
-                  >
-                    <div className="overlap-group-3">
-                      <div
-                        className={`background-5 ${
-                          showHistorySidebar ? "active" : ""
-                        }`}
-                      />
-                      <img className="SVG-5" alt="Svg" src="/img/svg-9.svg" />
-                      <div className="text-wrapper-6">History</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <div className="image-grid-items" ref={gridContainerRef}>
-                  {loadingSessions.map((session) => (
+            <div className="main-2">
+                <div className="overlap-2">
                     <div
-                      key={session.sessionId}
-                      className="image-items image-item-loading"
-                      data-session-id={session.sessionId}
+                        className={`container-wrapper ${
+                            showHistorySidebar ? "shifted" : ""
+                        } ${showTabSidebar ? "with-tab-sidebar" : ""}`}
                     >
-                      <div className="loading-container">
-                        <button
-                          className="loading-close-btn"
-                          onClick={() =>
-                            cancelImageGeneration(session.sessionId)
-                          }
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="1em"
-                            height="1em"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M5.636 5.636a1 1 0 0 1 1.414 0l4.95 4.95 4.95-4.95a1 1 0 0 1 1.414 1.414L13.414 12l4.95 4.95a1 1 0 0 1-1.414 1.414L12 13.414l-4.95 4.95a1 1 0 0 1-1.414-1.414l4.95-4.95-4.95-4.95a1 1 0 0 1 0-1.414Z"
-                              clipRule="evenodd"
-                            ></path>
-                          </svg>
-                        </button>
-                        <div className="loading-time">{session.countdown}s</div>
-                        <button
-                          className="loading-edit-btn"
-                          onClick={() => editPromptFromLoadingSession(session)}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="1em"
-                            height="1em"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M13.293 4.293a4.536 4.536 0 1 1 6.414 6.414l-1 1-7.547 7.547a3 3 0 0 1-1.628.838l-5.368.894a1 1 0 0 1-1.15-1.15l.894-5.368a3 3 0 0 1 .838-1.628l8.547-8.547ZM13 7.414l-6.84 6.84a1 1 0 0 0-.279.543l-.664 3.986 3.986-.664a1 1 0 0 0 .543-.28L16.586 11 13 7.414Zm5 2.172L14.414 6l.293-.293a2.536 2.536 0 0 1 3.586 3.586L18 9.586Z"
-                              clipRule="evenodd"
-                            ></path>
-                          </svg>
-                        </button>
-                        <div className="loading-prompt-preview">
-                          {session.prompt
-                            ? getFirst10Words(session.prompt)
-                            : "Generating..."}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                        <div className="container-7">
+                            <div className="horizontal-border-2">
+                                <div className="heading-images-2">Images</div>
 
-                  {sortImagesByPromptGroups(selectedImages).map((img, sortedIndex) => {
-                    // Tìm index gốc trong selectedImages array
-                    const originalIndex = selectedImages.findIndex(
-                      original => original.imageUrl === img.imageUrl && 
-                                  original.clickedAt === img.clickedAt
-                    );
+                                <div className="flex">
+                                    {selectedImages.length > 0 && (
+                                        <button
+                                            className="button-5"
+                                            onClick={clearAllImages}
+                                        >
+                                            <div className="overlap-group-3">
+                                                <div
+                                                    className={`background-8 flex-5 ${
+                                                        showHistorySidebar
+                                                            ? "active"
+                                                            : ""
+                                                    }`}
+                                                >
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        width="1em"
+                                                        height="1em"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path
+                                                            fillRule="evenodd"
+                                                            d="M20.719 4.696a1 1 0 0 0-1.415-1.415l-4.796 4.796-.634-.635a3.002 3.002 0 0 0-3.788-.375l-7.64 5.093a1 1 0 0 0-.153 1.541l8.005 8.005a1.002 1.002 0 0 0 1.541-.152l5.093-7.64a3.001 3.001 0 0 0-.375-3.789l-.634-.633 4.796-4.796Zm-9.523 4.037a1 1 0 0 1 1.263.124l2.682 2.684a1 1 0 0 1 .126 1.262l-.414.621-4.278-4.277.62-.414ZM8.877 10.28l-4.305 2.87 1.43 1.43 1.294-1.292a1 1 0 0 1 1.415 1.415l-1.294 1.294 3.433 3.432 2.871-4.306-4.844-4.843Z"
+                                                            clipRule="evenodd"
+                                                        ></path>
+                                                    </svg>
+                                                    <div className="text-wrapper-6">
+                                                        Clear
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    )}
 
-                    return (
-                      <div
-                        key={`img-${sortedIndex}-${img.clickedAt}`}
-                        className={`image-items image-item-${sortedIndex + 1}`}
-                        onClick={() => viewImage(originalIndex)}
-                      >
-                        {(() => {
-                          if (img.sessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === img.sessionId
-                            );
-                            if (session && session.list.length > 1) {
-                              return (
-                                <div className="overlay-item-count">
-                                  {session.list.length}
-                                </div>
-                              );
-                            }
-                          }
-                          return null;
-                        })()}
-
-                        {img.platform && (
-                          <div className={`platform-label platform-label-grid platform-label-${img.platform.toLowerCase().replace(/\s+/g, '-')}`}>
-                            {img.platform === 'nano-banana' ? 'Nano Banana' : 
-                            img.platform === 'seedream' ? 'Seedream' : 
-                            'OpenAI'}
-                          </div>
-                        )}
-
-                        <SafeImage
-                          src={img.imageUrl}
-                          alt={`Generated image ${sortedIndex + 1}`}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "contain",
-                          }}
-                          selectedImages={selectedImages}
-                          selectedSessions={selectedSessions}
-                        />
-
-                        <div className="image-actions-overlay">
-                          <div className="actions-header">
-                            <button
-                              className="image-remove-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeSelectedImage(originalIndex);
-                              }}
-                              title="Remove"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="20"
-                                height="20"
-                                fill="currentColor"
-                                viewBox="0 0 16 16"
-                              >
-                                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
-                              </svg>
-                            </button>
-
-                            <div className="image-navigation-buttons">
-                              {hasMultipleInSession(originalIndex) && (
-                                <>
-                                  <button
-                                    className="image-nav-btn prev"
-                                    onClick={(e) =>
-                                      navigateImageThumbnail(originalIndex, "prev", e)
-                                    }
-                                    title="Previous in session"
-                                  >
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      width="18px"
-                                      height="18px"
-                                      fill="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M15.707 4.293a1 1 0 0 1 0 1.414L9.414 12l6.293 6.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 0 1 1.414 0Z"
-                                        clipRule="evenodd"
-                                      ></path>
-                                    </svg>
-                                  </button>
-
-                                  <button
-                                    className="image-nav-btn next"
-                                    onClick={(e) =>
-                                      navigateImageThumbnail(originalIndex, "next", e)
-                                    }
-                                    title="Next in session"
-                                  >
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      width="18"
-                                      height="18"
-                                      fill="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z"
-                                        clipRule="evenodd"
-                                      ></path>
-                                    </svg>
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="image-actions">
-                            <div className="image-actions-left">
-                              <button
-                                className="image-action-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const image = selectedImages[originalIndex];
-                                  let promptText = "";
-
-                                  if (image.sessionId) {
-                                    const session = selectedSessions.find(
-                                      (s) => s.sessionId === image.sessionId
-                                    );
-
-                                    if (session && image.imageIndex !== undefined) {
-                                      promptText = session.list[image.imageIndex].prompt;
-                                    } else if (image.prompt) {
-                                      promptText = image.prompt;
-                                    }
-                                  } else if (image.prompt) {
-                                    promptText = image.prompt;
-                                  }
-
-                                  if (promptText) {
-                                    let textToCopy = promptText;
-                                    if (promptText.includes("<") && promptText.includes(">")) {
-                                      const div = document.createElement("div");
-                                      div.innerHTML = promptText
-                                        .replace(/<(li|h[1-6]|p|div)>/gi, "\n\n<$1>")
-                                        .replace(/<br\s*\/?>/gi, "\n\n");
-                                      textToCopy = div.innerText
-                                        .replace(/\n{2,}/g, "\n\n")
-                                        .replace(/^\n+|\n+$/g, "");
-                                    }
-
-                                    navigator.clipboard
-                                      .writeText(textToCopy)
-                                      .then(() => {
-                                        const notification = document.createElement("div");
-                                        notification.textContent = "Prompt copied!";
-                                        notification.className = "copy-notification";
-                                        document.body.appendChild(notification);
-                                        setTimeout(() => {
-                                          document.body.removeChild(notification);
-                                        }, 2000);
-                                      })
-                                      .catch((err) => {
-                                        console.error("Failed to copy text: ", err);
-                                      });
-                                  }
-                                }}
-                                title="Copy prompt"
-                              >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="1em"
-                                  height="1em"
-                                  fill="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M7 5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-2v2a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h2V5Zm2 2h5a3 3 0 0 1 3 3v5h2a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v2ZM5 9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5Z"
-                                    clipRule="evenodd"
-                                  ></path>
-                                </svg>
-                              </button>
-                            </div>
-                            <div className="image-actions-right">
-                              <button
-                                className="image-action-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const image = selectedImages[originalIndex];
-                                  let claudeResponse = "";
-                                  let imageIndex = 0;
-                                  let imageName = "";
-
-                                  if (image.sessionId) {
-                                    const session = selectedSessions.find(
-                                      (s) => s.sessionId === image.sessionId
-                                    );
-
-                                    if (session) {
-                                      if (image.imageIndex !== undefined) {
-                                        imageIndex = image.imageIndex;
-                                        const imageData = session.list[imageIndex];
-                                        imageName = imageData?.imageName || "";
-                                        claudeResponse = imageData?.claudeResponse || "";
-                                      } else {
-                                        const foundIndex = session.list.findIndex(
-                                          (img) =>
-                                            img.imageBase64 === image.imageUrl ||
-                                            img.prompt === image.prompt
-                                        );
-                                        if (foundIndex !== -1) {
-                                          imageIndex = foundIndex;
-                                          const imageData = session.list[foundIndex];
-                                          imageName = imageData?.imageName || "";
-                                          claudeResponse = imageData?.claudeResponse || "";
+                                    {/* ✅ THÊM MỚI: Tab Sidebar Toggle Button */}
+                                    <button
+                                        className="button-5"
+                                        onClick={toggleTabSidebar}
+                                        title={
+                                            showTabSidebar
+                                                ? "Hide Tabs"
+                                                : "Show Tabs"
                                         }
-                                      }
-                                    }
-                                  } else {
-                                    imageName = image.imageName || "";
-                                    claudeResponse = image.claudeResponse || "";
-                                  }
+                                    >
+                                        <div className="overlap-group-3">
+                                            <div
+                                                className={`background-5 ${
+                                                    showTabSidebar
+                                                        ? "active"
+                                                        : ""
+                                                }`}
+                                            />
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                width="1em"
+                                                height="1em"
+                                                fill="currentColor"
+                                                viewBox="0 0 24 24"
+                                                className="SVG-5"
+                                            >
+                                                <path
+                                                    fillRule="evenodd"
+                                                    d="M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Zm3-1a1 1 0 0 0-1 1v3h16V6a1 1 0 0 0-1-1H6ZM5 11v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7H5Z"
+                                                    clipRule="evenodd"
+                                                />
+                                            </svg>
+                                            <div className="text-wrapper-6">
+                                                Tabs
+                                            </div>
+                                        </div>
+                                    </button>
 
-                                  downloadImage(
-                                    image.imageUrl,
-                                    claudeResponse,
-                                    imageIndex,
-                                    imageName
-                                  );
-                                }}
-                                title="Download"
-                              >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="18px"
-                                  height="18px"
-                                  fill="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
-                                </svg>
-                              </button>
-
-                              <button
-                                className="image-action-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  addImageToPrompt(img.imageUrl);
-                                }}
-                                title="Add to prompt"
-                              >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="18px"
-                                  height="18px"
-                                  fill="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z"
-                                    clipRule="evenodd"
-                                  ></path>
-                                </svg>
-                              </button>
-                              <button
-                                className="image-action-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  editPrompt(img.prompt);
-                                }}
-                                title="Edit prompt"
-                              >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="18px"
-                                  height="18px"
-                                  fill="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M13.293 4.293a4.536 4.536 0 1 1 6.414 6.414l-1 1-7.547 7.547a3 3 0 0 1-1.628.838l-5.368.894a1 1 0 0 1-1.15-1.15l.894-5.368a3 3 0 0 1 .838-1.628l8.547-8.547ZM13 7.414l-6.84 6.84a1 1 0 0 0-.279.543l-.664 3.986 3.986-.664a1 1 0 0 0 .543-.28L16.586 11 13 7.414Zm5 2.172L14.414 6l.293-.293a2.536 2.536 0 0 1 3.586 3.586L18 9.586Z"
-                                    clipRule="evenodd"
-                                  ></path>
-                                </svg>
-                              </button>
+                                    <button
+                                        className="button-5"
+                                        onClick={toggleHistorySidebar}
+                                        ref={historyButtonRef}
+                                    >
+                                        <div className="overlap-group-3">
+                                            <div
+                                                className={`background-5 ${
+                                                    showHistorySidebar
+                                                        ? "active"
+                                                        : ""
+                                                }`}
+                                            />
+                                            <img
+                                                className="SVG-5"
+                                                alt="Svg"
+                                                src="/img/svg-9.svg"
+                                            />
+                                            <div className="text-wrapper-6">
+                                                History
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
-                          </div>
+
+                            <div>
+                                <div
+                                    className="image-grid-items"
+                                    ref={gridContainerRef}
+                                >
+                                    {loadingSessions.map((session) => (
+                                        <div
+                                            key={session.sessionId}
+                                            className="image-items image-item-loading"
+                                            data-session-id={session.sessionId}
+                                        >
+                                            <div className="loading-container">
+                                                <button
+                                                    className="loading-close-btn"
+                                                    onClick={() =>
+                                                        cancelImageGeneration(
+                                                            session.sessionId
+                                                        )
+                                                    }
+                                                >
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        width="1em"
+                                                        height="1em"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path
+                                                            fillRule="evenodd"
+                                                            d="M5.636 5.636a1 1 0 0 1 1.414 0l4.95 4.95 4.95-4.95a1 1 0 0 1 1.414 1.414L13.414 12l4.95 4.95a1 1 0 0 1-1.414 1.414L12 13.414l-4.95 4.95a1 1 0 0 1-1.414-1.414l4.95-4.95-4.95-4.95a1 1 0 0 1 0-1.414Z"
+                                                            clipRule="evenodd"
+                                                        ></path>
+                                                    </svg>
+                                                </button>
+                                                <div className="loading-time">
+                                                    {session.countdown}s
+                                                </div>
+                                                <button
+                                                    className="loading-edit-btn"
+                                                    onClick={() =>
+                                                        editPromptFromLoadingSession(
+                                                            session
+                                                        )
+                                                    }
+                                                >
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        width="1em"
+                                                        height="1em"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path
+                                                            fillRule="evenodd"
+                                                            d="M13.293 4.293a4.536 4.536 0 1 1 6.414 6.414l-1 1-7.547 7.547a3 3 0 0 1-1.628.838l-5.368.894a1 1 0 0 1-1.15-1.15l.894-5.368a3 3 0 0 1 .838-1.628l8.547-8.547ZM13 7.414l-6.84 6.84a1 1 0 0 0-.279.543l-.664 3.986 3.986-.664a1 1 0 0 0 .543-.28L16.586 11 13 7.414Zm5 2.172L14.414 6l.293-.293a2.536 2.536 0 0 1 3.586 3.586L18 9.586Z"
+                                                            clipRule="evenodd"
+                                                        ></path>
+                                                    </svg>
+                                                </button>
+                                                <div className="loading-prompt-preview">
+                                                    {session.prompt
+                                                        ? getFirst10Words(
+                                                              session.prompt
+                                                          )
+                                                        : "Generating..."}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {sortImagesByPromptGroups(
+                                        selectedImages
+                                    ).map((img, sortedIndex) => {
+                                        // Tìm index gốc trong selectedImages array
+                                        const originalIndex =
+                                            selectedImages.findIndex(
+                                                (original) =>
+                                                    original.imageUrl ===
+                                                        img.imageUrl &&
+                                                    original.clickedAt ===
+                                                        img.clickedAt
+                                            );
+
+                                        return (
+                                            <div
+                                                key={`img-${sortedIndex}-${img.clickedAt}`}
+                                                className={`image-items image-item-${
+                                                    sortedIndex + 1
+                                                }`}
+                                                onClick={() =>
+                                                    viewImage(originalIndex)
+                                                }
+                                            >
+                                                {(() => {
+                                                    if (img.sessionId) {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    img.sessionId
+                                                            );
+                                                        if (
+                                                            session &&
+                                                            session.list
+                                                                .length > 1
+                                                        ) {
+                                                            return (
+                                                                <div className="overlay-item-count">
+                                                                    {
+                                                                        session
+                                                                            .list
+                                                                            .length
+                                                                    }
+                                                                </div>
+                                                            );
+                                                        }
+                                                    }
+                                                    return null;
+                                                })()}
+
+                                                {img.platform && (
+                                                    <div
+                                                        className={`platform-label platform-label-grid platform-label-${img.platform
+                                                            .toLowerCase()
+                                                            .replace(
+                                                                /\s+/g,
+                                                                "-"
+                                                            )}`}
+                                                    >
+                                                        {img.platform ===
+                                                        "nano-banana"
+                                                            ? "Nano Banana"
+                                                            : img.platform ===
+                                                              "seedream"
+                                                            ? "Seedream"
+                                                            : "OpenAI"}
+                                                    </div>
+                                                )}
+
+                                                <SafeImage
+                                                    src={img.imageUrl}
+                                                    alt={`Generated image ${
+                                                        sortedIndex + 1
+                                                    }`}
+                                                    style={{
+                                                        width: "100%",
+                                                        height: "100%",
+                                                        objectFit: "contain",
+                                                    }}
+                                                    selectedImages={
+                                                        selectedImages
+                                                    }
+                                                    selectedSessions={
+                                                        selectedSessions
+                                                    }
+                                                />
+
+                                                <div className="image-actions-overlay">
+                                                    <div className="actions-header">
+                                                        <button
+                                                            className="image-remove-btn"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                removeSelectedImage(
+                                                                    originalIndex
+                                                                );
+                                                            }}
+                                                            title="Remove"
+                                                        >
+                                                            <svg
+                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                width="20"
+                                                                height="20"
+                                                                fill="currentColor"
+                                                                viewBox="0 0 16 16"
+                                                            >
+                                                                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+                                                            </svg>
+                                                        </button>
+
+                                                        <div className="image-navigation-buttons">
+                                                            {hasMultipleInSession(
+                                                                originalIndex
+                                                            ) && (
+                                                                <>
+                                                                    <button
+                                                                        className="image-nav-btn prev"
+                                                                        onClick={(
+                                                                            e
+                                                                        ) =>
+                                                                            navigateImageThumbnail(
+                                                                                originalIndex,
+                                                                                "prev",
+                                                                                e
+                                                                            )
+                                                                        }
+                                                                        title="Previous in session"
+                                                                    >
+                                                                        <svg
+                                                                            xmlns="http://www.w3.org/2000/svg"
+                                                                            width="18px"
+                                                                            height="18px"
+                                                                            fill="currentColor"
+                                                                            viewBox="0 0 24 24"
+                                                                        >
+                                                                            <path
+                                                                                fillRule="evenodd"
+                                                                                d="M15.707 4.293a1 1 0 0 1 0 1.414L9.414 12l6.293 6.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 0 1 1.414 0Z"
+                                                                                clipRule="evenodd"
+                                                                            ></path>
+                                                                        </svg>
+                                                                    </button>
+
+                                                                    <button
+                                                                        className="image-nav-btn next"
+                                                                        onClick={(
+                                                                            e
+                                                                        ) =>
+                                                                            navigateImageThumbnail(
+                                                                                originalIndex,
+                                                                                "next",
+                                                                                e
+                                                                            )
+                                                                        }
+                                                                        title="Next in session"
+                                                                    >
+                                                                        <svg
+                                                                            xmlns="http://www.w3.org/2000/svg"
+                                                                            width="18"
+                                                                            height="18"
+                                                                            fill="currentColor"
+                                                                            viewBox="0 0 24 24"
+                                                                        >
+                                                                            <path
+                                                                                fillRule="evenodd"
+                                                                                d="M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z"
+                                                                                clipRule="evenodd"
+                                                                            ></path>
+                                                                        </svg>
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="image-actions">
+                                                        <div className="image-actions-left">
+                                                            <button
+                                                                className="image-action-btn"
+                                                                onClick={(
+                                                                    e
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    const image =
+                                                                        selectedImages[
+                                                                            originalIndex
+                                                                        ];
+                                                                    let promptText =
+                                                                        "";
+
+                                                                    if (
+                                                                        image.sessionId
+                                                                    ) {
+                                                                        const session =
+                                                                            selectedSessions.find(
+                                                                                (
+                                                                                    s
+                                                                                ) =>
+                                                                                    s.sessionId ===
+                                                                                    image.sessionId
+                                                                            );
+
+                                                                        if (
+                                                                            session &&
+                                                                            image.imageIndex !==
+                                                                                undefined
+                                                                        ) {
+                                                                            promptText =
+                                                                                session
+                                                                                    .list[
+                                                                                    image
+                                                                                        .imageIndex
+                                                                                ]
+                                                                                    .prompt;
+                                                                        } else if (
+                                                                            image.prompt
+                                                                        ) {
+                                                                            promptText =
+                                                                                image.prompt;
+                                                                        }
+                                                                    } else if (
+                                                                        image.prompt
+                                                                    ) {
+                                                                        promptText =
+                                                                            image.prompt;
+                                                                    }
+
+                                                                    if (
+                                                                        promptText
+                                                                    ) {
+                                                                        let textToCopy =
+                                                                            promptText;
+                                                                        if (
+                                                                            promptText.includes(
+                                                                                "<"
+                                                                            ) &&
+                                                                            promptText.includes(
+                                                                                ">"
+                                                                            )
+                                                                        ) {
+                                                                            const div =
+                                                                                document.createElement(
+                                                                                    "div"
+                                                                                );
+                                                                            div.innerHTML =
+                                                                                promptText
+                                                                                    .replace(
+                                                                                        /<(li|h[1-6]|p|div)>/gi,
+                                                                                        "\n\n<$1>"
+                                                                                    )
+                                                                                    .replace(
+                                                                                        /<br\s*\/?>/gi,
+                                                                                        "\n\n"
+                                                                                    );
+                                                                            textToCopy =
+                                                                                div.innerText
+                                                                                    .replace(
+                                                                                        /\n{2,}/g,
+                                                                                        "\n\n"
+                                                                                    )
+                                                                                    .replace(
+                                                                                        /^\n+|\n+$/g,
+                                                                                        ""
+                                                                                    );
+                                                                        }
+
+                                                                        navigator.clipboard
+                                                                            .writeText(
+                                                                                textToCopy
+                                                                            )
+                                                                            .then(
+                                                                                () => {
+                                                                                    const notification =
+                                                                                        document.createElement(
+                                                                                            "div"
+                                                                                        );
+                                                                                    notification.textContent =
+                                                                                        "Prompt copied!";
+                                                                                    notification.className =
+                                                                                        "copy-notification";
+                                                                                    document.body.appendChild(
+                                                                                        notification
+                                                                                    );
+                                                                                    setTimeout(
+                                                                                        () => {
+                                                                                            document.body.removeChild(
+                                                                                                notification
+                                                                                            );
+                                                                                        },
+                                                                                        2000
+                                                                                    );
+                                                                                }
+                                                                            )
+                                                                            .catch(
+                                                                                (
+                                                                                    err
+                                                                                ) => {
+                                                                                    console.error(
+                                                                                        "Failed to copy text: ",
+                                                                                        err
+                                                                                    );
+                                                                                }
+                                                                            );
+                                                                    }
+                                                                }}
+                                                                title="Copy prompt"
+                                                            >
+                                                                <svg
+                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                    width="1em"
+                                                                    height="1em"
+                                                                    fill="currentColor"
+                                                                    viewBox="0 0 24 24"
+                                                                >
+                                                                    <path
+                                                                        fillRule="evenodd"
+                                                                        d="M7 5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-2v2a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h2V5Zm2 2h5a3 3 0 0 1 3 3v5h2a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v2ZM5 9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5Z"
+                                                                        clipRule="evenodd"
+                                                                    ></path>
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                        <div className="image-actions-right">
+                                                            <button
+                                                                className="image-action-btn"
+                                                                onClick={(
+                                                                    e
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    const image =
+                                                                        selectedImages[
+                                                                            originalIndex
+                                                                        ];
+                                                                    let claudeResponse =
+                                                                        "";
+                                                                    let imageIndex = 0;
+                                                                    let imageName =
+                                                                        "";
+
+                                                                    if (
+                                                                        image.sessionId
+                                                                    ) {
+                                                                        const session =
+                                                                            selectedSessions.find(
+                                                                                (
+                                                                                    s
+                                                                                ) =>
+                                                                                    s.sessionId ===
+                                                                                    image.sessionId
+                                                                            );
+
+                                                                        if (
+                                                                            session
+                                                                        ) {
+                                                                            if (
+                                                                                image.imageIndex !==
+                                                                                undefined
+                                                                            ) {
+                                                                                imageIndex =
+                                                                                    image.imageIndex;
+                                                                                const imageData =
+                                                                                    session
+                                                                                        .list[
+                                                                                        imageIndex
+                                                                                    ];
+                                                                                imageName =
+                                                                                    imageData?.imageName ||
+                                                                                    "";
+                                                                                claudeResponse =
+                                                                                    imageData?.claudeResponse ||
+                                                                                    "";
+                                                                            } else {
+                                                                                const foundIndex =
+                                                                                    session.list.findIndex(
+                                                                                        (
+                                                                                            img
+                                                                                        ) =>
+                                                                                            img.imageBase64 ===
+                                                                                                image.imageUrl ||
+                                                                                            img.prompt ===
+                                                                                                image.prompt
+                                                                                    );
+                                                                                if (
+                                                                                    foundIndex !==
+                                                                                    -1
+                                                                                ) {
+                                                                                    imageIndex =
+                                                                                        foundIndex;
+                                                                                    const imageData =
+                                                                                        session
+                                                                                            .list[
+                                                                                            foundIndex
+                                                                                        ];
+                                                                                    imageName =
+                                                                                        imageData?.imageName ||
+                                                                                        "";
+                                                                                    claudeResponse =
+                                                                                        imageData?.claudeResponse ||
+                                                                                        "";
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    } else {
+                                                                        imageName =
+                                                                            image.imageName ||
+                                                                            "";
+                                                                        claudeResponse =
+                                                                            image.claudeResponse ||
+                                                                            "";
+                                                                    }
+
+                                                                    downloadImage(
+                                                                        image.imageUrl,
+                                                                        claudeResponse,
+                                                                        imageIndex,
+                                                                        imageName
+                                                                    );
+                                                                }}
+                                                                title="Download"
+                                                            >
+                                                                <svg
+                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                    width="18px"
+                                                                    height="18px"
+                                                                    fill="currentColor"
+                                                                    viewBox="0 0 24 24"
+                                                                >
+                                                                    <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
+                                                                </svg>
+                                                            </button>
+
+                                                            <button
+                                                                className="image-action-btn"
+                                                                onClick={(
+                                                                    e
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    addImageToPrompt(
+                                                                        img.imageUrl
+                                                                    );
+                                                                }}
+                                                                title="Add to prompt"
+                                                            >
+                                                                <svg
+                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                    width="18px"
+                                                                    height="18px"
+                                                                    fill="currentColor"
+                                                                    viewBox="0 0 24 24"
+                                                                >
+                                                                    <path
+                                                                        fillRule="evenodd"
+                                                                        d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z"
+                                                                        clipRule="evenodd"
+                                                                    ></path>
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                className="image-action-btn"
+                                                                onClick={(
+                                                                    e
+                                                                ) => {
+                                                                    e.stopPropagation();
+                                                                    editPrompt(
+                                                                        img.prompt
+                                                                    );
+                                                                }}
+                                                                title="Edit prompt"
+                                                            >
+                                                                <svg
+                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                    width="18px"
+                                                                    height="18px"
+                                                                    fill="currentColor"
+                                                                    viewBox="0 0 24 24"
+                                                                >
+                                                                    <path
+                                                                        fillRule="evenodd"
+                                                                        d="M13.293 4.293a4.536 4.536 0 1 1 6.414 6.414l-1 1-7.547 7.547a3 3 0 0 1-1.628.838l-5.368.894a1 1 0 0 1-1.15-1.15l.894-5.368a3 3 0 0 1 .838-1.628l8.547-8.547ZM13 7.414l-6.84 6.84a1 1 0 0 0-.279.543l-.664 3.986 3.986-.664a1 1 0 0 0 .543-.28L16.586 11 13 7.414Zm5 2.172L14.414 6l.293-.293a2.536 2.536 0 0 1 3.586 3.586L18 9.586Z"
+                                                                        clipRule="evenodd"
+                                                                    ></path>
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+
+                                    {!expandedGrid &&
+                                        Array(
+                                            Math.max(
+                                                0,
+                                                gridItemCount -
+                                                    selectedImages.length -
+                                                    (isLoading ? 1 : 0)
+                                            )
+                                        )
+                                            .fill(0)
+                                            .map((_, index) => (
+                                                <div
+                                                    key={`empty-${index}`}
+                                                    className={`image-items image-item-${
+                                                        selectedImages.length +
+                                                        (isLoading ? 1 : 0) +
+                                                        index +
+                                                        1
+                                                    }`}
+                                                />
+                                            ))}
+                                </div>
+
+                                <div className="overlap-4">
+                                    <div className="overlay-border-2">
+                                        <div
+                                            ref={imagesContainerRef}
+                                            className={`image-prompt-container ${
+                                                uploadedImages.length > 0
+                                                    ? "has-images"
+                                                    : ""
+                                            }`}
+                                        >
+                                            {uploadedImages.length > 0 && (
+                                                <div className="images-scrollable-container">
+                                                    {uploadedImages.map(
+                                                        (image, index) => (
+                                                            <div
+                                                                key={index}
+                                                                className="image-item-wrapper"
+                                                            >
+                                                                <img
+                                                                    src={image}
+                                                                    alt={`Uploaded ${
+                                                                        index +
+                                                                        1
+                                                                    }`}
+                                                                    className="uploaded-image-thumbnail"
+                                                                />
+                                                                <button
+                                                                    className="remove-image-btn"
+                                                                    onClick={() =>
+                                                                        removeImage(
+                                                                            index
+                                                                        )
+                                                                    }
+                                                                    aria-label="Remove image"
+                                                                >
+                                                                    <span className="remove-icon">
+                                                                        ×
+                                                                    </span>
+                                                                </button>
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {instructionsContent && (
+                                            <div className="instructions-preview-box">
+                                                <div className="instructions-preview-header">
+                                                    <span className="instructions-preview-title">
+                                                        📝 Active Instructions
+                                                    </span>
+                                                    <button
+                                                        className="instructions-preview-collapse"
+                                                        onClick={() =>
+                                                            setInstructionsContent(
+                                                                ""
+                                                            )
+                                                        }
+                                                        title="Hide instructions"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                                <div className="instructions-preview-content">
+                                                    {instructionsContent.substring(
+                                                        0,
+                                                        200
+                                                    )}
+                                                    {instructionsContent.length >
+                                                        200 && "..."}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="textarea-2">
+                                            <textarea
+                                                ref={textareaRef}
+                                                className="input-prompt"
+                                                placeholder="Describe what you want to see... (or paste image with Ctrl+V)"
+                                                onInput={(e) =>
+                                                    setPromptText(
+                                                        (
+                                                            e.target as HTMLTextAreaElement
+                                                        ).value
+                                                    )
+                                                }
+                                                onKeyPress={handleKeyPress}
+                                            ></textarea>
+                                        </div>
+
+                                        <div className="flex gap-10 justify-between prompt-actions">
+                                            <div className="flex">
+                                                <div
+                                                    className="button-menu-2 !hidden"
+                                                    ref={suggestionButtonRef}
+                                                    onClick={toggleSuggestions}
+                                                >
+                                                    <img
+                                                        className="SVG-6"
+                                                        alt="Svg"
+                                                        src="/img/svg-15.svg"
+                                                    />
+
+                                                    <div
+                                                        ref={suggestionsRef}
+                                                        className={`suggestions-box ${
+                                                            showSuggestions
+                                                                ? "visible"
+                                                                : ""
+                                                        }`}
+                                                    >
+                                                        {suggestionItems.map(
+                                                            (item, index) => (
+                                                                <div
+                                                                    key={index}
+                                                                    className="suggestion-item"
+                                                                    onClick={(
+                                                                        e
+                                                                    ) => {
+                                                                        e.stopPropagation();
+                                                                        handleSelectSuggestion(
+                                                                            item
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    {item}
+                                                                </div>
+                                                            )
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <ImageSizeSelector
+                                                    numberOfImages={
+                                                        numberOfImages
+                                                    }
+                                                    setNumberOfImages={
+                                                        setNumberOfImages
+                                                    }
+                                                    imageSizes={imageSizes}
+                                                    setImageSizes={
+                                                        setImageSizes
+                                                    }
+                                                    onCategoryChange={
+                                                        handleCategoryChange
+                                                    }
+                                                    onApiChange={
+                                                        handleApiChange
+                                                    }
+                                                    onAspectRatioChange={
+                                                        handleAspectRatioChange
+                                                    } // ✅ THÊM MỚI
+                                                    currentUser={currentUser}
+                                                />
+
+                                                <div
+                                                    className="button-6 bg-white rounded-full"
+                                                    onClick={handleUploadClick}
+                                                    title="Upload ảnh mới"
+                                                >
+                                                    <img
+                                                        className="SVG-6"
+                                                        alt="Svg"
+                                                        src="/img/svg-11.svg"
+                                                    />
+                                                    <input
+                                                        type="file"
+                                                        style={{
+                                                            display: "none",
+                                                        }}
+                                                        accept="image/*"
+                                                        ref={fileInputRef}
+                                                        onChange={
+                                                            handleFileChange
+                                                        }
+                                                        multiple
+                                                    />
+                                                </div>
+
+                                                <div
+                                                    className="button-6 bg-white rounded-full"
+                                                    onClick={
+                                                        toggleUploadedFilesPanel
+                                                    }
+                                                    title="Chọn từ file đã upload"
+                                                >
+                                                    <img
+                                                        className="SVG-6"
+                                                        alt="Svg"
+                                                        src="/img/svg-15.svg"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div
+                                                className={`button-7 ${
+                                                    promptText.trim()
+                                                        ? "active"
+                                                        : ""
+                                                }`}
+                                                onClick={
+                                                    promptText.trim()
+                                                        ? handleFormSubmit
+                                                        : undefined
+                                                }
+                                                ref={submitButtonRef}
+                                            >
+                                                <img
+                                                    className="SVG-6"
+                                                    alt="Svg"
+                                                    src="/img/svg-4.svg"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="overlay-shadow-26" />
                         </div>
-                      </div>
-                    );
-                  })}
+                    </div>
 
-                  {!expandedGrid &&
-                    Array(
-                      Math.max(
-                        0,
-                        gridItemCount -
-                          selectedImages.length -
-                          (isLoading ? 1 : 0)
-                      )
-                    )
-                      .fill(0)
-                      .map((_, index) => (
-                        <div
-                          key={`empty-${index}`}
-                          className={`image-items image-item-${
-                            selectedImages.length +
-                            (isLoading ? 1 : 0) +
-                            index +
-                            1
-                          }`}
-                        />
-                      ))}
-                </div>
-
-                <div className="overlap-4">
-                  <div className="overlay-border-2">
                     <div
-                      ref={imagesContainerRef}
-                      className={`image-prompt-container ${
-                        uploadedImages.length > 0 ? "has-images" : ""
-                      }`}
-                    >
-                      {uploadedImages.length > 0 && (
-                        <div className="images-scrollable-container">
-                          {uploadedImages.map((image, index) => (
-                            <div key={index} className="image-item-wrapper">
-                              <img
-                                src={image}
-                                alt={`Uploaded ${index + 1}`}
-                                className="uploaded-image-thumbnail"
-                              />
-                              <button
-                                className="remove-image-btn"
-                                onClick={() => removeImage(index)}
-                                aria-label="Remove image"
-                              >
-                                <span className="remove-icon">×</span>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {instructionsContent && (
-                      <div className="instructions-preview-box">
-                        <div className="instructions-preview-header">
-                          <span className="instructions-preview-title">
-                            📝 Active Instructions
-                          </span>
-                          <button
-                            className="instructions-preview-collapse"
-                            onClick={() => setInstructionsContent('')}
-                            title="Hide instructions"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        <div className="instructions-preview-content">
-                          {instructionsContent.substring(0, 200)}
-                          {instructionsContent.length > 200 && '...'}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="textarea-2">
-                      <textarea
-                        ref={textareaRef}
-                        className="input-prompt"
-                        placeholder="Describe what you want to see..."
-                        onInput={(e) =>
-                          setPromptText((e.target as HTMLTextAreaElement).value)
-                        }
-                        onKeyPress={handleKeyPress}
-                      ></textarea>
-                    </div>
-
-                    <div className="flex gap-10 justify-between prompt-actions">
-                      <div className="flex">
-                        <div
-                          className="button-menu-2 !hidden"
-                          ref={suggestionButtonRef}
-                          onClick={toggleSuggestions}
-                        >
-                          <img
-                            className="SVG-6"
-                            alt="Svg"
-                            src="/img/svg-15.svg"
-                          />
-
-                          <div
-                            ref={suggestionsRef}
-                            className={`suggestions-box ${
-                              showSuggestions ? "visible" : ""
-                            }`}
-                          >
-                            {suggestionItems.map((item, index) => (
-                              <div
-                                key={index}
-                                className="suggestion-item"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectSuggestion(item);
-                                }}
-                              >
-                                {item}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <ImageSizeSelector
-                          numberOfImages={numberOfImages}
-                          setNumberOfImages={setNumberOfImages}
-                          imageSizes={imageSizes}
-                          setImageSizes={setImageSizes}
-                          onCategoryChange={handleCategoryChange}
-                          onApiChange={handleApiChange}
-                          onAspectRatioChange={handleAspectRatioChange} // ✅ THÊM MỚI
-                          currentUser={currentUser}
-                        />
-
-                        {
-                          <div
-                            className="button-6 bg-white rounded-full"
-                            onClick={handleUploadClick}
-                          >
-                            <img
-                              className="SVG-6"
-                              alt="Svg"
-                              src="/img/svg-11.svg"
-                            />
-                            <input
-                              type="file"
-                              style={{ display: "none" }}
-                              accept="image/*"
-                              ref={fileInputRef}
-                              onChange={handleFileChange}
-                              multiple
-                            />
-                          </div>
-                        }
-                      </div>
-
-                      <div
-                        className={`button-7 ${
-                          promptText.trim() ? "active" : ""
+                        ref={historySidebarRef}
+                        className={`history-sidebar ${
+                            showHistorySidebar ? "visible" : ""
                         }`}
-                        onClick={
-                          promptText.trim() ? handleFormSubmit : undefined
-                        }
-                        ref={submitButtonRef}
-                      >
-                        <img className="SVG-6" alt="Svg" src="/img/svg-4.svg" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overlay-shadow-26" />
-            </div>
-          </div>
-
-          <div
-            ref={historySidebarRef}
-            className={`history-sidebar ${showHistorySidebar ? "visible" : ""}`}
-          >
-            <div className="history-content">
-              <HistorySidebar
-                isVisible={showHistorySidebar}
-                toggleSidebar={toggleHistorySidebar}
-                onItemClick={handleHistoryItemClick}
-                selectedImages={selectedImages}
-                maxGridItems={gridItemCount}
-                onSelectAll={(unselectedCount) => {
-                  setExpandedGrid(true);
-                  setGridItemCount(
-                    Math.max(
-                      gridItemCount,
-                      selectedImages.length + unselectedCount
-                    )
-                  );
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="container-8 main-header">
-        <div className="header-left">
-          <div className="button-dialog-2">
-            <div className="background-6">
-              <div className="text-wrapper-10">A</div>
-            </div>
-            <div className="flex gap-2.5">
-              <div className="container-9">
-                <div className="container-10">
-                  <div className="text-wrapper-9">AI IMAGE</div>
-                </div>
-              </div>
-
-              <img className="SVG-7" alt="Svg" src="/img/svg-13.svg" />
-            </div>
-          </div>
-
-          <div className="text-wrapper-8">/</div>
-
-          <div className="button-dialog-3">
-            <div className="container-11">
-              <div className="text-wrapper-11">AI Image Generator</div>
-            </div>
-
-            <img className="SVG-8" alt="Svg" src="/img/svg-14.svg" />
-          </div>
-        </div>
-
-        <div className="header-right">
-          <div className="background-wrapper">
-            <div className="header-right">
-              <div
-                className="link-6"
-                onClick={handleNavigateToProjectManagement}
-              >
-                <img className="SVG-9" alt="Svg" src="/img/svg-16.svg" />
-              </div>
-
-              <div
-                className="background-wrapper"
-                style={{ position: "relative" }}
-              >
-                <div
-                  className="background-7"
-                  onClick={() => setShowUserDropdown(!showUserDropdown)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <div className="text-wrapper-16">B</div>
-                </div>
-
-                {showUserDropdown && (
-                  <div className="user-dropdown-menu">
-                    <div className="user-info">
-                      <div className="user-name">MISEN</div>
-                      <div className="user-email">ai@miseninc.com</div>
-
-                      <div className="theme-toggles">
-                        <button className="theme-btn light-mode active">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="1em"
-                            height="1em"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M12 1a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V2a1 1 0 0 1 1-1ZM1 12a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2H2a1 1 0 0 1-1-1Zm19 0a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2h-1a1 1 0 0 1-1-1Zm-8 8a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1Zm0-12a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-6 4a6 6 0 1 1 12 0 6 6 0 0 1-12 0Zm-.364-7.778a1 1 0 1 0-1.414 1.414l.707.707A1 1 0 0 0 6.343 4.93l-.707-.707ZM4.222 18.364a1 1 0 1 0 1.414 1.414l.707-.707a1 1 0 1 0-1.414-1.414l-.707.707ZM17.657 4.929a1 1 0 1 0 1.414 1.414l.707-.707a1 1 0 0 0-1.414-1.414l-.707.707Zm1.414 12.728a1 1 0 1 0-1.414 1.414l.707.707a1 1 0 0 0 1.414-1.414l-.707-.707Z"
-                              clipRule="evenodd"
-                            ></path>
-                          </svg>
-                        </button>
-                        <button className="theme-btn dark-mode">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="1em"
-                            height="1em"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M12.784 2.47a1 1 0 0 1 .047.975A8 8 0 0 0 20 15h.057a1 1 0 0 1 .902 1.445A10 10 0 0 1 12 22C6.477 22 2 17.523 2 12c0-5.499 4.438-9.961 9.928-10a1 1 0 0 1 .856.47ZM10.41 4.158a8 8 0 1 0 7.942 12.707C13.613 16.079 10 11.96 10 7c0-.986.143-1.94.41-2.842Z"
-                              clipRule="evenodd"
-                            ></path>
-                          </svg>
-                        </button>
-                        <button className="theme-btn system-mode">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="1em"
-                            height="1em"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M5 4a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h3v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2h3a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H5Zm9 14v1h-4v-1h4Zm5-2a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14Z"
-                              clipRule="evenodd"
-                            ></path>
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="dropdown-menu-items">
-                      <button className="dropdown-item">Your profile</button>
-                      <button className="dropdown-item">
-                        Terms & policies
-                      </button>
-                      <button
-                        className="dropdown-item"
-                        onClick={async () => {
-                          try {
-                            await fetch("/api/auth/logout", {
-                              method: "POST",
-                              credentials: "include",
-                            });
-                            window.location.reload();
-                          } catch (error) {
-                            console.error("Logout failed:", error);
-                          }
-                        }}
-                      >
-                        Log out
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {currentViewImageIndex !== null &&
-        selectedImages[currentViewImageIndex] && (
-          <div className="image-viewer-modal">
-            <div className="image-viewer-container">
-              <button className="image-viewer-close" onClick={closeImageViewer}>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="1em"
-                  height="1em"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.636 5.636a1 1 0 0 1 1.414 0l4.95 4.95 4.95-4.95a1 1 0 0 1 1.414 1.414L13.414 12l4.95 4.95a1 1 0 0 1-1.414 1.414L12 13.414l-4.95 4.95a1 1 0 0 1-1.414-1.414l4.95-4.95-4.95-4.95a1 1 0 0 1 0-1.414Z"
-                    clipRule="evenodd"
-                  ></path>
-                </svg>
-              </button>
-
-              <div className="image-viewer-content">
-                <div className="image-viewer-left">
-                  {(() => {
-                    let platformName = "";
-                    if (currentSessionId) {
-                      const session = selectedSessions.find(
-                        (s) => s.sessionId === currentSessionId
-                      );
-                      if (session && session.list[currentSessionImageIndex]) {
-                        platformName = session.list[currentSessionImageIndex].platform;
-                        console.log("🔍 Platform from session:", session.list); // ✅ Debug
-                      }
-                    } else if (selectedImages[currentViewImageIndex]?.platform) {
-                      platformName = selectedImages[currentViewImageIndex].platform;
-                      console.log("🔍 Platform from image:", session.list); // ✅ Debug
-                    }
-                    
-                    return platformName ? (
-                      <div className={`platform-label platform-label-viewer platform-label-${platformName}`}>
-                        {platformName === 'nano-banana' ? 'Nano Banana' : 
-                        platformName === 'seedream' ? 'Seedream' : 
-                        'OpenAI'}
-                      </div>
-                    ) : null;
-                  })()}
-
-                  {currentSessionId && (() => {
-                    const session = selectedSessions.find(
-                      (s) => s.sessionId === currentSessionId
-                    );
-                    
-                    if (session && session.list[currentSessionImageIndex]) {
-                      // ✅ Sort session list by prompt groups
-                      const sortedList = sortImagesByPromptGroups(session.list);
-                      const currentImage = sortedList[currentSessionImageIndex];
-                      
-                      return (
-                        <img
-                          src={currentImage.imageBase64}
-                          alt="Enlarged view"
-                          className="image-viewer-img"
-                        />
-                      );
-                    }
-                  })()}
-                </div>
-
-                <div className="image-viewer-right">
-                  <div className="image-viewer-details">
-                    <div className="session-possition">
-                      <span className="session-possition-text">
-                        {currentSessionId &&
-                          (() => {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.list.length > 0) {
-                              return `${currentSessionImageIndex + 1}/${
-                                session.list.length
-                              }`;
-                            } else {
-                              return "1/1";
-                            }
-                          })()}
-                      </span>
-
-                      <div className="flex gap-2">
-                        {currentSessionId &&
-                          selectedSessions.find(
-                            (s) => s.sessionId === currentSessionId
-                          )?.list.length > 1 && (
-                            <button
-                              className="image-viewer-nav prev"
-                              onClick={() => navigateImage("prev")}
-                              title="Previous image"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="18px"
-                                height="18px"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M15.707 4.293a1 1 0 0 1 0 1.414L9.414 12l6.293 6.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 0 1 1.414 0Z"
-                                  clipRule="evenodd"
-                                ></path>
-                              </svg>
-                            </button>
-                          )}
-
-                        {currentSessionId &&
-                          (() => {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            return session && session.list.length > 1 ? (
-                              <button
-                                className="image-viewer-nav next"
-                                onClick={() => navigateImage("next")}
-                                title="Next image"
-                              >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="18px"
-                                  height="18px"
-                                  fill="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z"
-                                    clipRule="evenodd"
-                                  ></path>
-                                </svg>
-                              </button>
-                            ) : null;
-                          })()}
-                      </div>
-
-                      <button
-                        className="image-viewer-download"
-                        onClick={() => {
-                          if (
-                            currentSessionId &&
-                            currentViewImageIndex !== null
-                          ) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex]
-                            ) {
-                              const imageData =
-                                session.list[currentSessionImageIndex];
-                              downloadImage(
-                                imageData.imageBase64,
-                                imageData.claudeResponse,
-                                currentSessionImageIndex,
-                                imageData.imageName
-                              );
-                            } else if (selectedImages[currentViewImageIndex]) {
-                              const imageData =
-                                selectedImages[currentViewImageIndex];
-                              downloadImage(
-                                imageData.imageUrl,
-                                imageData.claudeResponse,
-                                imageData.imageIndex || 0,
-                                imageData.imageName
-                              );
-                            }
-                          }
-                        }}
-                        title="Download image"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="1em"
-                          height="1em"
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
-                        </svg>
-                      </button>
-                    </div>
-
-                    <div className="image-info-dropdowns">
-                      <ImageInfoDropdown
-                        title="Describe"
-                        copyContent={(() => {
-                          // FIX: Enhanced debug and logic to get describe
-                          console.log(
-                            "🔍 DEBUG Describe - Getting copyContent"
-                          );
-                          console.log("🔍 currentSessionId:", currentSessionId);
-                          console.log(
-                            "🔍 currentViewImageIndex:",
-                            currentViewImageIndex
-                          );
-                          console.log(
-                            "🔍 selectedSessions length:",
-                            selectedSessions.length
-                          );
-                          console.log(
-                            "🔍 selectedImages length:",
-                            selectedImages.length
-                          );
-
-                          let describeText = "No description available";
-
-                          // Method 1: Get from currentSessionId
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            console.log(
-                              "🔍 Found session by currentSessionId:",
-                              session ? "YES" : "NO"
-                            );
-                            if (session) {
-                              console.log(
-                                "🔍 Session describe value:",
-                                session.describe
-                              );
-                              if (session.describe) {
-                                describeText = session.describe;
-                                console.log(
-                                  "✅ Found describe from currentSessionId:",
-                                  describeText
-                                );
-                              }
-                            }
-                          }
-
-                          // Method 2: Get from current image's session
-                          if (
-                            describeText === "No description available" &&
-                            currentViewImageIndex !== null
-                          ) {
-                            const currentImage =
-                              selectedImages[currentViewImageIndex];
-                            console.log(
-                              "🔍 Current image:",
-                              currentImage ? "EXISTS" : "NULL"
-                            );
-                            if (currentImage) {
-                              console.log(
-                                "🔍 Current image sessionId:",
-                                currentImage.sessionId
-                              );
-                              if (currentImage.sessionId) {
-                                const session = selectedSessions.find(
-                                  (s) => s.sessionId === currentImage.sessionId
-                                );
-                                console.log(
-                                  "🔍 Found session by image sessionId:",
-                                  session ? "YES" : "NO"
-                                );
-                                if (session) {
-                                  console.log(
-                                    "🔍 Session describe value:",
-                                    session.describe
-                                  );
-                                  if (session.describe) {
-                                    describeText = session.describe;
-                                    console.log(
-                                      "✅ Found describe from currentImage session:",
-                                      describeText
+                    >
+                        <div className="history-content">
+                            <HistorySidebar
+                                isVisible={showHistorySidebar}
+                                toggleSidebar={toggleHistorySidebar}
+                                onItemClick={handleHistoryItemClick}
+                                selectedImages={selectedImages}
+                                maxGridItems={gridItemCount}
+                                onSelectAll={(unselectedCount) => {
+                                    setExpandedGrid(true);
+                                    setGridItemCount(
+                                        Math.max(
+                                            gridItemCount,
+                                            selectedImages.length +
+                                                unselectedCount
+                                        )
                                     );
-                                  }
-                                }
-                              }
-                            }
-                          }
-
-                          // Method 3: Brute force - check all sessions
-                          if (describeText === "No description available") {
-                            console.log(
-                              "🔍 Brute force checking all sessions..."
-                            );
-                            selectedSessions.forEach((session, index) => {
-                              console.log(`🔍 Session ${index}:`, {
-                                sessionId: session.sessionId,
-                                describe: session.describe,
-                                hasDescribe: !!session.describe,
-                              });
-                            });
-
-                            // Try to get from any session that has describe
-                            const sessionWithDescribe = selectedSessions.find(
-                              (s) => s.describe
-                            );
-                            if (sessionWithDescribe) {
-                              describeText = sessionWithDescribe.describe;
-                              console.log(
-                                "✅ Found describe from any session:",
-                                describeText
-                              );
-                            }
-                          }
-
-                          console.log(
-                            "🔖 Final describe for copy:",
-                            describeText
-                          );
-                          return describeText;
-                        })()}
-                      >
-                        {(() => {
-                          // FIX: Enhanced debug and logic to get describe for display
-                          console.log(
-                            "🔍 DEBUG Describe - Getting display content"
-                          );
-
-                          let describeText = "No description available";
-
-                          // Method 1: Get from currentSessionId
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (session && session.describe) {
-                              describeText = session.describe;
-                              console.log(
-                                "✅ Display describe from currentSessionId:",
-                                describeText
-                              );
-                            }
-                          }
-
-                          // Method 2: Get from current image's session
-                          if (
-                            describeText === "No description available" &&
-                            currentViewImageIndex !== null
-                          ) {
-                            const currentImage =
-                              selectedImages[currentViewImageIndex];
-                            if (currentImage && currentImage.sessionId) {
-                              const session = selectedSessions.find(
-                                (s) => s.sessionId === currentImage.sessionId
-                              );
-                              if (session && session.describe) {
-                                describeText = session.describe;
-                                console.log(
-                                  "✅ Display describe from currentImage session:",
-                                  describeText
-                                );
-                              }
-                            }
-                          }
-
-                          // Method 3: Brute force - get from any session that has describe
-                          if (describeText === "No description available") {
-                            const sessionWithDescribe = selectedSessions.find(
-                              (s) => s.describe
-                            );
-                            if (sessionWithDescribe) {
-                              describeText = sessionWithDescribe.describe;
-                              console.log(
-                                "✅ Display describe from any session:",
-                                describeText
-                              );
-                            }
-                          }
-
-                          console.log(
-                            "🔖 Final describe for display:",
-                            describeText
-                          );
-                          return (
-                            <p className="prompt-text describe-box">
-                              {describeText}
-                            </p>
-                          );
-                        })()}
-                      </ImageInfoDropdown>
-
-                      <ImageInfoDropdown
-                        title="Image Prompt"
-                        isOpen={true}
-                        copyContent={(() => {
-                          let currentImagePrompt = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex]
-                            ) {
-                              currentImagePrompt =
-                                session.list[currentSessionImageIndex].prompt;
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.prompt
-                          ) {
-                            currentImagePrompt =
-                              selectedImages[currentViewImageIndex].prompt;
-                          }
-
-                          return currentImagePrompt || "No prompt available";
-                        })()}
-                      >
-                        {(() => {
-                          let currentImagePrompt = "";
-
-                          if (currentSessionId) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex]
-                            ) {
-                              currentImagePrompt =
-                                session.list[currentSessionImageIndex].prompt;
-                            }
-                          } else if (
-                            selectedImages[currentViewImageIndex]?.prompt
-                          ) {
-                            currentImagePrompt =
-                              selectedImages[currentViewImageIndex].prompt;
-                          }
-
-                          return (
-                            <div
-                              className="prompt-text html-content main-prompt"
-                              dangerouslySetInnerHTML={{
-                                __html:
-                                  currentImagePrompt || "No prompt available",
-                              }}
+                                }}
                             />
-                          );
-                        })()}
-                      </ImageInfoDropdown>
+                        </div>
                     </div>
-                  </div>
                 </div>
-              </div>
             </div>
-          </div>
-        )}
-    </div>
-  );
+
+            <div className="container-8 main-header">
+                <div className="header-left">
+                    <div className="button-dialog-2">
+                        <div className="background-6">
+                            <div className="text-wrapper-10">A</div>
+                        </div>
+                        <div className="flex gap-2.5">
+                            <div className="container-9">
+                                <div className="container-10">
+                                    <div className="text-wrapper-9">
+                                        AI IMAGE
+                                    </div>
+                                </div>
+                            </div>
+
+                            <img
+                                className="SVG-7"
+                                alt="Svg"
+                                src="/img/svg-13.svg"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="text-wrapper-8">/</div>
+
+                    <div className="button-dialog-3">
+                        <div className="container-11">
+                            <div className="text-wrapper-11">
+                                AI Image Generator
+                            </div>
+                        </div>
+
+                        <img
+                            className="SVG-8"
+                            alt="Svg"
+                            src="/img/svg-14.svg"
+                        />
+                    </div>
+                </div>
+
+                <div className="header-right">
+                    <div className="background-wrapper">
+                        <div className="header-right">
+                            <div
+                                className="link-6"
+                                onClick={handleNavigateToProjectManagement}
+                            >
+                                <img
+                                    className="SVG-9"
+                                    alt="Svg"
+                                    src="/img/svg-16.svg"
+                                />
+                            </div>
+
+                            <div
+                                className="background-wrapper"
+                                style={{ position: "relative" }}
+                            >
+                                <div
+                                    className="background-7"
+                                    onClick={() =>
+                                        setShowUserDropdown(!showUserDropdown)
+                                    }
+                                    style={{ cursor: "pointer" }}
+                                >
+                                    <div className="text-wrapper-16">B</div>
+                                </div>
+
+                                {showUserDropdown && (
+                                    <div className="user-dropdown-menu">
+                                        <div className="user-info">
+                                            <div className="user-name">
+                                                MISEN
+                                            </div>
+                                            <div className="user-email">
+                                                ai@miseninc.com
+                                            </div>
+
+                                            <div className="theme-toggles">
+                                                <button className="theme-btn light-mode active">
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        width="1em"
+                                                        height="1em"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path
+                                                            fillRule="evenodd"
+                                                            d="M12 1a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V2a1 1 0 0 1 1-1ZM1 12a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2H2a1 1 0 0 1-1-1Zm19 0a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2h-1a1 1 0 0 1-1-1Zm-8 8a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1Zm0-12a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-6 4a6 6 0 1 1 12 0 6 6 0 0 1-12 0Zm-.364-7.778a1 1 0 1 0-1.414 1.414l.707.707A1 1 0 0 0 6.343 4.93l-.707-.707ZM4.222 18.364a1 1 0 1 0 1.414 1.414l.707-.707a1 1 0 1 0-1.414-1.414l-.707.707ZM17.657 4.929a1 1 0 1 0 1.414 1.414l.707-.707a1 1 0 0 0-1.414-1.414l-.707.707Zm1.414 12.728a1 1 0 1 0-1.414 1.414l.707.707a1 1 0 0 0 1.414-1.414l-.707-.707Z"
+                                                            clipRule="evenodd"
+                                                        ></path>
+                                                    </svg>
+                                                </button>
+                                                <button className="theme-btn dark-mode">
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        width="1em"
+                                                        height="1em"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path
+                                                            fillRule="evenodd"
+                                                            d="M12.784 2.47a1 1 0 0 1 .047.975A8 8 0 0 0 20 15h.057a1 1 0 0 1 .902 1.445A10 10 0 0 1 12 22C6.477 22 2 17.523 2 12c0-5.499 4.438-9.961 9.928-10a1 1 0 0 1 .856.47ZM10.41 4.158a8 8 0 1 0 7.942 12.707C13.613 16.079 10 11.96 10 7c0-.986.143-1.94.41-2.842Z"
+                                                            clipRule="evenodd"
+                                                        ></path>
+                                                    </svg>
+                                                </button>
+                                                <button className="theme-btn system-mode">
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        width="1em"
+                                                        height="1em"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path
+                                                            fillRule="evenodd"
+                                                            d="M5 4a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h3v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2h3a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H5Zm9 14v1h-4v-1h4Zm5-2a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14Z"
+                                                            clipRule="evenodd"
+                                                        ></path>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="dropdown-menu-items">
+                                            <button className="dropdown-item">
+                                                Your profile
+                                            </button>
+                                            <button className="dropdown-item">
+                                                Terms & policies
+                                            </button>
+                                            <button
+                                                className="dropdown-item"
+                                                onClick={async () => {
+                                                    try {
+                                                        await fetch(
+                                                            "/api/auth/logout",
+                                                            {
+                                                                method: "POST",
+                                                                credentials:
+                                                                    "include",
+                                                            }
+                                                        );
+                                                        window.location.reload();
+                                                    } catch (error) {
+                                                        console.error(
+                                                            "Logout failed:",
+                                                            error
+                                                        );
+                                                    }
+                                                }}
+                                            >
+                                                Log out
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {currentViewImageIndex !== null &&
+                selectedImages[currentViewImageIndex] && (
+                    <div className="image-viewer-modal">
+                        <div className="image-viewer-container">
+                            <button
+                                className="image-viewer-close"
+                                onClick={closeImageViewer}
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="1em"
+                                    height="1em"
+                                    fill="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        fillRule="evenodd"
+                                        d="M5.636 5.636a1 1 0 0 1 1.414 0l4.95 4.95 4.95-4.95a1 1 0 0 1 1.414 1.414L13.414 12l4.95 4.95a1 1 0 0 1-1.414 1.414L12 13.414l-4.95 4.95a1 1 0 0 1-1.414-1.414l4.95-4.95-4.95-4.95a1 1 0 0 1 0-1.414Z"
+                                        clipRule="evenodd"
+                                    ></path>
+                                </svg>
+                            </button>
+
+                            <div className="image-viewer-content">
+                                <div className="image-viewer-left">
+                                    {(() => {
+                                        let platformName = "";
+                                        if (currentSessionId) {
+                                            const session =
+                                                selectedSessions.find(
+                                                    (s) =>
+                                                        s.sessionId ===
+                                                        currentSessionId
+                                                );
+                                            if (
+                                                session &&
+                                                session.list[
+                                                    currentSessionImageIndex
+                                                ]
+                                            ) {
+                                                platformName =
+                                                    session.list[
+                                                        currentSessionImageIndex
+                                                    ].platform;
+                                                console.log(
+                                                    "🔍 Platform from session:",
+                                                    session.list
+                                                ); // ✅ Debug
+                                            }
+                                        } else if (
+                                            selectedImages[
+                                                currentViewImageIndex
+                                            ]?.platform
+                                        ) {
+                                            platformName =
+                                                selectedImages[
+                                                    currentViewImageIndex
+                                                ].platform;
+                                            console.log(
+                                                "🔍 Platform from image:",
+                                                session.list
+                                            ); // ✅ Debug
+                                        }
+
+                                        return platformName ? (
+                                            <div
+                                                className={`platform-label platform-label-viewer platform-label-${platformName}`}
+                                            >
+                                                {platformName === "nano-banana"
+                                                    ? "Nano Banana"
+                                                    : platformName ===
+                                                      "seedream"
+                                                    ? "Seedream"
+                                                    : "OpenAI"}
+                                            </div>
+                                        ) : null;
+                                    })()}
+
+                                    {currentSessionId &&
+                                        (() => {
+                                            const session =
+                                                selectedSessions.find(
+                                                    (s) =>
+                                                        s.sessionId ===
+                                                        currentSessionId
+                                                );
+
+                                            if (
+                                                session &&
+                                                session.list[
+                                                    currentSessionImageIndex
+                                                ]
+                                            ) {
+                                                // ✅ Sort session list by prompt groups
+                                                const sortedList =
+                                                    sortImagesByPromptGroups(
+                                                        session.list
+                                                    );
+                                                const currentImage =
+                                                    sortedList[
+                                                        currentSessionImageIndex
+                                                    ];
+
+                                                return (
+                                                    <img
+                                                        src={
+                                                            currentImage.imageBase64
+                                                        }
+                                                        alt="Enlarged view"
+                                                        className="image-viewer-img"
+                                                    />
+                                                );
+                                            }
+                                        })()}
+                                </div>
+
+                                <div className="image-viewer-right">
+                                    <div className="image-viewer-details">
+                                        <div className="session-possition">
+                                            <span className="session-possition-text">
+                                                {currentSessionId &&
+                                                    (() => {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    currentSessionId
+                                                            );
+                                                        if (
+                                                            session &&
+                                                            session.list
+                                                                .length > 0
+                                                        ) {
+                                                            return `${
+                                                                currentSessionImageIndex +
+                                                                1
+                                                            }/${
+                                                                session.list
+                                                                    .length
+                                                            }`;
+                                                        } else {
+                                                            return "1/1";
+                                                        }
+                                                    })()}
+                                            </span>
+
+                                            <div className="flex gap-2">
+                                                {currentSessionId &&
+                                                    selectedSessions.find(
+                                                        (s) =>
+                                                            s.sessionId ===
+                                                            currentSessionId
+                                                    )?.list.length > 1 && (
+                                                        <button
+                                                            className="image-viewer-nav prev"
+                                                            onClick={() =>
+                                                                navigateImage(
+                                                                    "prev"
+                                                                )
+                                                            }
+                                                            title="Previous image"
+                                                        >
+                                                            <svg
+                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                width="18px"
+                                                                height="18px"
+                                                                fill="currentColor"
+                                                                viewBox="0 0 24 24"
+                                                            >
+                                                                <path
+                                                                    fillRule="evenodd"
+                                                                    d="M15.707 4.293a1 1 0 0 1 0 1.414L9.414 12l6.293 6.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 0 1 1.414 0Z"
+                                                                    clipRule="evenodd"
+                                                                ></path>
+                                                            </svg>
+                                                        </button>
+                                                    )}
+
+                                                {currentSessionId &&
+                                                    (() => {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    currentSessionId
+                                                            );
+                                                        return session &&
+                                                            session.list
+                                                                .length > 1 ? (
+                                                            <button
+                                                                className="image-viewer-nav next"
+                                                                onClick={() =>
+                                                                    navigateImage(
+                                                                        "next"
+                                                                    )
+                                                                }
+                                                                title="Next image"
+                                                            >
+                                                                <svg
+                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                    width="18px"
+                                                                    height="18px"
+                                                                    fill="currentColor"
+                                                                    viewBox="0 0 24 24"
+                                                                >
+                                                                    <path
+                                                                        fillRule="evenodd"
+                                                                        d="M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z"
+                                                                        clipRule="evenodd"
+                                                                    ></path>
+                                                                </svg>
+                                                            </button>
+                                                        ) : null;
+                                                    })()}
+                                            </div>
+
+                                            <button
+                                                className="image-viewer-download"
+                                                onClick={() => {
+                                                    if (
+                                                        currentSessionId &&
+                                                        currentViewImageIndex !==
+                                                            null
+                                                    ) {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    currentSessionId
+                                                            );
+
+                                                        if (
+                                                            session &&
+                                                            session.list[
+                                                                currentSessionImageIndex
+                                                            ]
+                                                        ) {
+                                                            const imageData =
+                                                                session.list[
+                                                                    currentSessionImageIndex
+                                                                ];
+                                                            downloadImage(
+                                                                imageData.imageBase64,
+                                                                imageData.claudeResponse,
+                                                                currentSessionImageIndex,
+                                                                imageData.imageName
+                                                            );
+                                                        } else if (
+                                                            selectedImages[
+                                                                currentViewImageIndex
+                                                            ]
+                                                        ) {
+                                                            const imageData =
+                                                                selectedImages[
+                                                                    currentViewImageIndex
+                                                                ];
+                                                            downloadImage(
+                                                                imageData.imageUrl,
+                                                                imageData.claudeResponse,
+                                                                imageData.imageIndex ||
+                                                                    0,
+                                                                imageData.imageName
+                                                            );
+                                                        }
+                                                    }
+                                                }}
+                                                title="Download image"
+                                            >
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    width="1em"
+                                                    height="1em"
+                                                    fill="currentColor"
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <path d="M7.707 10.293a1 1 0 1 0-1.414 1.414l5 5a1 1 0 0 0 1.414 0l5-5a1 1 0 0 0-1.414-1.414L13 13.586V4a1 1 0 1 0-2 0v9.586l-3.293-3.293ZM5 19a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5Z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        <div className="image-info-dropdowns">
+                                            <ImageInfoDropdown
+                                                title="Describe"
+                                                copyContent={(() => {
+                                                    // FIX: Enhanced debug and logic to get describe
+                                                    console.log(
+                                                        "🔍 DEBUG Describe - Getting copyContent"
+                                                    );
+                                                    console.log(
+                                                        "🔍 currentSessionId:",
+                                                        currentSessionId
+                                                    );
+                                                    console.log(
+                                                        "🔍 currentViewImageIndex:",
+                                                        currentViewImageIndex
+                                                    );
+                                                    console.log(
+                                                        "🔍 selectedSessions length:",
+                                                        selectedSessions.length
+                                                    );
+                                                    console.log(
+                                                        "🔍 selectedImages length:",
+                                                        selectedImages.length
+                                                    );
+
+                                                    let describeText =
+                                                        "No description available";
+
+                                                    // Method 1: Get from currentSessionId
+                                                    if (currentSessionId) {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    currentSessionId
+                                                            );
+                                                        console.log(
+                                                            "🔍 Found session by currentSessionId:",
+                                                            session
+                                                                ? "YES"
+                                                                : "NO"
+                                                        );
+                                                        if (session) {
+                                                            console.log(
+                                                                "🔍 Session describe value:",
+                                                                session.describe
+                                                            );
+                                                            if (
+                                                                session.describe
+                                                            ) {
+                                                                describeText =
+                                                                    session.describe;
+                                                                console.log(
+                                                                    "✅ Found describe from currentSessionId:",
+                                                                    describeText
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Method 2: Get from current image's session
+                                                    if (
+                                                        describeText ===
+                                                            "No description available" &&
+                                                        currentViewImageIndex !==
+                                                            null
+                                                    ) {
+                                                        const currentImage =
+                                                            selectedImages[
+                                                                currentViewImageIndex
+                                                            ];
+                                                        console.log(
+                                                            "🔍 Current image:",
+                                                            currentImage
+                                                                ? "EXISTS"
+                                                                : "NULL"
+                                                        );
+                                                        if (currentImage) {
+                                                            console.log(
+                                                                "🔍 Current image sessionId:",
+                                                                currentImage.sessionId
+                                                            );
+                                                            if (
+                                                                currentImage.sessionId
+                                                            ) {
+                                                                const session =
+                                                                    selectedSessions.find(
+                                                                        (s) =>
+                                                                            s.sessionId ===
+                                                                            currentImage.sessionId
+                                                                    );
+                                                                console.log(
+                                                                    "🔍 Found session by image sessionId:",
+                                                                    session
+                                                                        ? "YES"
+                                                                        : "NO"
+                                                                );
+                                                                if (session) {
+                                                                    console.log(
+                                                                        "🔍 Session describe value:",
+                                                                        session.describe
+                                                                    );
+                                                                    if (
+                                                                        session.describe
+                                                                    ) {
+                                                                        describeText =
+                                                                            session.describe;
+                                                                        console.log(
+                                                                            "✅ Found describe from currentImage session:",
+                                                                            describeText
+                                                                        );
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Method 3: Brute force - check all sessions
+                                                    if (
+                                                        describeText ===
+                                                        "No description available"
+                                                    ) {
+                                                        console.log(
+                                                            "🔍 Brute force checking all sessions..."
+                                                        );
+                                                        selectedSessions.forEach(
+                                                            (
+                                                                session,
+                                                                index
+                                                            ) => {
+                                                                console.log(
+                                                                    `🔍 Session ${index}:`,
+                                                                    {
+                                                                        sessionId:
+                                                                            session.sessionId,
+                                                                        describe:
+                                                                            session.describe,
+                                                                        hasDescribe:
+                                                                            !!session.describe,
+                                                                    }
+                                                                );
+                                                            }
+                                                        );
+
+                                                        // Try to get from any session that has describe
+                                                        const sessionWithDescribe =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.describe
+                                                            );
+                                                        if (
+                                                            sessionWithDescribe
+                                                        ) {
+                                                            describeText =
+                                                                sessionWithDescribe.describe;
+                                                            console.log(
+                                                                "✅ Found describe from any session:",
+                                                                describeText
+                                                            );
+                                                        }
+                                                    }
+
+                                                    console.log(
+                                                        "🔖 Final describe for copy:",
+                                                        describeText
+                                                    );
+                                                    return describeText;
+                                                })()}
+                                            >
+                                                {(() => {
+                                                    // FIX: Enhanced debug and logic to get describe for display
+                                                    console.log(
+                                                        "🔍 DEBUG Describe - Getting display content"
+                                                    );
+
+                                                    let describeText =
+                                                        "No description available";
+
+                                                    // Method 1: Get from currentSessionId
+                                                    if (currentSessionId) {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    currentSessionId
+                                                            );
+                                                        if (
+                                                            session &&
+                                                            session.describe
+                                                        ) {
+                                                            describeText =
+                                                                session.describe;
+                                                            console.log(
+                                                                "✅ Display describe from currentSessionId:",
+                                                                describeText
+                                                            );
+                                                        }
+                                                    }
+
+                                                    // Method 2: Get from current image's session
+                                                    if (
+                                                        describeText ===
+                                                            "No description available" &&
+                                                        currentViewImageIndex !==
+                                                            null
+                                                    ) {
+                                                        const currentImage =
+                                                            selectedImages[
+                                                                currentViewImageIndex
+                                                            ];
+                                                        if (
+                                                            currentImage &&
+                                                            currentImage.sessionId
+                                                        ) {
+                                                            const session =
+                                                                selectedSessions.find(
+                                                                    (s) =>
+                                                                        s.sessionId ===
+                                                                        currentImage.sessionId
+                                                                );
+                                                            if (
+                                                                session &&
+                                                                session.describe
+                                                            ) {
+                                                                describeText =
+                                                                    session.describe;
+                                                                console.log(
+                                                                    "✅ Display describe from currentImage session:",
+                                                                    describeText
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Method 3: Brute force - get from any session that has describe
+                                                    if (
+                                                        describeText ===
+                                                        "No description available"
+                                                    ) {
+                                                        const sessionWithDescribe =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.describe
+                                                            );
+                                                        if (
+                                                            sessionWithDescribe
+                                                        ) {
+                                                            describeText =
+                                                                sessionWithDescribe.describe;
+                                                            console.log(
+                                                                "✅ Display describe from any session:",
+                                                                describeText
+                                                            );
+                                                        }
+                                                    }
+
+                                                    console.log(
+                                                        "🔖 Final describe for display:",
+                                                        describeText
+                                                    );
+                                                    return (
+                                                        <p className="prompt-text describe-box">
+                                                            {describeText}
+                                                        </p>
+                                                    );
+                                                })()}
+                                            </ImageInfoDropdown>
+
+                                            <ImageInfoDropdown
+                                                title="Image Prompt"
+                                                isOpen={true}
+                                                copyContent={(() => {
+                                                    let currentImagePrompt = "";
+
+                                                    if (currentSessionId) {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    currentSessionId
+                                                            );
+                                                        if (
+                                                            session &&
+                                                            session.list[
+                                                                currentSessionImageIndex
+                                                            ]
+                                                        ) {
+                                                            currentImagePrompt =
+                                                                session.list[
+                                                                    currentSessionImageIndex
+                                                                ].prompt;
+                                                        }
+                                                    } else if (
+                                                        selectedImages[
+                                                            currentViewImageIndex
+                                                        ]?.prompt
+                                                    ) {
+                                                        currentImagePrompt =
+                                                            selectedImages[
+                                                                currentViewImageIndex
+                                                            ].prompt;
+                                                    }
+
+                                                    return (
+                                                        currentImagePrompt ||
+                                                        "No prompt available"
+                                                    );
+                                                })()}
+                                            >
+                                                {(() => {
+                                                    let currentImagePrompt = "";
+
+                                                    if (currentSessionId) {
+                                                        const session =
+                                                            selectedSessions.find(
+                                                                (s) =>
+                                                                    s.sessionId ===
+                                                                    currentSessionId
+                                                            );
+                                                        if (
+                                                            session &&
+                                                            session.list[
+                                                                currentSessionImageIndex
+                                                            ]
+                                                        ) {
+                                                            currentImagePrompt =
+                                                                session.list[
+                                                                    currentSessionImageIndex
+                                                                ].prompt;
+                                                        }
+                                                    } else if (
+                                                        selectedImages[
+                                                            currentViewImageIndex
+                                                        ]?.prompt
+                                                    ) {
+                                                        currentImagePrompt =
+                                                            selectedImages[
+                                                                currentViewImageIndex
+                                                            ].prompt;
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            className="prompt-text html-content main-prompt"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    currentImagePrompt ||
+                                                                    "No prompt available",
+                                                            }}
+                                                        />
+                                                    );
+                                                })()}
+                                            </ImageInfoDropdown>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+            {/* ✅ THÊM MỚI: UploadedFilesPanel */}
+            <UploadedFilesPanel
+                isVisible={showUploadedFilesPanel}
+                onFileSelect={handleUploadedFileSelect}
+                onClose={() => setShowUploadedFilesPanel(false)}
+            />
+
+            {/* ✅ THÊM MỚI: Drag and Drop Overlay */}
+            {isDragOver && (
+                <div className="drag-drop-overlay">
+                    <div className="drag-drop-content">
+                        <div className="drag-drop-icon">📷</div>
+                        <div className="drag-drop-text">
+                            Drop your images here
+                        </div>
+                        <div className="drag-drop-subtext">
+                            Supports JPG, PNG, GIF, WebP
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 };

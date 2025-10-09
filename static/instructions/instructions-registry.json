@@ -50,14 +50,14 @@
     "lastModified": "2025-10-02T09:49:57.343Z"
   },
   "system_prompt_universal_google_ads_shopping_image_generator.txt": {
-    "project": "Google Ads DeepSeek User Instructions",
+    "project": "uyhgguy",
     "category": "google-ads",
     "subcategory": "shopping-image-generator",
     "instructionType": "system",
     "targetModel": "universal",
     "status": "active",
     "createdAt": "2025-10-02T09:45:15.341Z",
-    "lastModified": "2025-10-02T09:48:52.851Z"
+    "lastModified": "2025-10-09T09:19:38.675Z"
   },
   "system_prompt_universal_google_ads_youtube_thumbnail_generator.txt": {
     "project": "Google Ads DeepSeek User Instructions",
