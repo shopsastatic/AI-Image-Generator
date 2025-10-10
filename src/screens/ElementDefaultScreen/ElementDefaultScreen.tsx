@@ -1826,7 +1826,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     requestAnimationFrame(() => {
       const scrollHeight = textarea.scrollHeight;
-      const maxHeight = 126;
+      const maxHeight = 400;
       const minHeight = 40;
 
       if (!textarea.value.trim()) {
