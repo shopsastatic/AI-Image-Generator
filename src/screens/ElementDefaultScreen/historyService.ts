@@ -16,6 +16,7 @@ interface HistoryImage {
   prompt: string;
   category: string;
   subCategory: string;
+  platform: string;
   timestamp: string;
 }
 
@@ -24,6 +25,7 @@ interface HistorySession {
   describe: string;
   category: string;
   subCategory: string;
+  platform: string;
   images: HistoryImage[];
   timestamp: string;
   createdAt: string;
@@ -38,6 +40,7 @@ interface HistoryDateGroup {
     imageCount: number;
     category: string;
     subCategory: string;
+    platform: string;
   }[];
 }
 
@@ -106,6 +109,7 @@ class HistoryService {
           prompt: item.data.prompt?.[i] || item.data.describe || '',
           category: item.data.category || '',
           subCategory: item.data.sub_category || '',
+          platform: item.data.platform || '',
           timestamp: item.created_at || new Date().toISOString(),
         });
       }
@@ -115,6 +119,7 @@ class HistoryService {
         describe: item.data.describe || '',
         category: item.data.category || '',
         subCategory: item.data.sub_category || '',
+        platform: item.data.platform || '',
         images: images,
         timestamp: item.created_at || new Date().toISOString(),
         createdAt: item.created_at || new Date().toISOString(),
@@ -160,6 +165,7 @@ class HistoryService {
         imageCount: session.images.length,
         category: session.category || '',
         subCategory: session.subCategory || '',
+        platform: session.platform || '',
       });
     }
 

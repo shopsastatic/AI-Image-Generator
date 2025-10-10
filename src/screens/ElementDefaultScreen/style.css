@@ -2917,6 +2917,7 @@ button {
   padding: 6px 12px;
   z-index: 10;
   float: right;
+  background-color: #ff5722;
 }
 
 .platform-label-grid {

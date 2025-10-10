@@ -10,7 +10,9 @@ import { historyService } from "./historyService";
 interface LoadingSession {
   sessionId: string;
   prompt: string;
-  platform: string;
+  category: string;
+  subCategory: string;
+  platform?: string;
   startTime: number;
   jobId: string | null;
   countdown: number;
@@ -81,11 +83,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
       describe?: string;
       category?: string; // ✅ THÊM
       subCategory?: string;
+      platform?: string;
       list: Array<{
         imageUrl: string; // ✅ ĐỔI TÊN từ imageBase64
         prompt: string;
         category?: string; // ✅ THÊM
         subCategory?: string;
+        platform?: string;
         claudeResponse?: string;
         timestamp: string;
         size: string;
@@ -104,6 +108,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       prompt?: string;
       category?: string;
       subCategory?: string;
+      platform?: string;
       claudeResponse?: string;
       size?: string;
       quality?: string;
@@ -566,6 +571,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
           prompt: img.prompt || promptFromLoadingSession,
           category: img.category || selectedCategory.category,
           subCategory: img.subCategory || selectedCategory.subcategory,
+          platform: img.platform || "",
           timestamp: img.timestamp || new Date().toISOString(),
           size: img.size || "Square",
           quality: img.quality || selectedQuality,
@@ -610,6 +616,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         describe: promptFromLoadingSession || "Generated images",
         category: selectedCategory.category,
         subCategory: selectedCategory.subcategory,
+        platform: successfulImages[0]?.platform || "",
         list: sortedImages, // ✅ Dùng trực tiếp URLs
       };
 
@@ -639,6 +646,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
             prompt: sortedImages[0].prompt,
             category: sortedImages[0].category,
             subCategory: sortedImages[0].subCategory,
+            platform: sortedImages[0].platform,
             size: sortedImages[0].size,
             quality: sortedImages[0].quality,
             sessionId: sessionId,
@@ -1013,6 +1021,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 prompt: prompts[index] || currentPromptText,
                 category: imagesData.category || selectedCategory.category,
                 subCategory: imagesData.sub_category || selectedCategory.subcategory || "",
+                platform: imagesData.platform || "",
                 size: "Square",
                 quality: selectedQuality,
                 timestamp: new Date().toISOString(),
@@ -1068,6 +1077,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
               describe: currentPromptText,
               category: selectedCategory.category,
               subCategory: selectedCategory.subcategory || "",
+              platform: sortedValidImages[0]?.platform || "",
               list: sortedValidImages, // ✅ URLs trực tiếp, không blob
             };
 
@@ -1470,11 +1480,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
       describe: item.describe || "Image session",
       category: item.category || "", // ✅ THÊM category
       subCategory: item.subCategory || "", // ✅ THÊM subCategory
+      platform: item.platform || "",
       list: sortedList.map((img: any) => ({
         imageUrl: img.imageUrl || "", // ✅ DÙNG imageUrl, không phải imageBase64
         prompt: img.prompt || "",
         category: img.category || item.category || "", // ✅ THAY platform
         subCategory: img.subCategory || item.subCategory || "", // ✅ THÊM
+        platform: item.platform || "",
         claudeResponse: img.claudeResponse || "",
         timestamp: img.timestamp || new Date().toISOString(),
         size: img.size || "Square",
@@ -1507,6 +1519,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       prompt: firstImage.prompt || "",
       category: firstImage.category || item.category || "", // ✅ THAY platform
       subCategory: firstImage.subCategory || item.subCategory || "", // ✅ THÊM
+      platform: firstImage.platform || item.platform || "",
       size: firstImage.size || "Square",
       quality: firstImage.quality || "Standard",
       sessionId: item.sessionId,
@@ -3250,6 +3263,28 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         {category && subCategory
                           ? `${category}/${subCategory}`
                           : category || subCategory}
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {(() => {
+                    let platform = "";
+
+                    if (currentSessionId) {
+                      const session = selectedSessions.find(
+                        (s) => s.sessionId === currentSessionId
+                      );
+                      if (session && session.list[currentSessionImageIndex]) {
+                        platform =
+                          session.list[currentSessionImageIndex].platform ||
+                          session.platform ||
+                          "";
+                      }
+                    }
+
+                    return platform ? (
+                      <div className="platform-label platform-label-viewer">
+                        {platform}
                       </div>
                     ) : null;
                   })()}

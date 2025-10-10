@@ -6,6 +6,7 @@ interface HistoryImage {
   prompt: string;
   category?: string;       // ✅ THAY platform
   subCategory?: string;    // ✅ THÊM
+  platform?: string;
   AdCreativeA?: string;
   AdCreativeB?: string;
   timestamp: string;
@@ -17,6 +18,7 @@ interface HistoryItem {
   describe?: string;
   category?: string;       // ✅ THÊM
   subCategory?: string;    // ✅ THÊM
+  platform?: string;
   list: HistoryImage[];
   thumbnail?: string;      // ✅ THÊM để cache thumbnail
   imageCount?: number;     // ✅ THÊM để cache count
@@ -241,6 +243,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
       prompt: img.prompt || '',
       category: img.category || session.category || '',
       subCategory: img.subCategory || session.subCategory || '',
+      platform: img.platform || session.platform || '',
       timestamp: img.timestamp || new Date().toISOString(),
       size: 'Square',
       quality: 'Standard',
@@ -258,6 +261,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
       describe: session.describe || item.describe || "Image session",
       category: session.category || '',
       subCategory: session.subCategory || '',
+      platform: session.platform || '',
       list: imageList,  // ✅ URLs trực tiếp, không có blob
     };
 
@@ -266,13 +270,6 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
       const updated = new Set(prev);
       updated.add(item.id);
       return updated;
-    });
-
-    console.log("✅ Prepared session for display:", {
-      sessionId: item.id,
-      imageCount: imageList.length,
-      category: session.category,
-      subCategory: session.subCategory,
     });
 
     onItemClick(compatibleItem);
@@ -561,6 +558,7 @@ const HistoryDisplay: React.FC<{
                     count={item.imageCount}
                     category={item.category}        // ✅ THAY platform
                     subCategory={item.subCategory}  // ✅ THÊM
+                    platform={item.platform}
                   />
 
                   {item.imageCount > 1 && (
@@ -583,7 +581,8 @@ const SafeHistoryImage: React.FC<{
   count: number;
   category?: string;     // ✅ THAY platform
   subCategory?: string;  // ✅ THÊM
-}> = ({ src, alt, id, count, category, subCategory }) => {
+  platform?: string;
+}> = ({ src, alt, id, count, category, subCategory, platform }) => {
   const [hasError, setHasError] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
