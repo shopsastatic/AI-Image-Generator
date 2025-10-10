@@ -972,22 +972,59 @@ export const ElementDefaultScreen = (): JSX.Element => {
             // ============================================
 
             // Extract all images from response
-            const allImages = imagesData.flatMap((platformData: any) =>
-              platformData.images.map((img: any) => ({
-                imageUrl: img.url, // ✅ URL trực tiếp, không convert
-                prompt: img.prompt || currentPromptText,
-                category: selectedCategory.category,
-                subCategory: selectedCategory.subcategory || "",
-                size: img.size || "Square",
+            let allImages: any[] = [];
+
+            if (Array.isArray(imagesData)) {
+              // Old format: array of platform data objects
+              console.log("🔄 Processing array format (old)");
+              allImages = imagesData.flatMap((platformData: any) =>
+                (platformData.images || []).map((img: any) => ({
+                  imageUrl: img.url || "",
+                  prompt: img.prompt || currentPromptText,
+                  category: selectedCategory.category,
+                  subCategory: selectedCategory.subcategory || "",
+                  size: img.size || "Square",
+                  quality: selectedQuality,
+                  timestamp: new Date().toISOString(),
+                  claudeResponse: img.claudeResponse || "",
+                  AdCreativeA: img.AdCreativeA || "",
+                  AdCreativeB: img.AdCreativeB || "",
+                  targeting: img.targeting || "",
+                  imageName: img.imageName || "",
+                }))
+              );
+            } else if (imagesData && typeof imagesData === 'object') {
+              // ✅ New format: object with url[] and prompt[] arrays
+              console.log("🔄 Processing object format (new)");
+              
+              const urls = Array.isArray(imagesData.url) ? imagesData.url : [];
+              const prompts = Array.isArray(imagesData.prompt) ? imagesData.prompt : [];
+              const maxLength = Math.max(urls.length, prompts.length);
+
+              console.log("📊 Data structure:", {
+                urlCount: urls.length,
+                promptCount: prompts.length,
+                category: imagesData.category,
+                subCategory: imagesData.sub_category,
+              });
+
+              allImages = Array.from({ length: maxLength }, (_, index) => ({
+                imageUrl: urls[index] || "",
+                prompt: prompts[index] || currentPromptText,
+                category: imagesData.category || selectedCategory.category,
+                subCategory: imagesData.sub_category || selectedCategory.subcategory || "",
+                size: "Square",
                 quality: selectedQuality,
                 timestamp: new Date().toISOString(),
-                claudeResponse: img.claudeResponse || "",
-                AdCreativeA: img.AdCreativeA || "",
-                AdCreativeB: img.AdCreativeB || "",
-                targeting: img.targeting || "",
-                imageName: img.imageName || "",
-              }))
-            );
+                claudeResponse: "",
+                AdCreativeA: "",
+                AdCreativeB: "",
+                targeting: "",
+                imageName: "",
+              }));
+            } else {
+              console.error("❌ Unknown data format:", imagesData);
+            }
 
             // Filter valid images
             const validImages = allImages.filter(
