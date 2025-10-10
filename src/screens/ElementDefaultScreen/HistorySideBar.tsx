@@ -1,21 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { storageManager, ImageCompressor } from "./storageUtils";
+import { historyService } from "./historyService";
 
 interface HistoryImage {
-  imageBase64: string;
+  imageUrl: string;        // ✅ ĐỔI từ imageBase64
   prompt: string;
-  platform?: string; // ✅ Thêm platform
+  category?: string;       // ✅ THAY platform
+  subCategory?: string;    // ✅ THÊM
   AdCreativeA?: string;
   AdCreativeB?: string;
   timestamp: string;
 }
 
-
 interface HistoryItem {
   id: string;
   isSelected?: boolean;
   describe?: string;
+  category?: string;       // ✅ THÊM
+  subCategory?: string;    // ✅ THÊM
   list: HistoryImage[];
+  thumbnail?: string;      // ✅ THÊM để cache thumbnail
+  imageCount?: number;     // ✅ THÊM để cache count
 }
 
 interface HistoryDateGroup {
@@ -44,16 +48,14 @@ const ClearHistoryOverlay: React.FC<{
     <div className="clear-history-overlay">
       <div className="clear-overlay-body">
         <h4 className="clear-overlay-warning-title">
-          This will permanently delete your image generation history from this
-          device.
+          This will refresh your history from the server.
         </h4>
 
         <p className="clear-overlay-description">
-          Your image generation history is stored locally on your device using
-          browser local storage. Clearing this will permanently delete all image
-          generation history from this device, but won't affect the history
-          stored on other devices. Your image generation history is not stored
-          on our servers.
+          Your image generation history is stored on our servers. 
+          This action will clear the local cache and reload the latest 
+          data from the server. Your history will not be deleted from 
+          the database.
         </p>
       </div>
 
@@ -62,7 +64,7 @@ const ClearHistoryOverlay: React.FC<{
           Cancel
         </button>
         <button className="clear-overlay-confirm-btn" onClick={onConfirm}>
-          Clear history
+          Refresh history
         </button>
       </div>
     </div>
@@ -84,29 +86,6 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
   const loadingRef = useRef<boolean>(false);
   const errorShownRef = useRef<boolean>(false);
-  const [thumbnailBlobUrls, setThumbnailBlobUrls] = useState<string[]>([]);
-
-   useEffect(() => {
-    return () => {
-      // Cleanup all tracked blob URLs
-      thumbnailBlobUrls.forEach(url => {
-        try {
-          if (url && url.startsWith('blob:')) {
-            URL.revokeObjectURL(url);
-            console.log('🧹 Revoked thumbnail blob URL during cleanup');
-          }
-        } catch (e) {
-          console.warn('Failed to revoke blob URL:', e);
-        }
-      });
-    };
-  }, [thumbnailBlobUrls]);
-
-  const registerBlobUrl = useCallback((url: string) => {
-    if (url && url.startsWith('blob:')) {
-      setThumbnailBlobUrls(prev => [...prev, url]);
-    }
-  }, []);
 
   const loadHistoryData = useCallback(async () => {
     if (loadingRef.current) return;
@@ -115,14 +94,18 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setIsLoading(true);
     
     try {
-      console.log("🔄 Loading history data...");
+      console.log("🔄 Loading history data from N8N API...");
 
-      // Get history from storage manager
-      const historyGroups = await storageManager.getHistoryForSidebar();
+      // ✅ Fetch từ N8N API thay vì storage
+      const sessions = await historyService.fetchHistory();
 
-      if (historyGroups && historyGroups.length > 0) {
-        console.log("✅ History loaded:", historyGroups.length, "groups with", 
-          historyGroups.reduce((sum, group) => sum + group.items.length, 0), "items");
+      if (sessions && sessions.length > 0) {
+        console.log("✅ History loaded:", sessions.length, "sessions");
+        
+        // ✅ Group theo ngày
+        const historyGroups = historyService.groupByDate(sessions);
+        
+        console.log("📊 History grouped into", historyGroups.length, "date groups");
         setHistoryData(historyGroups);
       } else {
         console.log("📭 No history data found");
@@ -150,8 +133,8 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
             z-index: 10000;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           ">
-            <strong>⚠️ Storage Error</strong><br>
-            There was a problem loading your history. Try refreshing the page.
+            <strong>⚠️ Failed to Load History</strong><br>
+            Could not fetch history from server. Please check your connection.
             <button style="
               display: block;
               margin-top: 8px;
@@ -162,7 +145,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
               border-radius: 4px;
               cursor: pointer;
               font-weight: bold;
-            " onclick="localStorage.clear(); window.location.reload();">Reset Storage</button>
+            " onclick="this.parentElement.parentElement.remove();">Close</button>
           </div>
         `;
         document.body.appendChild(notification);
@@ -179,32 +162,15 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     }
   }, []);
 
-  // Run emergency fix on first load
   useEffect(() => {
-    const runEmergencyFix = async () => {
-      try {
-        await storageManager.init();
-        // This is the safest approach - completely rebuild the storage data
-        const fixResult = await storageManager.deduplicateOnStartup();
-        console.log('🚨 Emergency storage fix complete');
-      } catch (error) {
-        console.error('Failed to run emergency fix:', error);
-      } finally {
-        loadHistoryData();
-      }
-    };
+    // ✅ Load ngay khi mount
+    loadHistoryData();
     
-    runEmergencyFix();
+    // ✅ KHÔNG cần historyUpdated event nữa
+    // Data luôn fresh từ API
     
-    const handleHistoryUpdate = () => {
-      console.log("📡 History update event received, reloading...");
-      loadHistoryData();
-    };
-
-    window.addEventListener("historyUpdated", handleHistoryUpdate);
-
     return () => {
-      window.removeEventListener("historyUpdated", handleHistoryUpdate);
+      // Cleanup if needed
     };
   }, [loadHistoryData]);
 
@@ -224,135 +190,121 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   }, [historyData, isItemSelected]);
 
  const handleItemClick = async (item: HistoryItem) => {
-    // Check if the item has already been processed to prevent multiple selections
-    if (isItemSelected(item)) {
-      console.log("🔄 Item already selected, skipping:", item.id);
+  // Check if already selected
+  if (isItemSelected(item)) {
+    console.log("🔄 Item already selected, skipping:", item.id);
+    return;
+  }
+
+  try {
+    console.log("🔄 Loading session for:", item.id);
+
+    // ✅ Fetch session từ API
+    const session = await historyService.getSessionById(item.id);
+
+    if (!session || !session.images || session.images.length === 0) {
+      console.warn("⚠️ No valid images found for session:", item.id);
+      
+      const notification = document.createElement("div");
+      notification.innerHTML = `
+        <div style="
+          position: fixed; 
+          top: 20px; 
+          right: 20px; 
+          background: #ff9800; 
+          color: white; 
+          padding: 15px 20px; 
+          border-radius: 8px; 
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          z-index: 10000;
+        ">
+          <strong>No Images</strong><br>
+          No valid images found in this history item.
+        </div>
+      `;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        if (notification.parentElement) {
+          document.body.removeChild(notification);
+        }
+      }, 3000);
+      
       return;
     }
 
-    try {
-      console.log("🔄 Loading session images for:", item.id);
+    console.log("✅ Loaded", session.images.length, "images for session:", item.id);
 
-      // Load images from storage system
-      const sessionImages = await storageManager.getSessionImages(item.id);
+    // ✅ KHÔNG CẦN convert blob nữa - dùng URLs trực tiếp
+    const imageList = session.images.map(img => ({
+      imageUrl: img.imageUrl,  // ✅ URL trực tiếp, không convert
+      prompt: img.prompt || '',
+      category: img.category || session.category || '',
+      subCategory: img.subCategory || session.subCategory || '',
+      timestamp: img.timestamp || new Date().toISOString(),
+      size: 'Square',
+      quality: 'Standard',
+      claudeResponse: '',
+      AdCreativeA: img.AdCreativeA || '',
+      AdCreativeB: img.AdCreativeB || '',
+      targeting: '',
+      imageName: '',
+    }));
 
-      if (sessionImages && sessionImages.length > 0) {
-        console.log("✅ Loaded", sessionImages.length, "images for session:", item.id);
+    const compatibleItem = {
+      sessionId: item.id,
+      clickedAt: Date.now(),
+      currentImageIndex: 0,
+      describe: session.describe || item.describe || "Image session",
+      category: session.category || '',
+      subCategory: session.subCategory || '',
+      list: imageList,  // ✅ URLs trực tiếp, không có blob
+    };
 
-        // Convert base64 images to blob URLs
-        const convertedImages = await Promise.all(
-          sessionImages.map(async (img) => {
-            try {
-              // Check if the image is a base64 string
-              if (img.imageUrl && typeof img.imageUrl === 'string' && img.imageUrl.startsWith('data:')) {
-                console.log("🔄 Converting base64 to blob for history item");
-                const compressed = await ImageCompressor.compressImage(img.imageUrl);
-                const blobUrl = URL.createObjectURL(compressed.blob);
-                
-                return {
-                  imageBase64: blobUrl,
-                  originalBase64: img.imageUrl,
-                  isBlob: true,
-                  prompt: img.prompt || '',
-                  platform: img.platform || '',
-                  claudeResponse: img.claudeResponse || '',
-                  timestamp: img.timestamp || new Date().toISOString(),
-                  size: img.size || 'Square',
-                  quality: img.quality || 'Standard',
-                  AdCreativeA: img.AdCreativeA || '', 
-                  AdCreativeB: img.AdCreativeB || '',
-                  targeting: img.targeting || '',
-                  imageName: img.imageName || '',
-                };
-              } else {
-                // Not a base64 image or already a blob
-                return {
-                  imageBase64: img.imageUrl,
-                  isBlob: false,
-                  prompt: img.prompt || '',
-                  platform: img.platform || '',
-                  claudeResponse: img.claudeResponse || '',
-                  timestamp: img.timestamp || new Date().toISOString(),
-                  size: img.size || 'Square',
-                  quality: img.quality || 'Standard',
-                  AdCreativeA: img.AdCreativeA || '', 
-                  AdCreativeB: img.AdCreativeB || '',
-                  targeting: img.targeting || '',
-                  imageName: img.imageName || '',
-                };
-              }
-            } catch (error) {
-              console.warn("⚠️ Failed to convert to blob, using original:", error);
-              return {
-                imageBase64: img.imageUrl,
-                isBlob: false,
-                prompt: img.prompt || '',
-                platform: img.platform || '',
-                claudeResponse: img.claudeResponse || '',
-                timestamp: img.timestamp || new Date().toISOString(),
-                size: img.size || 'Square',
-                quality: img.quality || 'Standard',
-                AdCreativeA: img.AdCreativeA || '', 
-                AdCreativeB: img.AdCreativeB || '',
-                targeting: img.targeting || '',
-                imageName: img.imageName || '',
-              };
-            }
-          })
-        );
+    // Add to processed set
+    setProcessedIds(prev => {
+      const updated = new Set(prev);
+      updated.add(item.id);
+      return updated;
+    });
 
-        const compatibleItem = {
-          ...item,
-          list: convertedImages,
-        };
+    console.log("✅ Prepared session for display:", {
+      sessionId: item.id,
+      imageCount: imageList.length,
+      category: session.category,
+      subCategory: session.subCategory,
+    });
 
-        // Add this ID to processed set to prevent duplicate processing
-        setProcessedIds(prev => {
-          const updated = new Set(prev);
-          updated.add(item.id);
-          return updated;
-        });
-
-        console.log("✅ Converted images for history item:", {
-          sessionId: item.id,
-          imageCount: convertedImages.length,
-          blobCount: convertedImages.filter(img => img.isBlob).length
-        });
-
-        onItemClick(compatibleItem);
-      } else {
-        console.warn("⚠️ No valid images found for session:", item.id);
-        
-        // Show notification to user
-        const notification = document.createElement("div");
-        notification.innerHTML = `
-          <div style="
-            position: fixed; 
-            top: 20px; 
-            right: 20px; 
-            background: #ff9800; 
-            color: white; 
-            padding: 15px 20px; 
-            border-radius: 8px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 10000;
-          ">
-            <strong>No Images</strong><br>
-            No valid images found in this history item.
-          </div>
-        `;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-          if (notification.parentElement) {
-            document.body.removeChild(notification);
-          }
-        }, 3000);
+    onItemClick(compatibleItem);
+  } catch (error) {
+    console.error("❌ Failed to load session images:", error);
+    
+    const errorNotification = document.createElement("div");
+    errorNotification.innerHTML = `
+      <div style="
+        position: fixed; 
+        top: 20px; 
+        right: 20px; 
+        background: #f44336; 
+        color: white; 
+        padding: 15px 20px; 
+        border-radius: 8px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 10000;
+      ">
+        <strong>❌ Load Failed</strong><br>
+        Failed to load images from server.
+      </div>
+    `;
+    document.body.appendChild(errorNotification);
+    
+    setTimeout(() => {
+      if (errorNotification.parentElement) {
+        document.body.removeChild(errorNotification);
       }
-    } catch (error) {
-      console.error("❌ Failed to load session images:", error);
-    }
-  };
+    }, 3000);
+  }
+};
 
   const handleSelectAllUnselected = () => {
     // Count unselected items
@@ -392,17 +344,13 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     try {
       setIsLoading(true);
       
-      // Use storage manager to clear all sessions
-      const result = await storageManager.clearAllSessions();
+      // ✅ Chỉ cần clear cache, không xóa database
+      historyService.clearCache();
       
-      if (!result) {
-        throw new Error("Failed to clear sessions");
-      }
-
       setHistoryData([]);
       setShowClearConfirm(false);
       setProcessedIds(new Set());
-      console.log("✅ All history cleared");
+      console.log("✅ History cache cleared");
 
       // Show success notification
       const notification = document.createElement("div");
@@ -417,25 +365,25 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           border-radius: 8px; 
           box-shadow: 0 4px 12px rgba(0,0,0,0.3);
           z-index: 10000;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         ">
-          <strong>✅ History Cleared</strong><br>
-          All image generation history has been permanently deleted from this device.
+          <strong>✅ History Refreshed</strong><br>
+          History cache cleared. Reloading latest data...
         </div>
       `;
       document.body.appendChild(notification);
 
-      // Auto-remove notification after 4 seconds
       setTimeout(() => {
         if (notification.parentElement) {
           document.body.removeChild(notification);
         }
       }, 2000);
+      
+      // ✅ Reload fresh data từ API
+      await loadHistoryData();
     } catch (error) {
-      console.error("❌ Failed to clear history:", error);
+      console.error("❌ Failed to refresh history:", error);
       setShowClearConfirm(false);
 
-      // Show error notification
       const errorNotification = document.createElement("div");
       errorNotification.innerHTML = `
         <div style="
@@ -448,10 +396,9 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           border-radius: 8px; 
           box-shadow: 0 4px 12px rgba(0,0,0,0.3);
           z-index: 10000;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         ">
-          <strong>❌ Clear Failed</strong><br>
-          Could not clear all history. Please try refreshing the page.
+          <strong>❌ Refresh Failed</strong><br>
+          Could not reload history. Please try again.
         </div>
       `;
       document.body.appendChild(errorNotification);
@@ -597,9 +544,6 @@ const HistoryDisplay: React.FC<{
             {dateGroup.items.map((item) => {
               const isItemDisabled = isItemSelected(item);
               
-              // ✅ Lấy platform từ image đầu tiên (nếu có)
-              const platform = item.list && item.list[0] ? item.list[0].platform : undefined;
-              
               return (
                 <div
                   key={`item-${item.id}`}
@@ -615,7 +559,8 @@ const HistoryDisplay: React.FC<{
                     alt={item.describe || "Generated image"}
                     id={item.id}
                     count={item.imageCount}
-                    platform={platform} // ✅ Truyền platform
+                    category={item.category}        // ✅ THAY platform
+                    subCategory={item.subCategory}  // ✅ THÊM
                   />
 
                   {item.imageCount > 1 && (
@@ -631,86 +576,20 @@ const HistoryDisplay: React.FC<{
   );
 });
 
-// Enhanced image component for history thumbnails
-// Enhanced image component for history thumbnails
 const SafeHistoryImage: React.FC<{
   src: string;
   alt: string;
   id: string;
   count: number;
-  platform?: string; // ✅ Thêm platform prop
-}> = ({ src, alt, id, count, platform }) => {
-  const [imageSrc, setImageSrc] = useState<string>(src);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  category?: string;     // ✅ THAY platform
+  subCategory?: string;  // ✅ THÊM
+}> = ({ src, alt, id, count, category, subCategory }) => {
   const [hasError, setHasError] = useState<boolean>(false);
-  const [isBlobUrl, setIsBlobUrl] = useState<boolean>(false);
-  
-  // Convert base64 to blob on mount and when src changes
-  useEffect(() => {
-    let isMounted = true;
-    setIsLoading(true);
-    
-    // Skip if not a base64 string or already a blob URL
-    if (!src || !src.startsWith('data:') || src.startsWith('blob:')) {
-      setImageSrc(src);
-      setIsLoading(false);
-      return;
-    }
-    
-    // Convert base64 to blob
-    const convertToBlob = async () => {
-      try {
-        // Create blob from base64
-        const parts = src.split(';base64,');
-        if (parts.length !== 2) {
-          throw new Error('Invalid base64 format');
-        }
-        
-        const contentType = parts[0].split(':')[1] || 'image/jpeg';
-        const raw = window.atob(parts[1]);
-        const rawLength = raw.length;
-        
-        // Convert string to ArrayBuffer
-        const uInt8Array = new Uint8Array(rawLength);
-        for (let i = 0; i < rawLength; ++i) {
-          uInt8Array[i] = raw.charCodeAt(i);
-        }
-        
-        // Create blob and blob URL
-        const blob = new Blob([uInt8Array], { type: contentType });
-        const blobUrl = URL.createObjectURL(blob);
-        
-        if (isMounted) {
-          setImageSrc(blobUrl);
-          setIsBlobUrl(true);
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.warn("Failed to convert thumbnail to blob:", error);
-        if (isMounted) {
-          // Fallback to original
-          setImageSrc(src);
-          setIsLoading(false);
-        }
-      }
-    };
-    
-    convertToBlob();
-    
-    // Cleanup
-    return () => {
-      isMounted = false;
-      // Revoke blob URL if created
-      if (isBlobUrl && imageSrc && imageSrc.startsWith('blob:')) {
-        URL.revokeObjectURL(imageSrc);
-      }
-    };
-  }, [src]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const handleImageError = () => {
     setIsLoading(false);
     setHasError(true);
-    setImageSrc("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkltYWdlPC90ZXh0Pjwvc3ZnPg==");
   };
 
   const handleImageLoad = () => {
@@ -720,14 +599,15 @@ const SafeHistoryImage: React.FC<{
 
   return (
     <div className="history-image-container">
-      {/* ✅ THÊM PLATFORM LABEL */}
-      {/* {platform && (
-        <div className="platform-label platform-label-history">
-          {platform === 'nano-banana' ? 'Nano Banana' : 
-           platform === 'seedream' ? 'Seedream' : 
-           platform}
+      {/* ✅ THÊM category label */}
+      {(category || subCategory) && (
+        <div className="category-label category-label-history">
+          {category && subCategory 
+            ? `${category}/${subCategory}`
+            : category || subCategory
+          }
         </div>
-      )} */}
+      )}
       
       {isLoading && (
         <div className="history-image-loading">
@@ -735,8 +615,9 @@ const SafeHistoryImage: React.FC<{
         </div>
       )}
       
+      {/* ✅ Dùng URL trực tiếp, không convert blob */}
       <img
-        src={imageSrc}
+        src={src}
         alt={alt}
         className="history-image"
         loading="lazy"
@@ -746,7 +627,25 @@ const SafeHistoryImage: React.FC<{
       
       {hasError && (
         <div className="history-image-placeholder">
-          <span>{count}</span>
+          <svg 
+            width="100%" 
+            height="100%" 
+            viewBox="0 0 200 200" 
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect width="200" height="200" fill="#f0f0f0"/>
+            <text 
+              x="50%" 
+              y="50%" 
+              fontFamily="Arial, sans-serif" 
+              fontSize="20" 
+              textAnchor="middle" 
+              dominantBaseline="middle" 
+              fill="#999"
+            >
+              {count} images
+            </text>
+          </svg>
         </div>
       )}
     </div>

@@ -3002,3 +3002,42 @@ button {
   max-height: 100px;
   overflow-y: auto;
 }
+
+
+/* Category Labels - thay thế Platform Labels */
+.category-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  z-index: 2;
+  backdrop-filter: blur(4px);
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-label-grid {
+  font-size: 10px;
+  padding: 3px 6px;
+}
+
+.category-label-viewer {
+  font-size: 12px;
+  padding: 6px 12px;
+  top: 16px;
+  left: 16px;
+}
+
+.category-label-history {
+  font-size: 9px;
+  padding: 2px 5px;
+  top: 4px;
+  left: 4px;
+}
