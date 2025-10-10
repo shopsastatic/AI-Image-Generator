@@ -1317,7 +1317,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
     if (currentImage.imageIndex !== undefined) {
       currentImageIndexInSession = currentImage.imageIndex;
     } else {
-      // ❌ FIX 1: Đổi imageBase64 → imageUrl
       for (let i = 0; i < session.list.length; i++) {
         if (
           session.list[i].imageUrl === currentImage.imageUrl && // ✅ FIX
@@ -1360,7 +1359,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
       imageUrl: nextImageData.imageUrl, // ✅ OK nếu đã là imageUrl
       clickedAt: Date.now(),
       prompt: nextImageData.prompt,
-      platform: nextImageData.platform,
+      category: nextImageData.category,
+      subCategory: nextImageData.subCategory,
       size: nextImageData.size,
       quality: nextImageData.quality,
       sessionId: currentImage.sessionId,
