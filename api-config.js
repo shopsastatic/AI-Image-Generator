@@ -22,14 +22,13 @@ export const API_RATE_LIMITS = {
 
   // 🔄 API Key Management
   KEYS: {
-    CONSECUTIVE_ERROR_THRESHOLD: 30,    // Số lỗi liên tiếp trước khi block key
-    ERROR_BLOCK_DURATION: 600000000,       // Thời gian block key khi có lỗi liên tiếp (ms)
-    RATE_LIMIT_BLOCK_DURATION: 600000, // Thời gian block khi bị rate limit (ms)
-    INVALID_KEY_BLOCK_DURATION: 3600000, // Thời gian block khi key invalid (ms)
-    KEY_COOLDOWN_PERIOD: 90000,        // Thời gian nghỉ giữa các lần sử dụng key (ms)
+    CONSECUTIVE_ERROR_THRESHOLD: 30,
+    ERROR_BLOCK_DURATION: 600000000,
+    RATE_LIMIT_BLOCK_DURATION: 600000,
+    INVALID_KEY_BLOCK_DURATION: 3600000,
+    KEY_COOLDOWN_PERIOD: 90000,
   },
 
-  // 🔄 Different settings for HD vs Normal mode
   MODE_SPECIFIC: {
     OFFICIAL: {
       MAX_CONCURRENT: 30,

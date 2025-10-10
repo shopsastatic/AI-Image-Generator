@@ -542,7 +542,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
           return true;
         })
         .map((img: any) => ({
-          imageUrl: img.imageUrl || img.imageBase64, // ✅ Dùng URL trực tiếp
+          imageUrl: img.imageUrl || img.imageBase64,
           prompt: img.prompt || promptFromLoadingSession,
           category: img.category || selectedCategory.category,
           subCategory: img.subCategory || selectedCategory.subcategory,
@@ -557,7 +557,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
           imageName: img.imageName || "",
         }));
 
-      // ✅ Chỉ tiếp tục nếu có ít nhất 1 ảnh thành công
       if (successfulImages.length === 0) {
         showNotification(
           "warning",
@@ -882,11 +881,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
             const imagesData = data[0].data;
 
-            // ============================================
-            // STEP 7: PROCESS RESULTS
-            // ============================================
-
-            // Extract all images from response
             let allImages: any[] = [];
 
             if (Array.isArray(imagesData)) {
