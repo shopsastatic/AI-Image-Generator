@@ -157,12 +157,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   // FIX: Add handlers for model and HD mode changes
   const handleApiChange = useCallback((apis: string[]) => {
-    console.log("🔄 Selected APIs changed to:", apis);
     setSelectedApis(apis);
   }, []);
 
   const handleAspectRatioChange = useCallback((aspectRatio: string) => {
-    console.log("🔄 Selected Aspect Ratio changed to:", aspectRatio);
     setSelectedAspectRatio(aspectRatio);
   }, []);
 
@@ -304,7 +302,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       }
 
       try {
-        console.log("🔄 Loading instructions for:", selectedCategory);
 
         const response = await fetch("/api/instructions/resolve", {
           method: "POST",
@@ -322,7 +319,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
         }
 
         const data = await response.json();
-        console.log("📚 Instructions loaded:", data);
 
         // ✅ Parse content
         const parseContent = (rawContent: string) => {
@@ -352,11 +348,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
           parsedContent = parseContent(data.user_prompt);
         }
 
-        console.log("📝 Parsed content:", {
-          promptContentLength: parsedContent.promptContent.length,
-          instructionsLength: parsedContent.instructions.length,
-        });
-
         // ✅ FIX: Lấy PROMPT CONTENT thay vì instructions
         if (parsedContent.promptContent && parsedContent.promptContent.trim()) {
           if (textareaRef.current) {
@@ -364,10 +355,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
             setPromptText(parsedContent.promptContent);
             adjustHeight();
           }
-
-          console.log(
-            `✅ Loaded ${parsedContent.promptContent.length} characters of PROMPT CONTENT into textarea`
-          );
         } else {
           console.log("⚠️ No prompt content found - textarea remains empty");
         }
@@ -441,7 +428,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
             return;
         }
       } catch (error) {
-        console.error(`Polling error for job ${jobId}:`, error);
         handleJobFailed(error.message, sessionId);
       }
     };
@@ -460,14 +446,12 @@ export const ElementDefaultScreen = (): JSX.Element => {
     if (pollingIntervalRefs.current[sessionId]) {
       clearInterval(pollingIntervalRefs.current[sessionId]);
       delete pollingIntervalRefs.current[sessionId];
-      console.log(`🛑 Stopped polling for session: ${sessionId}`);
     }
   }, []);
 
   // FIX: Improved handleJobCompleted
   const handleJobCompleted = async (jobId: string, sessionId: string) => {
     try {
-      console.log("🎯 Job completed, fetching results:", jobId);
 
       const response = await fetch(`/api/image-generation/results/${jobId}`);
       const data = await response.json();
@@ -476,10 +460,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
         throw new Error(data.error || "Failed to fetch job results");
       }
 
-      console.log("📦 Results received:", data);
       await processJobResults(data, sessionId);
     } catch (error) {
-      console.error("Failed to fetch job results:", error);
       handleJobFailed(error.message, sessionId);
     } finally {
       // Dừng polling chỉ cho job này
@@ -534,10 +516,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const processJobResults = async (jobData: any, sessionId: string) => {
     try {
       const { results, claudeResponse } = jobData;
-
-      console.log("📄 Processing job results for session:", sessionId);
-      console.log("📊 Total results received:", results?.length || 0);
-
       // Tìm prompt từ loading session
       const loadingSession = loadingSessions.find(
         (session) => session.sessionId === sessionId
@@ -551,7 +529,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
           const imageUrl = img.imageUrl || img.imageBase64 || "";
 
           if (!imageUrl) {
-            console.log("❌ Rejected: No image URL");
             return false;
           }
 
@@ -559,11 +536,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
           if (
             imageUrl.includes("PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM")
           ) {
-            console.log("❌ Rejected: Error placeholder detected");
             return false;
           }
 
-          console.log("✅ Accepted: Valid image");
           return true;
         })
         .map((img: any) => ({
@@ -582,18 +557,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
           imageName: img.imageName || "",
         }));
 
-      console.log(
-        `📈 Filtered results: ${successfulImages.length}/${
-          results?.length || 0
-        } successful images`
-      );
-
       // ✅ Chỉ tiếp tục nếu có ít nhất 1 ảnh thành công
       if (successfulImages.length === 0) {
-        console.warn(
-          "⚠️ No successful images to display for session:",
-          sessionId
-        );
         showNotification(
           "warning",
           "Generation Failed!",
@@ -602,8 +567,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
         removeLoadingSession(sessionId);
         return;
       }
-
-      // ✅ Không cần lưu vào storage nữa, chỉ cần hiển thị
 
       // ✅ Sort images by prompt groups
       const sortedImages = sortImagesByPromptGroups(successfulImages);
@@ -627,13 +590,11 @@ export const ElementDefaultScreen = (): JSX.Element => {
         );
 
         if (existingIndex !== -1) {
-          console.log("🔄 Updating existing session:", sessionId);
           const updatedSessions = [...prevSessions];
           updatedSessions[existingIndex] = newSession;
           return updatedSessions;
         }
 
-        console.log("➕ Adding new session:", sessionId);
         return [newSession, ...prevSessions];
       });
 
@@ -693,11 +654,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         }`
       );
 
-      console.log(
-        `✅ Job results processed successfully: ${successfulImages.length} images displayed`
-      );
     } catch (error) {
-      console.error("Error processing job results:", error);
       showNotification(
         "error",
         "Processing Error!",
@@ -752,35 +709,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
     sessionCountdownRefs.current[sessionId] = intervalId;
   };
 
-  // FIX: Improved handleFormSubmit with better state management
-  /**
-   * Xử lý submit form generate images
-   * Flow:
-   * 1. Validate input
-   * 2. Upload reference images (nếu có)
-   * 3. Load instructions
-   * 4. Call N8N webhook để generate
-   * 5. Poll để check kết quả
-   * 6. Hiển thị images (không lưu local)
-   */
   const handleFormSubmit = async () => {
-    // ============================================
-    // STEP 1: VALIDATION
-    // ============================================
     if (!promptText.trim()) {
-      console.warn("⚠️ Empty prompt, skipping submit");
       return;
     }
 
-    // ============================================
-    // STEP 2: PREPARE SESSION
-    // ============================================
     const sessionId = `session-${Date.now()}-${Math.random()
       .toString(36)
       .substr(2, 9)}`;
     const currentPromptText = promptText.trim();
 
-    console.log(`🚀 Starting image generation for session: ${sessionId}`);
 
     // Create loading session
     const newLoadingSession = {
@@ -805,9 +743,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
     setUploadedImages([]);
 
     try {
-      // ============================================
-      // STEP 3: UPLOAD REFERENCE IMAGES (if any)
-      // ============================================
       let uploadedImageUrls: string[] = [];
 
       if (uploadedImages.length > 0) {
@@ -818,7 +753,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
         const uploadPromises = uploadedImages.map(
           async (base64Image, index) => {
             try {
-              // Convert base64 to blob
               const blob = await fetch(base64Image).then((r) => r.blob());
 
               // Prepare form data
@@ -847,10 +781,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
               }
 
               const data = await response.json();
-              console.log(`✅ Image ${index} uploaded:`, data.url);
               return data.url;
             } catch (error) {
-              console.error(`❌ Failed to upload image ${index}:`, error);
               return null;
             }
           }
@@ -859,19 +791,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
         const results = await Promise.all(uploadPromises);
         uploadedImageUrls = results.filter((url) => url !== null) as string[];
 
-        console.log(
-          `✅ Uploaded ${uploadedImageUrls.length}/${uploadedImages.length} images successfully`
-        );
-
         if (uploadedImageUrls.length === 0) {
           throw new Error("All image uploads failed");
         }
       }
-
-      // ============================================
-      // STEP 4: LOAD INSTRUCTIONS
-      // ============================================
-      console.log("📚 Loading instructions...");
 
       const instructionResponse = await fetch("/api/instructions/resolve", {
         method: "POST",
@@ -888,12 +811,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       }
 
       const instructionData = await instructionResponse.json();
-      console.log("✅ Instructions loaded");
-
-      // ============================================
-      // STEP 5: CALL N8N WEBHOOK TO GENERATE
-      // ============================================
-      console.log("🎨 Calling N8N webhook to generate images...");
 
       const generateResponse = await fetch(
         "https://n8n.misencorp.com/webhook/ms-image-generator",
@@ -930,19 +847,12 @@ export const ElementDefaultScreen = (): JSX.Element => {
         throw new Error("No jobId received from N8N");
       }
 
-      console.log(`✅ Job created with ID: ${jobId}`);
-
       // Update loading session with jobId
       setLoadingSessions((prev) =>
         prev.map((session) =>
           session.sessionId === sessionId ? { ...session, jobId } : session
         )
       );
-
-      // ============================================
-      // STEP 6: POLL FOR RESULTS
-      // ============================================
-      console.log("🔄 Starting polling for results...");
 
       let pollAttempts = 0;
       const maxPollAttempts = 120; // 120 attempts × 5s = 10 minutes max
@@ -951,7 +861,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       const pollForResults = async () => {
         try {
           pollAttempts++;
-          console.log(`📊 Poll attempt ${pollAttempts}/${maxPollAttempts}`);
 
           const response = await fetch(
             `https://n8n.misencorp.com/webhook/get_image_queue?job_id=${jobId}`,
@@ -969,11 +878,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
           // Check if results are ready
           if (data && data[0] && data[0].data != null) {
-            console.log("✅ Results ready! Processing...");
             clearInterval(generateImagePool);
 
             const imagesData = data[0].data;
-            console.log("📦 Received images data:", imagesData);
 
             // ============================================
             // STEP 7: PROCESS RESULTS
@@ -984,7 +891,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
             if (Array.isArray(imagesData)) {
               // Old format: array of platform data objects
-              console.log("🔄 Processing array format (old)");
               allImages = imagesData.flatMap((platformData: any) =>
                 (platformData.images || []).map((img: any) => ({
                   imageUrl: img.url || "",
@@ -1002,19 +908,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 }))
               );
             } else if (imagesData && typeof imagesData === 'object') {
-              // ✅ New format: object with url[] and prompt[] arrays
-              console.log("🔄 Processing object format (new)");
               
               const urls = Array.isArray(imagesData.url) ? imagesData.url : [];
               const prompts = Array.isArray(imagesData.prompt) ? imagesData.prompt : [];
               const maxLength = Math.max(urls.length, prompts.length);
-
-              console.log("📊 Data structure:", {
-                urlCount: urls.length,
-                promptCount: prompts.length,
-                category: imagesData.category,
-                subCategory: imagesData.sub_category,
-              });
 
               allImages = Array.from({ length: maxLength }, (_, index) => ({
                 imageUrl: urls[index] || "",
@@ -1047,7 +944,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
             );
 
             if (validImages.length === 0) {
-              console.warn("⚠️ No valid images in results");
               showNotification(
                 "error",
                 "Generation Failed!",
@@ -1057,19 +953,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
               return;
             }
 
-            console.log(
-              `✅ Processed ${validImages.length}/${allImages.length} valid images`
-            );
-
-            // ============================================
-            // STEP 8: SORT IMAGES BY PROMPT GROUPS
-            // ============================================
             const sortedValidImages = sortImagesByPromptGroups(validImages);
-            console.log("🔄 Images sorted by prompt groups");
-
-            // ============================================
-            // STEP 9: CREATE SESSION FOR UI (NO STORAGE)
-            // ============================================
             const newSession = {
               sessionId: sessionId,
               clickedAt: Date.now(),
@@ -1081,35 +965,20 @@ export const ElementDefaultScreen = (): JSX.Element => {
               list: sortedValidImages, // ✅ URLs trực tiếp, không blob
             };
 
-            console.log("📋 Created session for UI:", {
-              sessionId,
-              imageCount: sortedValidImages.length,
-              category: selectedCategory.category,
-              subCategory: selectedCategory.subcategory,
-            });
-
-            // ============================================
-            // STEP 10: UPDATE SELECTED SESSIONS
-            // ============================================
             setSelectedSessions((prevSessions) => {
               const existingIndex = prevSessions.findIndex(
                 (s) => s.sessionId === sessionId
               );
 
               if (existingIndex !== -1) {
-                console.log("🔄 Updating existing session in UI");
                 const updatedSessions = [...prevSessions];
                 updatedSessions[existingIndex] = newSession;
                 return updatedSessions;
               }
 
-              console.log("➕ Adding new session to UI");
               return [newSession, ...prevSessions];
             });
 
-            // ============================================
-            // STEP 11: ADD FIRST IMAGE TO GRID
-            // ============================================
             if (sortedValidImages.length > 0) {
               setSelectedImages((prevImages) => {
                 const firstImageObj = {
@@ -1158,10 +1027,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 return updatedImages;
               });
             }
-
-            // ============================================
-            // STEP 12: CLEANUP & NOTIFICATION
-            // ============================================
             removeLoadingSession(sessionId);
 
             showNotification(
@@ -1172,12 +1037,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
               }`
             );
 
-            console.log(
-              `✅ Successfully completed generation for session: ${sessionId}`
-            );
           } else if (pollAttempts >= maxPollAttempts) {
             // Timeout after max attempts
-            console.error("❌ Polling timeout - max attempts reached");
             clearInterval(generateImagePool);
 
             showNotification(
@@ -1192,7 +1053,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
             console.log("⏳ Results not ready yet, continuing polling...");
           }
         } catch (error) {
-          console.error("❌ Polling error:", error);
           clearInterval(generateImagePool);
 
           showNotification(
@@ -1211,7 +1071,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       // Call immediately for first check
       pollForResults();
     } catch (error: any) {
-      console.error("❌ Submission failed:", error);
 
       // Remove loading session on error
       setLoadingSessions((prev) =>
@@ -1969,40 +1828,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
     };
   }, [showSuggestions]);
 
-  // Debug useEffect to track currentLoadingPrompt changes
-  useEffect(() => {
-    console.log("🔍 LOADING PROMPT CHANGE:", currentLoadingPrompt);
-    console.log("🔍 LOADING PROMPT LENGTH:", currentLoadingPrompt.length);
-  }, [currentLoadingPrompt]);
 
-  // Debug useEffect to track state changes
-  useEffect(() => {
-    console.log("🔍 DEBUG State Change - currentSessionId:", currentSessionId);
-    console.log(
-      "🔍 DEBUG State Change - currentViewImageIndex:",
-      currentViewImageIndex
-    );
-    console.log(
-      "🔍 DEBUG State Change - selectedSessions count:",
-      selectedSessions.length
-    );
-
-    if (currentSessionId) {
-      const session = selectedSessions.find(
-        (s) => s.sessionId === currentSessionId
-      );
-      console.log(
-        "🔍 DEBUG State Change - Current session found:",
-        session ? "YES" : "NO"
-      );
-      if (session) {
-        console.log(
-          "🔍 DEBUG State Change - Current session describe:",
-          session.describe
-        );
-      }
-    }
-  }, [currentSessionId, currentViewImageIndex, selectedSessions]);
 
   useEffect(() => {
     if (currentViewImageIndex !== null) {
@@ -3611,10 +3437,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             }
                           }
 
-                          console.log(
-                            "🔖 Final describe for display:",
-                            describeText
-                          );
                           return (
                             <p className="prompt-text describe-box">
                               {describeText}

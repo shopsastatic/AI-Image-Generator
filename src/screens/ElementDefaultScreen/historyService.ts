@@ -61,8 +61,6 @@ class HistoryService {
         return this.cache;
       }
 
-      console.log('🔄 Fetching history from N8N API...');
-      
       const response = await fetch(this.apiUrl, {
         method: 'GET',
         headers: {

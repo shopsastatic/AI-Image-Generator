@@ -96,8 +96,6 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setIsLoading(true);
     
     try {
-      console.log("🔄 Loading history data from N8N API...");
-
       // ✅ Fetch từ N8N API thay vì storage
       const sessions = await historyService.fetchHistory();
 
@@ -107,10 +105,8 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
         // ✅ Group theo ngày
         const historyGroups = historyService.groupByDate(sessions);
         
-        console.log("📊 History grouped into", historyGroups.length, "date groups");
         setHistoryData(historyGroups);
       } else {
-        console.log("📭 No history data found");
         setHistoryData([]);
       }
     } catch (error) {
