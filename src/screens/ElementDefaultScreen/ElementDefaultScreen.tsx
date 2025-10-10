@@ -1155,10 +1155,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                   ...regularItems,
                 ].slice(0, gridItemCount);
 
-                console.log(
-                  `🖼️ Added first image to grid. Total images: ${updatedImages.length}`
-                );
-
                 return updatedImages;
               });
             }

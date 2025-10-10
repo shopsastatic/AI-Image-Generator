@@ -255,28 +255,28 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
       0,
       Math.min(1, (clientX - rect.left) / rect.width)
     );
-    return Math.max(1, Math.min(5, Math.round(percentage * 4) + 1));
+    return Math.max(1, Math.min(10, Math.round(percentage * 9) + 1)); // ✅ max 10
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const rect = sliderRef.current?.getBoundingClientRect();
-    if (!rect) return;
+ const handleMouseDown = (e: React.MouseEvent) => {
+  e.preventDefault();
+  const rect = sliderRef.current?.getBoundingClientRect();
+  if (!rect) return;
 
-    setDragStartX(e.clientX);
-    setDragStartValue(numberOfImages);
-    setIsDragging(true);
+  setDragStartX(e.clientX);
+  setDragStartValue(numberOfImages);
+  setIsDragging(true);
 
-    const clickX = e.clientX;
-    const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 4;
-    const thumbWidth = 20;
+  const clickX = e.clientX;
+  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 9; // ✅ chia 9
+  const thumbWidth = 20;
 
-    if (Math.abs(clickX - thumbPosition) > thumbWidth) {
-      const newValue = calculateValueFromPosition(clickX);
-      setNumberOfImages(newValue);
-      setDragStartValue(newValue);
-    }
-  };
+  if (Math.abs(clickX - thumbPosition) > thumbWidth) {
+    const newValue = calculateValueFromPosition(clickX);
+    setNumberOfImages(newValue);
+    setDragStartValue(newValue);
+  }
+};
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -285,11 +285,11 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
       const rect = sliderRef.current.getBoundingClientRect();
       const deltaX = e.clientX - dragStartX;
       const deltaPercentage = deltaX / rect.width;
-      const deltaValue = deltaPercentage * 4;
+      const deltaValue = deltaPercentage * 9; // ✅ nhân 9
 
       const newValue = Math.max(
         1,
-        Math.min(5, Math.round(dragStartValue + deltaValue))
+        Math.min(10, Math.round(dragStartValue + deltaValue)) // ✅ max 10
       );
       setNumberOfImages(newValue);
     };
@@ -327,7 +327,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   }, []);
 
   // ✅ UPDATED: Slider percentage for max 5
-  const sliderPercentage = ((numberOfImages - 1) / 4) * 100;
+  const sliderPercentage = ((numberOfImages - 1) / 9) * 100;
 
   // ✅ NEW: Get API status text
   const getApiStatusText = () => {
