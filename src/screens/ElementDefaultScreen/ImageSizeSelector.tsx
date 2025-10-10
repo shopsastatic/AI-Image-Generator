@@ -68,6 +68,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   
   const [parentCategory, setParentCategory] = useState("google_prompt");
   const [childOption, setChildOption] = useState("");
+  const [instructionsSubcategory, setInstructionsSubcategory] = useState("");
+
 
   // ✅ NEW: States for dynamic subcategories
   const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
@@ -86,6 +88,10 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     { value: "google_prompt", label: "Google" },
     { value: "facebook_prompt", label: "Facebook" },
     { value: "website_prompt", label: "Website" },
+  ];
+
+  const categoryInstructions: CategoryOption[] = [
+    { value: "instructions", label: "Instructions" },
   ];
 
   // ✅ NEW: All aspect ratio options in single list
@@ -443,7 +449,17 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
 
               <select
                 value={childOption}
-                onChange={(e) => handleChildOptionChange(e.target.value)}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  console.log("📝 Instructions subcategory changed:", newValue);
+                  
+                  setChildOption(newValue);
+                  
+                  // ✅ Force category thành "instructions"
+                  if (onCategoryChange) {
+                    onCategoryChange("instructions", newValue);
+                  }
+                }}
                 disabled={
                   loadingSubcategories ||
                   !getActiveSubcategoriesForCategory(parentCategory).length
@@ -477,6 +493,63 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                 )}
               </select>
             </div>
+
+           <div className="flex items-center space-x-2 p-3 border-b border-gray-200 bg-gray-25">
+            <select
+              value="instructions"
+              disabled
+              className="flex-1 px-2 py-1.5 text-xs bg-gray-100 border border-gray-300 rounded text-gray-700 cursor-not-allowed"
+            >
+              {categoryInstructions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={instructionsSubcategory} // ✅ Dùng state riêng
+              onChange={(e) => {
+                const newValue = e.target.value;
+                console.log("📝 Instructions subcategory changed:", newValue);
+                
+                setInstructionsSubcategory(newValue); // ✅ Update state riêng
+                
+                if (onCategoryChange) {
+                  console.log("✅ Firing onCategoryChange:", "instructions", newValue);
+                  onCategoryChange("instructions", newValue); // ✅ Force "instructions"
+                }
+              }}
+              disabled={
+                loadingSubcategories ||
+                !getActiveSubcategoriesForCategory("instructions").length
+              }
+              className={`flex-1 px-2 py-1.5 text-xs bg-white border max-w-[50%] border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 ${
+                loadingSubcategories ? "opacity-50 cursor-not-allowed bg-gray-50" : ""
+              }`}
+            >
+              {loadingSubcategories ? (
+                <option value="">Loading...</option>
+              ) : (
+                <>
+                  {getActiveSubcategoriesForCategory("instructions").length === 0 ? (
+                    <option value="">No options</option>
+                  ) : (
+                    <>
+                      <option value="">Select subcategory...</option>
+                      {getActiveSubcategoriesForCategory("instructions").map(
+                        (option) => (
+                          <option key={option.id} value={option.value}>
+                            {option.label}
+                          </option>
+                        )
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </select>
+          </div>
 
             {/* Aspect Ratio Selection */}
             <div className="p-3">

@@ -108,7 +108,8 @@ class InstructionsManager {
         const categoryMap = {
             'google_prompt': 'google-ads',
             'facebook_prompt': 'facebook-ads', 
-            'website_prompt': 'website-content'
+            'website_prompt': 'website-content',
+            'instructions': 'instructions'
         };
 
         const normalizedCategory = categoryMap[category] || category;

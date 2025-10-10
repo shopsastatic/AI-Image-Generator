@@ -1389,7 +1389,7 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
     }
 
     // Validate enums
-    const validCategories = ['google-ads', 'facebook-ads', 'website-content'];
+    const validCategories = ['google-ads', 'facebook-ads', 'website-content', 'instructions'];
     const validModels = ['universal', 'deepseek'];
     const validInstructionTypes = ['user', 'system'];
 
@@ -2072,7 +2072,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
     }
 
     // ✅ Validate category
-    const validCategories = ['google-ads', 'facebook-ads', 'website-content'];
+    const validCategories = ['google-ads', 'facebook-ads', 'website-content', 'instructions'];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
         error: 'Invalid category',
@@ -2392,7 +2392,7 @@ app.post('/api/subcategories/import', requireAuth, (req, res) => {
     let skipped = 0;
     let errors = [];
 
-    const validCategories = ['google-ads', 'facebook-ads', 'website-content'];
+    const validCategories = ['google-ads', 'facebook-ads', 'website-content', 'instructions'];
     const validStatuses = ['active', 'inactive'];
 
     for (const item of importData) {

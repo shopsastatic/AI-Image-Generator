@@ -337,6 +337,13 @@ const ProjectManagement: React.FC = () => {
       color: "bg-emerald-50 text-emerald-700", // ✅ NEW
       description: "Website and content marketing visuals", // ✅ NEW
     },
+    {
+      value: "instructions",
+      label: "Instructions",
+      icon: Globe, // ✅ NEW
+      color: "bg-emerald-50 text-emerald-700", // ✅ NEW
+      description: "Website and content marketing visuals", // ✅ NEW
+    },
   ];
 
   const modelOptions = [

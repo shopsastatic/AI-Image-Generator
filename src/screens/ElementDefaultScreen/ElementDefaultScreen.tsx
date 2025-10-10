@@ -70,10 +70,22 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const [countdown, setCountdown] = useState<number>(0);
   const [loadingStatus, setLoadingStatus] = useState<string>("");
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const [hasInstructionsSubcategory, setHasInstructionsSubcategory] =
+    useState<boolean>(false);
+  const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
 
   const [loadingSessions, setLoadingSessions] = useState<LoadingSession[]>([]);
 
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+
+const [instructionsSubcategory, setInstructionsSubcategory] = useState<string>(""); // ✅ THÊM DÒNG NÀY
+const [instructionsApiData, setInstructionsApiData] = useState<{
+  user_prompt: string | null;
+  system_prompt: string | null;
+}>({
+  user_prompt: null,
+  system_prompt: null,
+});
 
   const [selectedSessions, setSelectedSessions] = useState<
     Array<{
@@ -85,7 +97,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       subCategory?: string;
       platform?: string;
       list: Array<{
-        imageUrl: string; // ✅ ĐỔI TÊN từ imageBase64
+        imageUrl: string;
         prompt: string;
         category?: string; // ✅ THÊM
         subCategory?: string;
@@ -118,7 +130,21 @@ export const ElementDefaultScreen = (): JSX.Element => {
   >([]);
 
   const handleCategoryChange = (category: string, subcategory: string) => {
+    console.log("📝 handleCategoryChange called:", { category, subcategory });
+    
     setSelectedCategory({ category, subcategory });
+    
+    // ✅ Kiểm tra nếu là instructions
+    if (category === "instructions") {
+      console.log("✅ Updating instructions subcategory:", subcategory);
+      setHasInstructionsSubcategory(!!subcategory);
+      setInstructionsSubcategory(subcategory);
+    } else {
+      // Reset khi KHÔNG phải instructions
+      console.log("❌ Not instructions, resetting");
+      setHasInstructionsSubcategory(false);
+      setInstructionsSubcategory("");
+    }
   };
 
   const handleNavigateToProjectManagement = () => {
@@ -292,22 +318,17 @@ export const ElementDefaultScreen = (): JSX.Element => {
   // ✅ Auto-load PROMPT CONTENT into textarea
   useEffect(() => {
     const loadInstructions = async () => {
+      // ✅ Chỉ thêm dòng này để log
+      console.log("🔄 Loading instructions for:", selectedCategory);
+
       if (!selectedCategory.category) return;
 
-      // ✅ Xóa sạch textarea ngay
-      if (textareaRef.current) {
-        textareaRef.current.value = "";
-        setPromptText("");
-        adjustHeight();
-      }
-
       try {
-
         const response = await fetch("/api/instructions/resolve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            category: selectedCategory.category,
+            category: selectedCategory.category, // ✅ Đã nhận "instructions" từ onChange
             subcategory: selectedCategory.subcategory || "",
             selectedModel: selectedApis[0] || "claude-sonnet",
           }),
@@ -366,6 +387,53 @@ export const ElementDefaultScreen = (): JSX.Element => {
     loadInstructions();
   }, [selectedCategory, selectedApis]);
 
+  // ✅ useEffect riêng cho Instructions
+useEffect(() => {
+  const loadInstructionsContent = async () => {
+    console.log("🔍 useEffect triggered - instructionsSubcategory:", instructionsSubcategory);
+    
+    if (!instructionsSubcategory) {
+      console.log("⚠️ No instructionsSubcategory, clearing data");
+      setInstructionsApiData({ user_prompt: null, system_prompt: null });
+      return;
+    }
+
+    console.log("📥 Loading instructions content for:", instructionsSubcategory);
+
+    try {
+      const response = await fetch("/api/instructions/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: "instructions",
+          subcategory: instructionsSubcategory,
+          selectedModel: selectedApis[0] || "claude-sonnet",
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("❌ Failed to load instructions content");
+        return;
+      }
+
+      const data = await response.json();
+      console.log("✅ Instructions API Response:", data);
+
+      setInstructionsApiData({
+        user_prompt: data.user_prompt || null,
+        system_prompt: data.system_prompt || null,
+      });
+      
+      console.log("✅ instructionsApiData updated");
+
+    } catch (error) {
+      console.error("❌ Error loading instructions content:", error);
+      setInstructionsApiData({ user_prompt: null, system_prompt: null });
+    }
+  };
+
+  loadInstructionsContent();
+}, [instructionsSubcategory, selectedApis]);
   const getFirst10Words = (text: string): string => {
     return text.split(" ").slice(0, 10).join(" ") + "...";
   };
@@ -452,7 +520,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
   // FIX: Improved handleJobCompleted
   const handleJobCompleted = async (jobId: string, sessionId: string) => {
     try {
-
       const response = await fetch(`/api/image-generation/results/${jobId}`);
       const data = await response.json();
 
@@ -652,7 +719,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
           successfulImages.length > 1 ? "s" : ""
         }`
       );
-
     } catch (error) {
       showNotification(
         "error",
@@ -718,7 +784,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       .substr(2, 9)}`;
     const currentPromptText = promptText.trim();
 
-
     // Create loading session
     const newLoadingSession = {
       sessionId,
@@ -739,7 +804,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       textareaRef.current.style.height = "auto";
       adjustHeight();
     }
-    setUploadedImages([]);
+    // setUploadedImages([]);
 
     try {
       let uploadedImageUrls: string[] = [];
@@ -829,6 +894,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
               category: selectedCategory.category,
               subcategory: selectedCategory.subcategory || "",
             },
+            // ✅ GỬI INSTRUCTIONS CONTENT
+            selectedInstructions: {
+              category: "instructions",
+              subcategory: instructionsSubcategory || "",
+              user_prompt: instructionsApiData.user_prompt,
+              system_prompt: instructionsApiData.system_prompt,
+            },
             selectedApis,
             selectedAspectRatio,
           }),
@@ -901,17 +973,19 @@ export const ElementDefaultScreen = (): JSX.Element => {
                   imageName: img.imageName || "",
                 }))
               );
-            } else if (imagesData && typeof imagesData === 'object') {
-              
+            } else if (imagesData && typeof imagesData === "object") {
               const urls = Array.isArray(imagesData.url) ? imagesData.url : [];
-              const prompts = Array.isArray(imagesData.prompt) ? imagesData.prompt : [];
+              const prompts = Array.isArray(imagesData.prompt)
+                ? imagesData.prompt
+                : [];
               const maxLength = Math.max(urls.length, prompts.length);
 
               allImages = Array.from({ length: maxLength }, (_, index) => ({
                 imageUrl: urls[index] || "",
                 prompt: prompts[index] || currentPromptText,
                 category: imagesData.category || selectedCategory.category,
-                subCategory: imagesData.sub_category || selectedCategory.subcategory || "",
+                subCategory:
+                  imagesData.sub_category || selectedCategory.subcategory || "",
                 platform: imagesData.platform || "",
                 size: "Square",
                 quality: selectedQuality,
@@ -1030,7 +1104,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 sortedValidImages.length > 1 ? "s" : ""
               }`
             );
-
           } else if (pollAttempts >= maxPollAttempts) {
             // Timeout after max attempts
             clearInterval(generateImagePool);
@@ -1065,7 +1138,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       // Call immediately for first check
       pollForResults();
     } catch (error: any) {
-
       // Remove loading session on error
       setLoadingSessions((prev) =>
         prev.filter((session) => session.sessionId !== sessionId)
@@ -1077,6 +1149,75 @@ export const ElementDefaultScreen = (): JSX.Element => {
         "Submission Failed!",
         error.message || "Failed to start image generation. Please try again."
       );
+    }
+  };
+
+  const handleOptimizePrompt = async () => {
+    if (!promptText.trim()) {
+      showNotification(
+        "warning",
+        "No Prompt",
+        "Please enter a prompt to optimize"
+      );
+      return;
+    }
+
+    setIsOptimizing(true);
+
+    try {
+      console.log("🔄 Optimizing prompt with instructions...");
+      
+      const response = await fetch(
+        "https://n8n.misencorp.com/webhook/optimize-prompt",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: promptText.trim(),
+            // ✅ GỬI THÊM INSTRUCTIONS DATA
+            instructions: {
+              category: "instructions",
+              subcategory: instructionsSubcategory || "",
+              user_prompt: instructionsApiData.user_prompt,
+              system_prompt: instructionsApiData.system_prompt,
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("✅ Optimize response:", data);
+
+      if (data && data[0] && data[0].message && data[0].message.content) {
+        const optimizedContent = data[0].message.content;
+
+        if (textareaRef.current) {
+          textareaRef.current.value = optimizedContent;
+          setPromptText(optimizedContent);
+          adjustHeight();
+        }
+
+        showNotification(
+          "success",
+          "Prompt Optimized!",
+          "Your prompt has been improved"
+        );
+      } else {
+        throw new Error("Invalid response format");
+      }
+    } catch (error: any) {
+      console.error("Error optimizing prompt:", error);
+      showNotification(
+        "error",
+        "Optimization Failed",
+        error.message || "Please try again"
+      );
+    } finally {
+      setIsOptimizing(false);
     }
   };
 
@@ -1303,7 +1444,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
   }, [selectedImages, calculateOptimalGridSize]);
 
   const handleHistoryItemClick = (item: any) => {
-    console.log(item)
+    console.log(item);
     // Validate input
     if (!item.list || item.list.length === 0) {
       console.log("⚠️ No images found in this session");
@@ -1821,8 +1962,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showSuggestions]);
-
-
 
   useEffect(() => {
     if (currentViewImageIndex !== null) {
@@ -2851,16 +2990,46 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         }
                       </div>
 
-                      <div
-                        className={`button-7 ${
-                          promptText.trim() ? "active" : ""
-                        }`}
-                        onClick={
-                          promptText.trim() ? handleFormSubmit : undefined
-                        }
-                        ref={submitButtonRef}
-                      >
-                        <img className="SVG-6" alt="Svg" src="/img/svg-4.svg" />
+                      <div className="flex gap-2">
+                        {hasInstructionsSubcategory && (
+                            <div
+                              className={`button-7 ${promptText.trim() && !isOptimizing ? "active" : ""}`}
+                              onClick={promptText.trim() && !isOptimizing ? handleOptimizePrompt : undefined}
+                              style={{ 
+                                cursor: !promptText.trim() || isOptimizing ? "not-allowed" : "pointer",
+                                opacity: !promptText.trim() || isOptimizing ? 0.7 : 1
+                              }}
+                            >
+                              <svg 
+                                xmlns="http://www.w3.org/2000/svg" 
+                                width="20" 
+                                height="20" 
+                                fill="#fff" 
+                                viewBox="0 0 24 24"
+                                style={{
+                                  animation: isOptimizing ? "spin 1s linear infinite" : "none"
+                                }}
+                              >
+                                <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 22l-.394-1.433a2.25 2.25 0 0 0-1.423-1.423L13.25 18.75l1.433-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.433.394 1.433a2.25 2.25 0 0 0 1.423 1.423l1.433.394-1.433.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+                              </svg>
+                            </div>
+                          )}
+
+                        <div
+                          className={`button-7 ${
+                            promptText.trim() ? "active" : ""
+                          }`}
+                          onClick={
+                            promptText.trim() ? handleFormSubmit : undefined
+                          }
+                          ref={submitButtonRef}
+                        >
+                          <img
+                            className="SVG-6"
+                            alt="Svg"
+                            src="/img/svg-4.svg"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3204,34 +3373,42 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       </div>
 
                       <button
-                          className="image-viewer-download"
-                          onClick={() => {
-                            if (currentSessionId && currentViewImageIndex !== null) {
-                              const session = selectedSessions.find(
-                                (s) => s.sessionId === currentSessionId
-                              );
+                        className="image-viewer-download"
+                        onClick={() => {
+                          if (
+                            currentSessionId &&
+                            currentViewImageIndex !== null
+                          ) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
 
-                              if (session && session.list[currentSessionImageIndex]) {
-                                const imageData = session.list[currentSessionImageIndex];
-                                downloadImage(
-                                  imageData.imageUrl,  // ✅ ĐỔI TỪ imageBase64 THÀNH imageUrl
-                                  imageData.claudeResponse,
-                                  currentSessionImageIndex,
-                                  imageData.imageName
-                                );
-                              } else if (selectedImages[currentViewImageIndex]) {
-                                const imageData = selectedImages[currentViewImageIndex];
-                                downloadImage(
-                                  imageData.imageUrl,
-                                  imageData.claudeResponse,
-                                  imageData.imageIndex || 0,
-                                  imageData.imageName
-                                );
-                              }
+                            if (
+                              session &&
+                              session.list[currentSessionImageIndex]
+                            ) {
+                              const imageData =
+                                session.list[currentSessionImageIndex];
+                              downloadImage(
+                                imageData.imageUrl, // ✅ ĐỔI TỪ imageBase64 THÀNH imageUrl
+                                imageData.claudeResponse,
+                                currentSessionImageIndex,
+                                imageData.imageName
+                              );
+                            } else if (selectedImages[currentViewImageIndex]) {
+                              const imageData =
+                                selectedImages[currentViewImageIndex];
+                              downloadImage(
+                                imageData.imageUrl,
+                                imageData.claudeResponse,
+                                imageData.imageIndex || 0,
+                                imageData.imageName
+                              );
                             }
-                          }}
-                          title="Download image"
-                        >
+                          }
+                        }}
+                        title="Download image"
+                      >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           width="1em"

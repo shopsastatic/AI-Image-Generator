@@ -68,5 +68,25 @@
     "status": "active",
     "createdAt": "2025-10-02T09:45:34.275Z",
     "lastModified": "2025-10-02T09:47:25.802Z"
+  },
+  "system_prompt_universal_instructions_cacsa.txt": {
+    "project": "Google Ads DeepSeek User Instructions",
+    "category": "instructions",
+    "subcategory": "cacsa",
+    "instructionType": "system",
+    "targetModel": "universal",
+    "status": "active",
+    "createdAt": "2025-10-10T08:30:30.442Z",
+    "lastModified": "2025-10-10T09:47:47.811Z"
+  },
+  "system_prompt_universal_instructions_jacj.txt": {
+    "project": "Google Ads DeepSeek User Instructions",
+    "category": "instructions",
+    "subcategory": "jacj",
+    "instructionType": "system",
+    "targetModel": "universal",
+    "status": "active",
+    "createdAt": "2025-10-10T08:30:36.323Z",
+    "lastModified": "2025-10-10T09:47:53.609Z"
   }
 }
