@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import "react-tooltip/dist/react-tooltip.css";
 import { ElementDefault } from "./screens/ElementDefault";
 import { ElementDefaultScreen } from "./screens/ElementDefaultScreen";
 import LoginScreen from "./screens/ElementDefaultScreen/LoginScreen";
@@ -171,11 +172,6 @@ export const App = () => {
                 const data = await response.json();
                 setIsAuthenticated(true);
                 setUser(data.user); // ✅ NEW: Store user data with role
-                console.log(
-                    "✅ Authenticated as:",
-                    data.user.email,
-                    "(" + data.user.role + ")"
-                );
             } else {
                 setIsAuthenticated(false);
                 setUser(null);

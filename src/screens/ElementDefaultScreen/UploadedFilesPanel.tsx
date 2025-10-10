@@ -26,19 +26,16 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const panelRef = useRef<HTMLDivElement>(null);
 
-    // Load uploaded files khi component mount hoặc visibility thay đổi
     useEffect(() => {
         if (isVisible) {
             loadUploadedFiles();
         }
     }, [isVisible]);
 
-    // Cập nhật filtered files khi uploadedFiles thay đổi
     useEffect(() => {
         applyFiltersAndSort(uploadedFiles, searchTerm, sortBy, sortOrder);
     }, [uploadedFiles, searchTerm, sortBy, sortOrder]);
 
-    // Handle click outside để đóng panel
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (
@@ -60,20 +57,16 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
 
     const loadUploadedFiles = async () => {
         setLoading(true);
-        console.log("🔍 Loading uploaded files...");
         try {
             const files = await storageManager.getAllUploadedFiles();
-            console.log("🔍 Loaded files:", files.length, files);
             setUploadedFiles(files);
             applyFiltersAndSort(files, searchTerm, sortBy, sortOrder);
         } catch (error) {
-            console.error("❌ Error loading uploaded files:", error);
         } finally {
             setLoading(false);
         }
     };
 
-    // Function để apply filters và sort
     const applyFiltersAndSort = (
         files: UploadedFile[],
         search: string,
@@ -82,14 +75,12 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
     ) => {
         let filtered = files;
 
-        // Apply search filter
         if (search.trim()) {
             filtered = files.filter((file) =>
                 file.fileName.toLowerCase().includes(search.toLowerCase())
             );
         }
 
-        // Apply sorting
         filtered.sort((a, b) => {
             let compareValue = 0;
 
@@ -116,13 +107,11 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
         setFilteredFiles(filtered);
     };
 
-    // Handle search change
     const handleSearchChange = (value: string) => {
         setSearchTerm(value);
         applyFiltersAndSort(uploadedFiles, value, sortBy, sortOrder);
     };
 
-    // Handle sort change
     const handleSortChange = (field: "name" | "date" | "size" | "usage") => {
         const newOrder =
             field === sortBy && sortOrder === "desc" ? "asc" : "desc";
@@ -134,14 +123,12 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
     const handleFileClick = async (file: UploadedFile) => {
         setSelectedFileId(file.id);
 
-        // Cập nhật usage count
         try {
             await storageManager.updateFileUsage(file.id);
         } catch (error) {
             console.error("❌ Error updating file usage:", error);
         }
 
-        // Gọi callback để select file
         onFileSelect(file);
     };
 
@@ -151,33 +138,25 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
     ) => {
         event.stopPropagation();
 
-        // Tìm file để hiển thị tên trong confirm dialog
         const fileToDelete = uploadedFiles.find((f) => f.id === fileId);
         const fileName = fileToDelete?.fileName || "file này";
 
         if (window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"?`)) {
-            // Thêm file vào danh sách đang xóa
             setDeletingFileIds((prev) => new Set(prev).add(fileId));
 
             try {
-                console.log("🔍 Attempting to delete file:", fileId, fileName);
-
-                // Xóa từ storage
                 await storageManager.deleteUploadedFile(fileId);
                 console.log("✅ Successfully deleted from storage");
 
-                // Cập nhật state
                 const updatedFiles = uploadedFiles.filter(
                     (f) => f.id !== fileId
                 );
                 setUploadedFiles(updatedFiles);
 
-                // Clear selection nếu file đang được chọn
                 if (selectedFileId === fileId) {
                     setSelectedFileId(null);
                 }
 
-                // Hiển thị thông báo thành công
                 const notification = document.createElement("div");
                 notification.textContent = `🗑️ Đã xóa "${fileName}"`;
                 notification.className = "copy-notification";
@@ -187,23 +166,15 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
                         notification.parentNode.removeChild(notification);
                     }
                 }, 2000);
-
-                console.log("✅ File deleted successfully");
             } catch (error) {
-                console.error("❌ Error deleting file:", error);
-
-                // Hiển thị error message chi tiết hơn
                 let errorMessage = "Lỗi khi xóa file. Vui lòng thử lại.";
                 if (error instanceof Error) {
                     errorMessage = `Lỗi: ${error.message}`;
                 }
 
                 alert(errorMessage);
-
-                // Reload files để đảm bảo UI sync với storage
                 loadUploadedFiles();
             } finally {
-                // Remove file khỏi danh sách đang xóa
                 setDeletingFileIds((prev) => {
                     const newSet = new Set(prev);
                     newSet.delete(fileId);
@@ -232,85 +203,6 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
         });
     };
 
-    // ✅ THÊM MỚI: Debug function để kiểm tra storage state
-    const debugStorage = async () => {
-        try {
-            console.log("🔍 Debug Storage Info:");
-            console.log("Current uploadedFiles state:", uploadedFiles);
-            console.log("Current filteredFiles state:", filteredFiles);
-
-            // Kiểm tra database health
-            const health = await storageManager.checkDatabaseHealth();
-            console.log("Database health:", health);
-
-            const storageFiles = await storageManager.getAllUploadedFiles();
-            console.log("Files from storage:", storageFiles);
-
-            // Kiểm tra localStorage
-            const localStorageData = localStorage.getItem("uploaded_files");
-            if (localStorageData) {
-                const parsed = JSON.parse(localStorageData);
-                console.log("localStorage data:", parsed);
-                console.log(
-                    "localStorage file count:",
-                    Object.keys(parsed).length
-                );
-            } else {
-                console.log("No localStorage data found");
-            }
-
-            // Hiển thị notification với health info
-            alert(
-                `Debug info logged to console:\n- State files: ${uploadedFiles.length}\n- Storage files: ${storageFiles.length}\n- Storage method: ${health.storageMethod}\n- IndexedDB available: ${health.indexedDBAvailable}\n- Can perform operations: ${health.canPerformOperations}\n\nCheck browser console for details`
-            );
-        } catch (error) {
-            console.error("❌ Debug error:", error);
-            const errorMessage =
-                error instanceof Error ? error.message : "Unknown error";
-            alert(`Debug error: ${errorMessage}`);
-        }
-    };
-
-    // ✅ THÊM MỚI: Cleanup function để đồng bộ storage
-    const cleanupStorage = async () => {
-        try {
-            console.log("🧹 Cleaning up storage...");
-
-            // Kiểm tra health trước
-            const health = await storageManager.checkDatabaseHealth();
-            console.log("Storage health before cleanup:", health);
-
-            // Nếu có vấn đề với IndexedDB, thử reinitialize
-            if (health.indexedDBAvailable && !health.canPerformOperations) {
-                console.log("🔄 Attempting to reinitialize database...");
-                await storageManager.reinitializeDatabase();
-            }
-
-            // Reload files để đảm bảo sync
-            await loadUploadedFiles();
-
-            console.log("✅ Storage cleanup completed");
-
-            // Hiển thị notification
-            const notification = document.createElement("div");
-            notification.textContent = "🔄 Đã làm mới dữ liệu storage";
-            notification.className = "copy-notification";
-            document.body.appendChild(notification);
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 2000);
-        } catch (error) {
-            console.error("❌ Cleanup error:", error);
-            alert(
-                `Cleanup error: ${
-                    error instanceof Error ? error.message : "Unknown error"
-                }`
-            );
-        }
-    };
-
     if (!isVisible) return null;
 
     return (
@@ -320,20 +212,6 @@ const UploadedFilesPanel: React.FC<UploadedFilesPanelProps> = ({
                 <div className="uploaded-files-header">
                     <h3>📁 File đã upload</h3>
                     <div className="header-actions">
-                        <button
-                            className="debug-btn"
-                            onClick={debugStorage}
-                            title="Debug Storage (kiểm tra console)"
-                        >
-                            🐛
-                        </button>
-                        <button
-                            className="debug-btn"
-                            onClick={cleanupStorage}
-                            title="Làm mới dữ liệu"
-                        >
-                            🔄
-                        </button>
                         <button className="close-btn" onClick={onClose}>
                             ✕
                         </button>

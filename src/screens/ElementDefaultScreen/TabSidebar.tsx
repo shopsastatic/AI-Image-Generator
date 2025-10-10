@@ -88,6 +88,9 @@ interface TabData {
     thumbnail?: string;
     timestamp: string;
     isActive: boolean;
+    isPinned: boolean; // ✅ THÊM MỚI: Pin state
+    isCustomTitle?: boolean; // ✅ THÊM MỚI: Track if user renamed this tab
+    lastActiveAt?: number; // ✅ THÊM MỚI: Track last active time for cleanup
     history: TabHistoryItem[];
     currentPage: string;
     workspaceData: TabWorkspaceData; // ✅ THÊM MỚI: Workspace data cho mỗi tab
@@ -126,6 +129,8 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
     const [tabs, setTabs] = useState<TabData[]>([]);
     const [activeTabId, setActiveTabId] = useState<string | null>(null);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [editingTabId, setEditingTabId] = useState<string | null>(null); // ✅ THÊM MỚI: Tab đang rename
+    const [editingTabName, setEditingTabName] = useState<string>(""); // ✅ THÊM MỚI: Tên đang edit
     const [contextMenu, setContextMenu] = useState<{
         visible: boolean;
         x: number;
@@ -211,15 +216,99 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
         }
     };
 
-    // Lưu tabs vào localStorage
+    // Lưu tabs vào localStorage với quota management
     const saveTabsToStorage = useCallback((tabsToSave: TabData[]) => {
         try {
-            localStorage.setItem(
-                "ai_generator_tabs",
-                JSON.stringify(tabsToSave)
-            );
+            const dataToSave = JSON.stringify(tabsToSave);
+            const sizeInMB = new Blob([dataToSave]).size / (1024 * 1024);
+
+            // Check if tabs data is too large (> 2MB)
+            if (sizeInMB > 2) {
+                console.warn(
+                    `⚠️ Tabs data size (${sizeInMB.toFixed(
+                        2
+                    )}MB) is large, cleaning workspace data...`
+                );
+
+                // Clean workspace data from tabs to reduce size
+                const cleanedTabs = tabsToSave.map((tab) => ({
+                    ...tab,
+                    workspaceData: {
+                        ...tab.workspaceData,
+                        // Keep only essential data, remove large images
+                        selectedImages:
+                            tab.workspaceData.selectedImages?.slice(0, 3) || [], // Keep only 3 newest images
+                        uploadedImages:
+                            tab.workspaceData.uploadedImages?.slice(0, 2) || [], // Keep only 2 newest uploaded images
+                    },
+                }));
+
+                const cleanedDataSize =
+                    new Blob([JSON.stringify(cleanedTabs)]).size /
+                    (1024 * 1024);
+                console.log(
+                    `🧹 Cleaned tabs data from ${sizeInMB.toFixed(
+                        2
+                    )}MB to ${cleanedDataSize.toFixed(2)}MB`
+                );
+
+                localStorage.setItem(
+                    "ai_generator_tabs",
+                    JSON.stringify(cleanedTabs)
+                );
+            } else {
+                localStorage.setItem("ai_generator_tabs", dataToSave);
+            }
         } catch (error) {
-            console.error("❌ Error saving tabs to storage:", error);
+            if (
+                error instanceof DOMException &&
+                error.name === "QuotaExceededError"
+            ) {
+                console.warn(
+                    "🚨 Storage quota exceeded for tabs, aggressive cleanup..."
+                );
+
+                // Keep only pinned tabs and last 3 active tabs
+                const pinnedTabs = tabsToSave.filter((tab) => tab.isPinned);
+                const recentTabs = tabsToSave
+                    .filter((tab) => !tab.isPinned)
+                    .sort(
+                        (a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0)
+                    )
+                    .slice(0, 3);
+
+                const essentialTabs = [...pinnedTabs, ...recentTabs].map(
+                    (tab) => ({
+                        ...tab,
+                        workspaceData: {
+                            selectedImages: [],
+                            loadingSessions: [],
+                            promptText: tab.workspaceData.promptText || "",
+                            uploadedImages: [],
+                            selectedSessions: [],
+                            uiState: tab.workspaceData.uiState || {},
+                        },
+                    })
+                );
+
+                try {
+                    localStorage.setItem(
+                        "ai_generator_tabs",
+                        JSON.stringify(essentialTabs)
+                    );
+                    console.log(
+                        `✅ Aggressive cleanup: kept ${essentialTabs.length} essential tabs`
+                    );
+                } catch (finalError) {
+                    console.error(
+                        "❌ Critical storage error, clearing all tabs:",
+                        finalError
+                    );
+                    localStorage.removeItem("ai_generator_tabs");
+                }
+            } else {
+                console.error("❌ Error saving tabs to storage:", error);
+            }
         }
     }, []);
 
@@ -234,6 +323,9 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
                 thumbnail: generateDefaultThumbnail(title),
                 timestamp: new Date().toISOString(),
                 isActive: false,
+                isPinned: false, // ✅ THÊM MỚI: Default not pinned
+                isCustomTitle: false, // ✅ THÊM MỚI: Default not custom title
+                lastActiveAt: Date.now(), // ✅ THÊM MỚI: Track creation time
                 history: [],
                 currentPage: url,
                 workspaceData: createDefaultWorkspaceData(), // ✅ THÊM MỚI: Default workspace data
@@ -292,6 +384,8 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
                 const updatedTabs = prevTabs.map((tab) => ({
                     ...tab,
                     isActive: tab.id === tabId,
+                    lastActiveAt:
+                        tab.id === tabId ? Date.now() : tab.lastActiveAt, // ✅ Track last active time
                 }));
                 saveTabsToStorage(updatedTabs);
                 return updatedTabs;
@@ -309,6 +403,15 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
             if (event) {
                 event.stopPropagation();
             }
+
+            // ✅ THÊM MỚI: Không cho phép đóng pinned tabs
+            const tab = tabs.find((t) => t.id === tabId);
+            if (tab && tab.isPinned) {
+                return; // Không làm gì nếu tab được pin
+            }
+
+            const isDel = confirm("Bạn chắc chắn muốn xóa?");
+            if (!isDel) return;
 
             setTabs((prevTabs) => {
                 const tabIndex = prevTabs.findIndex((tab) => tab.id === tabId);
@@ -336,7 +439,7 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
                 return updatedTabs;
             });
         },
-        [onTabChange, saveTabsToStorage]
+        [onTabChange, saveTabsToStorage, tabs]
     );
 
     // Cập nhật tab hiện tại với dữ liệu mới
@@ -366,7 +469,10 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
 
                         return {
                             ...tab,
-                            title: pageData.title,
+                            // ✅ FIXED: Chỉ update title nếu user chưa rename tab
+                            title: tab.isCustomTitle
+                                ? tab.title
+                                : pageData.title,
                             thumbnail: pageData.thumbnail || tab.thumbnail,
                             currentPage: pageData.url,
                             history: newHistory,
@@ -420,6 +526,11 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
     // Close other tabs
     const closeOtherTabs = useCallback(
         (keepTabId: string) => {
+            const isDel = confirm(
+                "Bạn chắc chắn muốn xóa hết? hành động này không thể thu hồi"
+            );
+            if (!isDel) return;
+
             setTabs((prevTabs) => {
                 const updatedTabs = prevTabs.filter(
                     (tab) => tab.id === keepTabId
@@ -432,7 +543,180 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
         [saveTabsToStorage, closeContextMenu]
     );
 
-    // Click outside để đóng context menu
+    // ✅ THÊM MỚI: Pin/Unpin tab
+    const togglePinTab = useCallback(
+        (tabId: string) => {
+            setTabs((prevTabs) => {
+                const updatedTabs = prevTabs.map((tab) => {
+                    if (tab.id === tabId) {
+                        return { ...tab, isPinned: !tab.isPinned };
+                    }
+                    return tab;
+                });
+                saveTabsToStorage(updatedTabs);
+                return updatedTabs;
+            });
+            closeContextMenu();
+        },
+        [saveTabsToStorage, closeContextMenu]
+    );
+
+    // ✅ THÊM MỚI: Start rename tab
+    const startRenameTab = useCallback(
+        (tabId: string) => {
+            const tab = tabs.find((t) => t.id === tabId);
+            if (tab) {
+                setEditingTabId(tabId);
+                setEditingTabName(tab.title);
+                closeContextMenu();
+            }
+        },
+        [tabs, closeContextMenu]
+    );
+
+    // ✅ THÊM MỚI: Save rename tab
+    const saveRenameTab = useCallback(
+        (tabId: string, newName: string) => {
+            if (newName.trim() === "") return;
+
+            console.log(`🏷️ Renaming tab ${tabId} to: "${newName.trim()}"`);
+
+            setTabs((prevTabs) => {
+                const updatedTabs = prevTabs.map((tab) => {
+                    if (tab.id === tabId) {
+                        return {
+                            ...tab,
+                            title: newName.trim(),
+                            isCustomTitle: true, // ✅ THÊM MỚI: Mark tab as user-renamed
+                            timestamp: new Date().toISOString(), // ✅ Update timestamp khi rename
+                        };
+                    }
+                    return tab;
+                });
+
+                // ✅ THÊM MỚI: Đảm bảo lưu vào localStorage ngay lập tức
+                try {
+                    saveTabsToStorage(updatedTabs);
+                    console.log(
+                        `✅ Tab renamed and saved to localStorage successfully`
+                    );
+                } catch (error) {
+                    console.error("❌ Error saving renamed tab:", error);
+                }
+
+                return updatedTabs;
+            });
+
+            setEditingTabId(null);
+            setEditingTabName("");
+
+            // ✅ THÊM MỚI: Verify lưu thành công bằng cách đọc lại từ localStorage
+            setTimeout(() => {
+                try {
+                    const savedTabs = localStorage.getItem("ai_generator_tabs");
+                    if (savedTabs) {
+                        const parsedTabs = JSON.parse(savedTabs);
+                        const renamedTab = parsedTabs.find(
+                            (t: TabData) => t.id === tabId
+                        );
+                        if (renamedTab && renamedTab.title === newName.trim()) {
+                            console.log(
+                                `✅ Verified: Tab rename saved to localStorage`
+                            );
+
+                            // ✅ THÊM MỚI: Show success notification
+                            const notification = document.createElement("div");
+                            notification.textContent = `📝 Tab renamed to "${newName.trim()}"`;
+                            notification.className = "tab-rename-notification";
+                            notification.style.cssText = `
+                                position: fixed;
+                                top: 20px;
+                                right: 20px;
+                                background: rgba(40, 167, 69, 0.95);
+                                color: white;
+                                padding: 12px 16px;
+                                border-radius: 8px;
+                                font-size: 13px;
+                                z-index: 10000;
+                                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                            `;
+                            document.body.appendChild(notification);
+                            setTimeout(() => {
+                                if (notification.parentNode) {
+                                    notification.parentNode.removeChild(
+                                        notification
+                                    );
+                                }
+                            }, 2000);
+                        } else {
+                            console.warn(
+                                `⚠️ Tab rename may not have been saved properly`
+                            );
+                        }
+                    }
+                } catch (error) {
+                    console.error("❌ Error verifying tab rename save:", error);
+                }
+            }, 100); // Delay nhỏ để đảm bảo localStorage đã được cập nhật
+        },
+        [saveTabsToStorage]
+    );
+
+    // ✅ THÊM MỚI: Force refresh localStorage để đảm bảo tính nhất quán
+    const forceRefreshTabsFromStorage = useCallback(() => {
+        try {
+            const savedTabs = localStorage.getItem("ai_generator_tabs");
+            if (savedTabs) {
+                const parsedTabs: TabData[] = JSON.parse(savedTabs);
+                setTabs(parsedTabs);
+                console.log("🔄 Force refreshed tabs from localStorage");
+            }
+        } catch (error) {
+            console.error("❌ Error force refreshing tabs:", error);
+        }
+    }, []);
+
+    // ✅ THÊM MỚI: Cancel rename
+    const cancelRename = useCallback(() => {
+        setEditingTabId(null);
+        setEditingTabName("");
+    }, []);
+
+    // ✅ THÊM MỚI: Handle double click to rename với prompt
+    const handleDoubleClick = useCallback(
+        (tabId: string) => {
+            const tab = tabs.find((t) => t.id === tabId);
+            if (!tab) return;
+
+            const newName = prompt("Enter new tab name:", tab.title);
+
+            if (
+                newName !== null &&
+                newName.trim() !== "" &&
+                newName.trim() !== tab.title
+            ) {
+                console.log(`🏷️ Renaming tab ${tabId} to: "${newName.trim()}"`);
+
+                setTabs((prevTabs) => {
+                    const updatedTabs = prevTabs.map((t) => {
+                        if (t.id === tabId) {
+                            return {
+                                ...t,
+                                title: newName.trim(),
+                                isCustomTitle: true, // Mark as user-renamed
+                            };
+                        }
+                        return t;
+                    });
+                    saveTabsToStorage(updatedTabs);
+                    return updatedTabs;
+                });
+            }
+        },
+        [tabs]
+    );
+
+    // Click outside để đóng context menu và handle keyboard shortcuts
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (contextMenu.visible) {
@@ -440,9 +724,36 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
             }
         };
 
+        // ✅ THÊM MỚI: Keyboard shortcuts
+        const handleKeyPress = (event: KeyboardEvent) => {
+            // F2 để rename active tab
+            if (event.key === "F2" && activeTabId && !editingTabId) {
+                event.preventDefault();
+                startRenameTab(activeTabId);
+            }
+
+            // Escape để cancel rename
+            if (event.key === "Escape" && editingTabId) {
+                event.preventDefault();
+                cancelRename();
+            }
+        };
+
         document.addEventListener("click", handleClickOutside);
-        return () => document.removeEventListener("click", handleClickOutside);
-    }, [contextMenu.visible, closeContextMenu]);
+        document.addEventListener("keydown", handleKeyPress);
+
+        return () => {
+            document.removeEventListener("click", handleClickOutside);
+            document.removeEventListener("keydown", handleKeyPress);
+        };
+    }, [
+        contextMenu.visible,
+        closeContextMenu,
+        activeTabId,
+        editingTabId,
+        startRenameTab,
+        cancelRename,
+    ]);
 
     if (!isVisible) return null;
 
@@ -453,18 +764,7 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
         >
             {/* Header */}
             <div className="tab-sidebar-header">
-                <div className="tab-sidebar-title">
-                    <span>🗂️ Workspace Tabs</span>
-                </div>
-
                 <div className="tab-sidebar-controls">
-                    <button
-                        className="tab-control-btn"
-                        onClick={() => setIsCollapsed(!isCollapsed)}
-                        title={isCollapsed ? "Expand" : "Collapse"}
-                    >
-                        {isCollapsed ? "→" : "←"}
-                    </button>
                     <button
                         className="tab-control-btn"
                         onClick={() => createNewTab()}
@@ -498,64 +798,49 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
                             </button>
                         </div>
                     ) : (
-                        // ✅ Hiển thị tabs như bình thường
-                        tabs.map((tab) => (
-                            <div
-                                key={tab.id}
-                                className={`tab-item ${
-                                    tab.isActive ? "active" : ""
-                                }`}
-                                onClick={() => switchToTab(tab.id)}
-                                onContextMenu={(e) =>
-                                    handleRightClick(e, tab.id)
-                                }
-                            >
-                                <div className="tab-thumbnail">
-                                    {tab.thumbnail ? (
-                                        <img
-                                            src={tab.thumbnail}
-                                            alt={tab.title}
-                                        />
-                                    ) : (
-                                        <div className="tab-thumbnail-placeholder">
-                                            📄
+                        // ✅ Hiển thị tabs với pinned tabs lên đầu
+                        [...tabs]
+                            .sort((a, b) => {
+                                // Pinned tabs lên đầu
+                                if (a.isPinned && !b.isPinned) return -1;
+                                if (!a.isPinned && b.isPinned) return 1;
+                                return 0;
+                            })
+                            .map((tab) => (
+                                <div
+                                    data-tooltip-content={`${tab.title}`}
+                                    data-tooltip-id="optimize-tooltip-sidebar"
+                                    key={tab.id}
+                                    className={`tab-item ${
+                                        tab.isActive ? "active" : ""
+                                    } ${tab.isPinned ? "pinned" : ""}`}
+                                    onClick={() => switchToTab(tab.id)}
+                                    onDoubleClick={() =>
+                                        handleDoubleClick(tab.id)
+                                    }
+                                    onContextMenu={(e) =>
+                                        handleRightClick(e, tab.id)
+                                    }
+                                >
+                                    {tab.isPinned && (
+                                        <div className="tab-pin-indicator">
+                                            📌
                                         </div>
                                     )}
-                                </div>
-
-                                <div className="tab-info">
-                                    <div
-                                        className="tab-title"
-                                        title={tab.title}
-                                    >
-                                        {tab.title}
-                                    </div>
-                                    <div className="tab-meta">
-                                        <span className="tab-timestamp">
-                                            {new Date(
-                                                tab.timestamp
-                                            ).toLocaleTimeString("vi-VN", {
-                                                hour: "2-digit",
-                                                minute: "2-digit",
-                                            })}
-                                        </span>
-                                        {tab.history.length > 0 && (
-                                            <span className="tab-history-count">
-                                                {tab.history.length} items
-                                            </span>
+                                    <div className="tab-thumbnail">
+                                        {tab.thumbnail ? (
+                                            <img
+                                                src="/img/svg-7.svg"
+                                                alt={tab.title}
+                                            />
+                                        ) : (
+                                            <div className="tab-thumbnail-placeholder">
+                                                📄
+                                            </div>
                                         )}
                                     </div>
                                 </div>
-
-                                <button
-                                    className="tab-close-btn"
-                                    onClick={(e) => closeTab(tab.id, e)}
-                                    title="Close tab"
-                                >
-                                    ×
-                                </button>
-                            </div>
-                        ))
+                            ))
                     )}
                 </div>
             )}
@@ -616,6 +901,24 @@ const TabSidebar: React.FC<TabSidebarProps> = ({
                         zIndex: 10000,
                     }}
                 >
+                    <div
+                        className="context-menu-item"
+                        onClick={() => {
+                            handleDoubleClick(contextMenu.tabId);
+                            closeContextMenu();
+                        }}
+                    >
+                        ✏️ Rename Tab
+                    </div>
+                    <div
+                        className="context-menu-item"
+                        onClick={() => togglePinTab(contextMenu.tabId)}
+                    >
+                        {tabs.find((t) => t.id === contextMenu.tabId)?.isPinned
+                            ? "📌 Unpin Tab"
+                            : "📌 Pin Tab"}
+                    </div>
+                    <div className="context-menu-separator"></div>
                     <div
                         className="context-menu-item"
                         onClick={() => duplicateTab(contextMenu.tabId)}

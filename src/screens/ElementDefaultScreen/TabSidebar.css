@@ -1,19 +1,16 @@
 /* ===== TAB SIDEBAR COMPONENT ===== */
 .tab-sidebar {
-    position      : fixed;
-    left          : 0;
-    top           : 0;
-    width         : 320px;
-    height        : 100vh;
-    background    : linear-gradient(0%);
-    border-right  : 1px solid var(--border-color);
-    display       : flex;
-    flex-direction: column;
-    z-index       : 1000;
-    box-shadow    : 2px 0 10px rgba(0, 0, 0, 0.1);
-    transition    : var(--transition-standard);
-    overflow      : hidden;
-    background    : #f8f8f8;
+    width           : var(--aside-width);
+    align-items     : center;
+    gap             : var(--space-2);
+    height          : 100vh;
+    top             : var(--header-height);
+    z-index         : 10;
+    background-color: var(--bg-secondary);
+    flex-direction  : column;
+    display         : flex;
+    position        : fixed;
+    left            : 0;
 }
 
 .tab-sidebar.collapsed {
@@ -49,12 +46,17 @@
     gap    : 8px;
 }
 
+.tab-sidebar-controls button {
+    border       : 1px solid #ccc;
+    border-radius: 8px;
+}
+
 .tab-control-btn {
     width          : 28px;
     height         : 28px;
     border         : none;
     background     : rgba(255, 255, 255, 0.2);
-    color          : white;
+    color          : #000;
     border-radius  : 6px;
     cursor         : pointer;
     display        : flex;
@@ -144,7 +146,7 @@
 
 /* Tab Item */
 .tab-item {
-    display      : flex;
+    display      : inline-flex;
     align-items  : center;
     padding      : 12px;
     background   : rgba(255, 255, 255, 0.1);
@@ -154,6 +156,15 @@
     position     : relative;
     border       : 1px solid transparent;
     gap          : 12px;
+    position     : relative;
+}
+
+.info-tab-custom {
+    display         : none;
+    justify-content : center;
+    align-items     : center;
+    background-color: #fff;
+    position        : absolute;
 }
 
 .tab-item:hover {
@@ -161,10 +172,37 @@
     transform : translateX(4px);
 }
 
+.tab-item:hover .info-tab-custom {
+    display: flex;
+}
+
 .tab-item.active {
     background  : rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.4);
     box-shadow  : 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ✅ THÊM MỚI: Pinned tab styles */
+.tab-item.pinned {
+    background  : rgba(255, 215, 0, 0.2);
+    border-color: rgba(255, 215, 0, 0.4);
+    box-shadow  : 0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+.tab-item.pinned.active {
+    background  : rgba(255, 215, 0, 0.3);
+    border-color: rgba(255, 215, 0, 0.6);
+    box-shadow  : 0 4px 20px rgba(255, 215, 0, 0.3);
+}
+
+/* ✅ THÊM MỚI: Pin indicator */
+.tab-pin-indicator {
+    position : absolute;
+    top      : 4px;
+    right    : 4px;
+    font-size: 10px;
+    opacity  : 0.8;
+    z-index  : 10;
 }
 
 .tab-item.active::before {
@@ -181,8 +219,8 @@
 
 /* Tab Thumbnail */
 .tab-thumbnail {
-    width          : 40px;
-    height         : 30px;
+    width          : 24px;
+    height         : 24px;
     border-radius  : 4px;
     overflow       : hidden;
     background     : rgba(255, 255, 255, 0.2);
@@ -209,6 +247,7 @@
     min-width     : 0;
     display       : flex;
     flex-direction: column;
+    display       : none;
 }
 
 .tab-title {
@@ -228,6 +267,10 @@
     font-size  : 11px;
     opacity    : 0.7;
 }
+
+/* .tab-thumbnail {
+    display: none !important;
+} */
 
 .tab-timestamp {
     color: #000;
@@ -250,17 +293,45 @@
     width          : 20px;
     height         : 20px;
     border         : none;
-    background     : rgba(255, 255, 255, 0.2);
-    color          : white;
+    color          : #000;
     border-radius  : 50%;
     cursor         : pointer;
     display        : flex;
     align-items    : center;
     justify-content: center;
     font-size      : 14px;
-    opacity        : 0;
     transition     : all 0.2s ease;
     flex-shrink    : 0;
+}
+
+/* ✅ THÊM MỚI: Disabled close button for pinned tabs */
+.tab-close-btn.disabled {
+    cursor : not-allowed;
+    opacity: 0.5;
+    color  : #ffd700;
+}
+
+.tab-close-btn.disabled:hover {
+    background: none;
+    transform : none;
+}
+
+/* ✅ THÊM MỚI: Rename input styles */
+.tab-rename-input {
+    background   : rgba(255, 255, 255, 0.9);
+    border       : 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 4px;
+    padding      : 4px 8px;
+    font-size    : 12px;
+    color        : #333;
+    width        : 100%;
+    min-width    : 0;
+}
+
+.tab-rename-input:focus {
+    outline     : none;
+    border-color: #ffd700;
+    box-shadow  : 0 0 0 2px rgba(255, 215, 0, 0.3);
 }
 
 .tab-item:hover .tab-close-btn {
@@ -402,6 +473,14 @@
 
 .context-menu-item.danger:hover {
     background-color: #fed7d7;
+}
+
+/* ✅ THÊM MỚI: Context menu separator */
+.context-menu-separator {
+    height    : 1px;
+    background: rgba(255, 255, 255, 0.2);
+    margin    : 4px 0;
+    border    : none;
 }
 
 /* Responsive Design */

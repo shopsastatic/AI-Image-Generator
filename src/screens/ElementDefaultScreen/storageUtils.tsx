@@ -1,10 +1,3 @@
-/**
- * storageUtils.ts - Phiên bản hoàn toàn mới
- *
- * Quản lý lưu trữ và truy xuất dữ liệu phiên ảnh với cơ chế xử lý lỗi mạnh mẽ
- */
-
-// Định nghĩa các interface để type safety
 interface ImageData {
     imageUrl: string;
     prompt: string;
@@ -54,7 +47,6 @@ interface HistoryItem {
     imageCount: number;
 }
 
-// Lớp quản lý lưu trữ chính
 class StorageManager {
     private db: IDBDatabase | null = null;
     private isInitialized: boolean = false;
@@ -67,20 +59,15 @@ class StorageManager {
     private operationQueue: Array<() => Promise<void>> = [];
     private readonly DEBUG: boolean = true; // Bật/tắt log debug
 
-    // Constructor
     constructor() {
         this.logDebug("StorageManager được khởi tạo");
     }
 
-    /**
-     * Khởi tạo kết nối đến IndexedDB
-     */
     async init(): Promise<void> {
         if (this.isInitialized) return;
 
         try {
             return new Promise((resolve, reject) => {
-                // Kiểm tra hỗ trợ IndexedDB
                 if (!window.indexedDB) {
                     this.isInitialized = true;
                     resolve();
@@ -91,7 +78,7 @@ class StorageManager {
 
                 request.onerror = (event) => {
                     this.isInitialized = true;
-                    resolve(); // Vẫn resolve để dùng localStorage fallback
+                    resolve();
                 };
 
                 request.onsuccess = (event: any) => {
@@ -119,12 +106,10 @@ class StorageManager {
                 request.onupgradeneeded = (event: any) => {
                     const db = event.target.result;
 
-                    // Xóa object store cũ nếu tồn tại và tạo mới
                     if (db.objectStoreNames.contains("sessions")) {
                         db.deleteObjectStore("sessions");
                     }
 
-                    // Tạo object store mới với các indexes cần thiết
                     const store = db.createObjectStore("sessions", {
                         keyPath: "sessionId",
                     });
@@ -135,7 +120,6 @@ class StorageManager {
                         unique: false,
                     });
 
-                    // ✅ THÊM MỚI: Tạo object store cho uploaded files
                     if (!db.objectStoreNames.contains("uploadedFiles")) {
                         const filesStore = db.createObjectStore(
                             "uploadedFiles",
@@ -154,37 +138,27 @@ class StorageManager {
                 };
             });
         } catch (error) {
-            console.error("❌ Lỗi khởi tạo StorageManager:", error);
-            this.isInitialized = true; // Vẫn đánh dấu đã khởi tạo để dùng localStorage
+            this.isInitialized = true;
         }
     }
 
-    /**
-     * Lưu một session mới hoặc cập nhật session hiện có
-     */
     async saveSession(sessionData: SessionData): Promise<string> {
         await this.waitForInit();
 
         try {
-            // Đảm bảo có sessionId
             if (!sessionData.sessionId) {
                 throw new Error("Session ID là bắt buộc");
             }
 
-            this.logDebug(`🔄 Đang lưu session: ${sessionData.sessionId}`);
-
-            // Đợi các thao tác khác hoàn thành
             await this.waitForLock();
             this.operationLock = true;
 
             try {
-                // Kiểm tra session đã tồn tại chưa
                 const existingSessions = await this.getAllSessionsInternal();
                 const existingSession = existingSessions.find(
                     (session) => session.sessionId === sessionData.sessionId
                 );
 
-                // Chuẩn bị dữ liệu session
                 const now = new Date().toISOString();
                 const session = {
                     sessionId: sessionData.sessionId,
@@ -195,7 +169,6 @@ class StorageManager {
                     images: [],
                 };
 
-                // Xử lý và chuẩn hóa images
                 if (sessionData.images && sessionData.images.length > 0) {
                     for (const image of sessionData.images) {
                         // Đảm bảo có đủ dữ liệu cho mỗi ảnh
@@ -208,7 +181,6 @@ class StorageManager {
                             quality: image.quality || "Standard",
                         };
 
-                        // Thêm các trường tùy chọn nếu có
                         if (image.claudeResponse)
                             imageData.claudeResponse = image.claudeResponse;
                         if (image.AdCreativeA)
@@ -220,7 +192,6 @@ class StorageManager {
                         if (image.imageName)
                             imageData.imageName = image.imageName;
 
-                        // Bỏ qua ảnh rỗng hoặc ảnh placeholder
                         if (
                             !imageData.imageUrl ||
                             imageData.imageUrl.includes(
@@ -235,19 +206,14 @@ class StorageManager {
                             continue;
                         }
 
-                        session.images.push(imageData);
+                        (session.images as any).push(imageData);
                     }
                 }
 
-                // Kiểm tra nếu không có ảnh nào hợp lệ
                 if (session.images.length === 0) {
-                    this.logDebug(
-                        `⚠️ Không có ảnh hợp lệ trong session ${sessionData.sessionId}, bỏ qua`
-                    );
                     return sessionData.sessionId;
                 }
 
-                // Lưu vào IndexedDB hoặc localStorage
                 if (this.db) {
                     const tx = this.db.transaction("sessions", "readwrite");
                     const store = tx.objectStore("sessions");
@@ -266,7 +232,6 @@ class StorageManager {
                         tx.onerror = (e: any) => reject(e.target.error);
                     });
                 } else {
-                    // Fallback to localStorage
                     if (existingSession) {
                         const index = existingSessions.findIndex(
                             (s) => s.sessionId === sessionData.sessionId
@@ -286,34 +251,23 @@ class StorageManager {
                     );
                 }
 
-                // Xóa cache để buộc refresh khi đọc lại
                 this.sessionsCache = null;
-
-                this.logDebug(
-                    `✅ Session ${sessionData.sessionId} lưu thành công với ${session.images.length} ảnh`
-                );
                 return sessionData.sessionId;
             } finally {
-                // Giải phóng lock
                 this.operationLock = false;
                 this.processQueue();
             }
         } catch (error) {
-            console.error("❌ Lỗi lưu session:", error);
             this.operationLock = false;
             this.processQueue();
             throw error;
         }
     }
 
-    /**
-     * Lấy tất cả sessions (đã deduplicate)
-     */
     async getAllSessions(): Promise<any[]> {
         await this.waitForInit();
 
         try {
-            // Đợi thao tác khác hoàn thành
             await this.waitForLock();
             this.operationLock = true;
 
@@ -325,19 +279,14 @@ class StorageManager {
                 this.processQueue();
             }
         } catch (error) {
-            console.error("❌ Lỗi lấy sessions:", error);
             this.operationLock = false;
             this.processQueue();
             return [];
         }
     }
 
-    /**
-     * Helper nội bộ để lấy tất cả sessions
-     */
     private async getAllSessionsInternal(): Promise<any[]> {
         try {
-            // Trả về cache nếu còn mới (dưới 2 giây)
             if (this.sessionsCache && Date.now() - this.lastCacheTime < 2000) {
                 return this.sessionsCache;
             }
@@ -348,14 +297,12 @@ class StorageManager {
                 const tx = this.db.transaction("sessions", "readonly");
                 const store = tx.objectStore("sessions");
 
-                // Lấy tất cả sessions từ IndexedDB
                 sessions = await new Promise<any[]>((resolve, reject) => {
                     const request = store.getAll();
                     request.onsuccess = () => resolve(request.result || []);
                     request.onerror = (e: any) => reject(e.target.error);
                 });
             } else {
-                // Fallback to localStorage
                 try {
                     const sessionsJson = localStorage.getItem(
                         "Image_Generator_Sessions"
@@ -371,11 +318,9 @@ class StorageManager {
                 }
             }
 
-            // Deduplicate và validate sessions
             const validatedSessions =
                 this.validateAndDeduplicateSessions(sessions);
 
-            // Cache kết quả
             this.sessionsCache = validatedSessions;
             this.lastCacheTime = Date.now();
 
@@ -386,26 +331,20 @@ class StorageManager {
         }
     }
 
-    /**
-     * Xác thực và loại bỏ trùng lặp trong danh sách sessions
-     */
-    private validateAndDeduplicateSessions(sessions: any[]): any[] {
+    validateAndDeduplicateSessions(sessions: any[]): any[] {
         if (!Array.isArray(sessions)) {
             this.logDebug("⚠️ Sessions không phải array, trả về array rỗng");
             return [];
         }
 
-        // Lọc bỏ sessions không hợp lệ và trùng lặp
         const sessionMap = new Map();
         const validSessions = [];
 
         for (const session of sessions) {
-            // Kiểm tra session có hợp lệ không
             if (!session || !session.sessionId || !session.images) {
                 continue;
             }
 
-            // Lọc bỏ các ảnh không hợp lệ
             const validImages = (session.images || []).filter((img: any) => {
                 return (
                     img &&
@@ -418,22 +357,18 @@ class StorageManager {
                 );
             });
 
-            // Bỏ qua session không có ảnh hợp lệ
             if (validImages.length === 0) {
                 continue;
             }
 
-            // Tạo bản sao để cập nhật
             const updatedSession = {
                 ...session,
                 images: validImages,
             };
 
-            // Kiểm tra trùng lặp bằng sessionId
             const existingSession = sessionMap.get(session.sessionId);
 
             if (existingSession) {
-                // Nếu session này mới hơn, thay thế session cũ
                 const existingTime = new Date(
                     existingSession.timestamp || existingSession.createdAt || 0
                 ).getTime();
@@ -445,28 +380,21 @@ class StorageManager {
                     sessionMap.set(session.sessionId, updatedSession);
                 }
             } else {
-                // Nếu chưa có, thêm vào map
                 sessionMap.set(session.sessionId, updatedSession);
             }
         }
 
-        // Chuyển đổi Map thành array
         for (const session of sessionMap.values()) {
             validSessions.push(session);
         }
 
-        // Sắp xếp theo thời gian (mới nhất trước)
         validSessions.sort((a, b) => {
             const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
             const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
             return timeB - timeA;
         });
 
-        // Cập nhật localStorage nếu cần thiết
         if (!this.db && validSessions.length !== sessions.length) {
-            this.logDebug(
-                `📝 Cập nhật localStorage với ${validSessions.length} sessions hợp lệ từ ${sessions.length} sessions gốc`
-            );
             localStorage.setItem(
                 "Image_Generator_Sessions",
                 JSON.stringify(validSessions)
@@ -476,12 +404,6 @@ class StorageManager {
         return validSessions;
     }
 
-    /**
-     * Lấy dữ liệu lịch sử cho sidebar
-     */
-    /**
-     * Lấy dữ liệu lịch sử cho sidebar
-     */
     async getHistoryForSidebar(): Promise<HistoryGroup[]> {
         await this.waitForInit();
 
@@ -492,7 +414,6 @@ class StorageManager {
                 return [];
             }
 
-            // Nhóm theo ngày
             const groupedByDate = this.groupSessionsByDate(sessions);
             return groupedByDate;
         } catch (error) {
@@ -500,15 +421,12 @@ class StorageManager {
             return [];
         }
     }
-    /**
-     * Nhóm sessions theo ngày
-     */
+
     private groupSessionsByDate(sessions: any[]): HistoryGroup[] {
         const groups: HistoryGroup[] = [];
         const dateMap = new Map<string, HistoryGroup>();
 
         for (const session of sessions) {
-            // Bỏ qua session không có ảnh
             if (!session.images || session.images.length === 0) {
                 continue;
             }
@@ -522,7 +440,6 @@ class StorageManager {
                   })
                 : "Unknown Date";
 
-            // Lấy hoặc tạo nhóm cho ngày này
             let group = dateMap.get(date);
             if (!group) {
                 group = { date, items: [] };
@@ -530,11 +447,9 @@ class StorageManager {
                 groups.push(group);
             }
 
-            // Tìm ảnh đầu tiên làm thumbnail
             const firstImage = session.images[0];
             const thumbnailImage = firstImage?.imageUrl || "";
 
-            // Thêm vào nhóm
             group.items.push({
                 id: session.sessionId,
                 describe: session.describe || "",
@@ -543,7 +458,6 @@ class StorageManager {
             });
         }
 
-        // Sắp xếp nhóm theo ngày (mới nhất trước)
         groups.sort((a, b) => {
             const dateA = new Date(a.date).getTime();
             const dateB = new Date(b.date).getTime();
@@ -553,9 +467,6 @@ class StorageManager {
         return groups;
     }
 
-    /**
-     * Lấy ảnh cho một session cụ thể
-     */
     async getSessionImages(sessionId: string): Promise<ImageData[]> {
         await this.waitForInit();
 
@@ -567,7 +478,6 @@ class StorageManager {
                 return [];
             }
 
-            // Lọc bỏ ảnh không hợp lệ VÀ GIỮ PLATFORM
             const validImages = session.images.filter((img: ImageData) => {
                 return (
                     img &&
@@ -580,35 +490,17 @@ class StorageManager {
                 );
             });
 
-            if (validImages.length === 0) {
-                this.logDebug(
-                    `⚠️ Không tìm thấy ảnh hợp lệ cho session: ${sessionId}`
-                );
-            } else {
-                this.logDebug(
-                    `✅ Đã tìm thấy ${validImages.length} ảnh hợp lệ cho session: ${sessionId}`
-                );
-                this.logDebug(
-                    `📦 First image platform:`,
-                    validImages[0]?.platform
-                ); // ✅ Debug
-            }
-
-            return validImages; // Platform đã có sẵn trong validImages
+            return validImages;
         } catch (error) {
             console.error(`❌ Lỗi lấy ảnh cho session ${sessionId}:`, error);
             return [];
         }
     }
 
-    /**
-     * Xóa một session
-     */
     async deleteSession(sessionId: string): Promise<boolean> {
         await this.waitForInit();
 
         try {
-            // Đợi thao tác khác hoàn thành
             await this.waitForLock();
             this.operationLock = true;
 
@@ -623,7 +515,6 @@ class StorageManager {
                         request.onerror = (e: any) => reject(e.target.error);
                     });
                 } else {
-                    // Xóa từ localStorage
                     const sessions = await this.getAllSessionsInternal();
                     const filteredSessions = sessions.filter(
                         (s) => s.sessionId !== sessionId
@@ -634,7 +525,6 @@ class StorageManager {
                     );
                 }
 
-                // Xóa cache
                 this.sessionsCache = null;
 
                 this.logDebug(`✅ Đã xóa session: ${sessionId}`);
@@ -651,9 +541,6 @@ class StorageManager {
         }
     }
 
-    /**
-     * Xóa tất cả sessions
-     */
     async clearAllSessions(): Promise<boolean> {
         await this.waitForInit();
 
@@ -873,9 +760,6 @@ class StorageManager {
         }
     }
 
-    /**
-     * Đợi cho đến khi khởi tạo hoàn thành
-     */
     private async waitForInit(): Promise<void> {
         if (this.isInitialized) return;
 
@@ -889,16 +773,12 @@ class StorageManager {
         }
 
         if (!this.isInitialized) {
-            this.isInitialized = true; // Đánh dấu đã khởi tạo để không bị treo
+            this.isInitialized = true;
         }
     }
 
-    /**
-     * Log debug nếu được bật
-     */
     private logDebug(message: string, ...args: any[]): void {
         if (this.DEBUG) {
-            console.log(`🔍 [StorageManager] ${message}`, ...args);
         }
     }
 
@@ -908,13 +788,6 @@ class StorageManager {
      */
     async saveUploadedFile(file: File, imageBase64: string): Promise<string> {
         await this.waitForInit();
-        console.log(
-            "🔍 Saving uploaded file:",
-            file.name,
-            "DB available:",
-            !!this.db
-        );
-
         const fileId = `upload_${Date.now()}_${Math.random()
             .toString(36)
             .substr(2, 9)}`;
@@ -935,10 +808,8 @@ class StorageManager {
             await this.waitForLock();
             this.operationLock = true;
 
-            // ✅ SỬA LỖI: Kiểm tra database và object store có tồn tại không
             if (this.db && this.db.objectStoreNames.contains("uploadedFiles")) {
                 try {
-                    console.log("🔍 Using IndexedDB to save file");
                     const tx = this.db.transaction(
                         "uploadedFiles",
                         "readwrite"
@@ -947,23 +818,13 @@ class StorageManager {
                     await new Promise<void>((resolve, reject) => {
                         const request = store.put(uploadedFile);
                         request.onsuccess = () => {
-                            console.log(`✅ Saved to IndexedDB: ${file.name}`);
                             resolve();
                         };
                         request.onerror = () => {
-                            console.error(
-                                "❌ IndexedDB save error:",
-                                request.error
-                            );
                             reject(request.error);
                         };
                     });
                 } catch (indexedDBError) {
-                    console.warn(
-                        "❌ IndexedDB save failed, falling back to localStorage:",
-                        indexedDBError
-                    );
-                    // Fallback to localStorage
                     const existingFiles = this.getLocalStorageFiles();
                     existingFiles[fileId] = uploadedFile;
                     localStorage.setItem(
@@ -977,17 +838,55 @@ class StorageManager {
                 }
             } else {
                 console.log("🔍 Using localStorage to save file");
-                // Use localStorage
+                // Use localStorage with quota management
                 const existingFiles = this.getLocalStorageFiles();
-                existingFiles[fileId] = uploadedFile;
-                localStorage.setItem(
-                    "uploaded_files",
-                    JSON.stringify(existingFiles)
-                );
-                console.log(
-                    "🔍 Saved to localStorage, total files:",
-                    Object.keys(existingFiles).length
-                );
+
+                // ✅ THÊM MỚI: Check storage quota before saving
+                try {
+                    existingFiles[fileId] = uploadedFile;
+                    const dataToSave = JSON.stringify(existingFiles);
+
+                    // Check if data size is reasonable (< 4MB to leave room for other data)
+                    const sizeInMB =
+                        new Blob([dataToSave]).size / (1024 * 1024);
+
+                    if (sizeInMB > 4) {
+                        console.warn(
+                            `⚠️ Storage size (${sizeInMB.toFixed(
+                                2
+                            )}MB) approaching limit, cleaning old files...`
+                        );
+                        await this.cleanOldFiles(
+                            existingFiles,
+                            fileId,
+                            uploadedFile
+                        );
+                    } else {
+                        localStorage.setItem("uploaded_files", dataToSave);
+                        console.log(
+                            `✅ Saved to localStorage (${sizeInMB.toFixed(
+                                2
+                            )}MB), total files:`,
+                            Object.keys(existingFiles).length
+                        );
+                    }
+                } catch (error) {
+                    if (
+                        error instanceof DOMException &&
+                        error.name === "QuotaExceededError"
+                    ) {
+                        console.warn(
+                            "🚨 Storage quota exceeded, cleaning old files..."
+                        );
+                        await this.cleanOldFiles(
+                            existingFiles,
+                            fileId,
+                            uploadedFile
+                        );
+                    } else {
+                        throw error;
+                    }
+                }
             }
 
             this.logDebug(`✅ Saved uploaded file: ${file.name}`);
@@ -998,6 +897,87 @@ class StorageManager {
         } finally {
             this.operationLock = false;
             this.processQueue();
+        }
+    }
+
+    // ✅ THÊM MỚI: Clean old files to free up storage space
+    private async cleanOldFiles(
+        existingFiles: any,
+        newFileId: string,
+        newFile: UploadedFile
+    ): Promise<void> {
+        console.log("🧹 Starting storage cleanup...");
+
+        // Sort files by timestamp (oldest first)
+        const fileEntries = Object.entries(existingFiles) as [
+            string,
+            UploadedFile
+        ][];
+        const sortedFiles = fileEntries.sort(
+            (a, b) =>
+                new Date(a[1].timestamp).getTime() -
+                new Date(b[1].timestamp).getTime()
+        );
+
+        // Remove oldest files until we have space
+        let cleanedFiles = { ...existingFiles };
+        const maxFilesToKeep = Math.max(
+            10,
+            Math.floor(sortedFiles.length * 0.7)
+        ); // Keep at least 70% or 10 files
+
+        // Remove oldest files
+        for (let i = 0; i < sortedFiles.length - maxFilesToKeep; i++) {
+            const [fileId] = sortedFiles[i];
+            delete cleanedFiles[fileId];
+            console.log(`🗑️ Removed old file: ${fileId}`);
+        }
+
+        // Add the new file
+        cleanedFiles[newFileId] = newFile;
+
+        try {
+            const dataToSave = JSON.stringify(cleanedFiles);
+            localStorage.setItem("uploaded_files", dataToSave);
+
+            const sizeInMB = new Blob([dataToSave]).size / (1024 * 1024);
+            console.log(
+                `✅ Storage cleaned, size: ${sizeInMB.toFixed(2)}MB, files: ${
+                    Object.keys(cleanedFiles).length
+                }`
+            );
+        } catch (error) {
+            // If still too big, be more aggressive
+            if (
+                error instanceof DOMException &&
+                error.name === "QuotaExceededError"
+            ) {
+                console.warn("🚨 Still too big, aggressive cleanup...");
+
+                // Keep only newest 5 files plus the new one
+                const newestFiles = sortedFiles.slice(-5);
+                const aggressiveCleanedFiles: any = {};
+
+                newestFiles.forEach(([fileId, file]) => {
+                    aggressiveCleanedFiles[fileId] = file;
+                });
+                aggressiveCleanedFiles[newFileId] = newFile;
+
+                localStorage.setItem(
+                    "uploaded_files",
+                    JSON.stringify(aggressiveCleanedFiles)
+                );
+                const finalSize =
+                    new Blob([JSON.stringify(aggressiveCleanedFiles)]).size /
+                    (1024 * 1024);
+                console.log(
+                    `✅ Aggressive cleanup complete, size: ${finalSize.toFixed(
+                        2
+                    )}MB, files: ${Object.keys(aggressiveCleanedFiles).length}`
+                );
+            } else {
+                throw error;
+            }
         }
     }
 

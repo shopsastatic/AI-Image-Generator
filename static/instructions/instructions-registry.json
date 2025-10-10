@@ -57,7 +57,7 @@
     "targetModel": "universal",
     "status": "active",
     "createdAt": "2025-10-02T09:45:15.341Z",
-    "lastModified": "2025-10-09T09:19:38.675Z"
+    "lastModified": "2025-10-10T04:05:12.401Z"
   },
   "system_prompt_universal_google_ads_youtube_thumbnail_generator.txt": {
     "project": "Google Ads DeepSeek User Instructions",
@@ -68,5 +68,15 @@
     "status": "active",
     "createdAt": "2025-10-02T09:45:34.275Z",
     "lastModified": "2025-10-02T09:47:25.802Z"
+  },
+  "system_prompt_universal_instruction_content_23424234ds.txt": {
+    "project": "SSDSD",
+    "category": "instruction-content",
+    "subcategory": "23424234ds",
+    "instructionType": "system",
+    "targetModel": "universal",
+    "status": "active",
+    "createdAt": "2025-10-10T02:54:18.746Z",
+    "lastModified": "2025-10-10T04:54:59.183Z"
   }
 }

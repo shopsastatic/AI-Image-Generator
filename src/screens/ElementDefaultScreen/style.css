@@ -113,7 +113,8 @@ button {
 
 .element-default-screen .main-2 {
     margin-top: var(--header-height);
-    width     : 100%;
+    left      : var(--aside-width);
+    width     : calc(100% - var(--aside-width));
     position  : relative;
     overflow-x: hidden;
     transition: var(--transition-standard);
@@ -3426,6 +3427,10 @@ button {
     opacity         : 1;
     background-color: #ffe6e6;
     transform       : scale(1.1);
+}
+
+#optimize-tooltip {
+    z-index: 9999999999999;
 }
 
 /* Responsive design */

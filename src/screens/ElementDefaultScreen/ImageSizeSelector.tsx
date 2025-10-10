@@ -16,6 +16,7 @@ interface ImageSizeSelectorProps {
             Landscape: number;
         }>
     >;
+    setIsUseInstructionsContent: React.Dispatch<React.SetStateAction<boolean>>;
     // Optional category selection props
     onCategoryChange?: (category: string, subcategory: string) => void;
     // New props for API selection
@@ -54,21 +55,20 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     onApiChange,
     onAspectRatioChange, // ✅ ADDED
     currentUser,
+    setIsUseInstructionsContent,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
 
-    // ✅ NEW: API selection states (default both selected)
     const [useNano, setUseNano] = useState(false);
     const [useSeed, setUseSeed] = useState(true);
 
-    const [parentCategory, setParentCategory] = useState("google_prompt");
+    const [parentCategory, setParentCategory] = useState("google-ads");
     const [childOption, setChildOption] = useState("");
+    const [childOptionInstruction, setChildOptionInstruction] = useState("");
 
-    // ✅ NEW: States for dynamic subcategories
     const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
     const [loadingSubcategories, setLoadingSubcategories] = useState(false);
 
-    // ✅ NEW: Single aspect ratio state (default Square HD)
     const [selectedAspectRatio, setSelectedAspectRatio] = useState("1:1");
 
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -78,12 +78,11 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const [dragStartValue, setDragStartValue] = useState(0);
 
     const categoryOptions: CategoryOption[] = [
-        { value: "google_prompt", label: "Google" },
-        { value: "facebook_prompt", label: "Facebook" },
-        { value: "website_prompt", label: "Website" },
+        { value: "google-ads", label: "Google" },
+        { value: "facebook-ads", label: "Facebook" },
+        { value: "website-content", label: "Website" },
     ];
 
-    // ✅ NEW: All aspect ratio options in single list
     const aspectRatioOptions: AspectRatioOption[] = [
         { value: "Square HD", label: "Square HD", format: "Square" },
         { value: "Portrait 3:4", label: "Portrait 3:4", format: "Portrait" },
@@ -98,7 +97,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         },
     ];
 
-    // ✅ NEW: Get icon and format type for selected aspect ratio
     const getIconForAspectRatio = (ratio: string) => {
         const option = aspectRatioOptions.find((opt) => opt.value === ratio);
         if (!option) return Square;
@@ -115,11 +113,9 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         }
     };
 
-    // ✅ NEW: Notify parent component when API selection changes
     useEffect(() => {
         const selectedApis: string[] = [];
 
-        // If both unselected, use both APIs
         if (!useNano && !useSeed) {
             selectedApis.push("nano", "seed");
         } else {
@@ -130,9 +126,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         if (onApiChange) {
             onApiChange(selectedApis);
         }
-    }, [useNano, useSeed]); // Removed onApiChange from deps
+    }, [useNano, useSeed]);
 
-    // ✅ ADDED: Notify parent when aspect ratio changes
     useEffect(() => {
         if (onAspectRatioChange) {
             onAspectRatioChange(selectedAspectRatio);
@@ -141,9 +136,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                 "⚠️ onAspectRatioChange callback not provided by parent"
             );
         }
-    }, [selectedAspectRatio]); // Only selectedAspectRatio, not onAspectRatioChange
+    }, [selectedAspectRatio]);
 
-    // ✅ FIXED: Simplified fetch function
     const fetchSubcategories = async () => {
         try {
             setLoadingSubcategories(true);
@@ -168,47 +162,40 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         }
     };
 
-    // ✅ NEW: Helper function to convert category display names to API format
     const getCategoryKey = (displayCategory: string): string => {
         const categoryMap: { [key: string]: string } = {
             google_prompt: "google-ads",
             facebook_prompt: "facebook-ads",
             website_prompt: "website-content",
+            instruction_content: "instruction-content",
         };
         return categoryMap[displayCategory] || displayCategory;
     };
 
-    // ✅ NEW: Helper function to get active subcategories for a category
     const getActiveSubcategoriesForCategory = (
         category: string,
         subcategoriesList?: SubcategoryOption[]
     ): SubcategoryOption[] => {
         const list = subcategoriesList || subcategories;
         return list.filter(
-            (sub) =>
-                sub.category === getCategoryKey(category) &&
-                sub.status === "active"
+            (sub) => sub.category === category && sub.status === "active"
         );
     };
 
-    // ✅ Load subcategories on component mount
     useEffect(() => {
         fetchSubcategories();
     }, [currentUser]);
 
-    // ✅ FIXED: Simplified useEffect for updating childOption
     useEffect(() => {
         const categoryKey = getCategoryKey(parentCategory);
         const availableOptions = getActiveSubcategoriesForCategory(categoryKey);
 
         if (availableOptions.length > 0) {
-            // ✅ FIX: Chỉ validate nếu đã có giá trị, không tự động set
             if (childOption !== "") {
                 const currentOptionValid = availableOptions.some(
                     (opt) => opt.value === childOption
                 );
                 if (!currentOptionValid) {
-                    // Reset về empty nếu option hiện tại không hợp lệ
                     setChildOption("");
                     if (onCategoryChange) {
                         onCategoryChange(parentCategory, "");
@@ -216,7 +203,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                 }
             }
         } else {
-            // Không có options → set về empty
             if (childOption !== "") {
                 setChildOption("");
                 if (onCategoryChange) {
@@ -226,12 +212,10 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
         }
     }, [parentCategory, subcategories]);
 
-    // ✅ NEW: Toggle Nano API
     const toggleNano = () => {
         setUseNano((prev) => !prev);
     };
 
-    // ✅ NEW: Toggle SeeD API
     const toggleSeed = () => {
         setUseSeed((prev) => !prev);
     };
@@ -239,21 +223,38 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const handleParentCategoryChange = (newCategory: string) => {
         setParentCategory(newCategory);
 
-        // ✅ FIX: Set về empty thay vì tự động chọn option đầu
         setChildOption("");
         if (onCategoryChange) {
             onCategoryChange(newCategory, "");
         }
     };
 
-    const handleChildOptionChange = (newChildOption: string) => {
+    const handleChildOptionChange = (
+        newChildOption: string,
+        category?: string
+    ) => {
         setChildOption(newChildOption);
         if (onCategoryChange) {
-            onCategoryChange(parentCategory, newChildOption);
+            onCategoryChange(
+                category ? category : parentCategory,
+                newChildOption
+            );
         }
     };
 
-    // ✅ UPDATED: Calculate value from position for max 5
+    const handleChildOptionInstructionChange = (
+        newChildOption: string,
+        category?: string
+    ) => {
+        setChildOptionInstruction(newChildOption);
+        if (onCategoryChange) {
+            onCategoryChange(
+                category ? category : parentCategory,
+                newChildOption
+            );
+        }
+    };
+
     const calculateValueFromPosition = (clientX: number) => {
         if (!sliderRef.current) return numberOfImages;
 
@@ -338,10 +339,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
             document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // ✅ UPDATED: Slider percentage for max 5
     const sliderPercentage = ((numberOfImages - 1) / 4) * 100;
 
-    // ✅ NEW: Get API status text
     const getApiStatusText = () => {
         if (!useNano && !useSeed) return "Nano • SeeD";
         if (useNano && useSeed) return "Nano • SeeD";
@@ -353,7 +352,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     return (
         <div>
             <div className="relative inline-block" ref={dropdownRef}>
-                {/* Compact Trigger Button */}
                 <button
                     onClick={() => setIsOpen(!isOpen)}
                     className={`inline-flex items-center space-x-2 bg-white rounded-xl px-3 py-2 text-sm`}
@@ -373,12 +371,9 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                     </span>
                 </button>
 
-                {/* Enhanced Dropdown */}
                 {isOpen && (
                     <div className="absolute bottom-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-xl z-50 w-80 overflow-hidden mb-2">
-                        {/* Enhanced Header Row: Nano, SeeD, Images */}
                         <div className="p-3 bg-gray-50 border-b border-gray-200 space-y-3">
-                            {/* Top Row: API Selection */}
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
                                     <strong className="text-gray-700">
@@ -450,7 +445,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                             </div>
                         </div>
 
-                        {/* Dynamic Category Selection Row */}
                         <div className="flex items-center space-x-2 p-3 border-b border-gray-200 bg-gray-25">
                             <select
                                 value={parentCategory}
@@ -501,6 +495,89 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                                                 </option>
                                                 {getActiveSubcategoriesForCategory(
                                                     parentCategory
+                                                ).map((option) => (
+                                                    <option
+                                                        key={option.id}
+                                                        value={option.value}
+                                                    >
+                                                        {option.label}
+                                                    </option>
+                                                ))}
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </select>
+                        </div>
+
+                        <div className="flex items-center space-x-2 p-3 border-b border-gray-200 bg-gray-25">
+                            <select
+                                value={"instruction-content"}
+                                onChange={(e) => {}}
+                                disabled
+                                className="flex-1 px-2 py-1.5 text-xs bg-white border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500"
+                            >
+                                {[
+                                    {
+                                        value: "instruction-content",
+                                        label: "Instruction",
+                                    },
+                                ]
+                                    .filter(
+                                        (option) =>
+                                            option.value ===
+                                            "instruction-content"
+                                    )
+                                    .map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                            </select>
+
+                            <select
+                                value={childOptionInstruction}
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        setIsUseInstructionsContent(true);
+                                    } else {
+                                        setIsUseInstructionsContent(false);
+                                    }
+                                    handleChildOptionInstructionChange(
+                                        e.target.value,
+                                        "instruction-content"
+                                    );
+                                }}
+                                disabled={
+                                    loadingSubcategories ||
+                                    !getActiveSubcategoriesForCategory(
+                                        "instruction-content"
+                                    ).length
+                                }
+                                className={`flex-1 px-2 py-1.5 text-xs bg-white border max-w-[50%] border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 ${
+                                    loadingSubcategories
+                                        ? "opacity-50 cursor-not-allowed bg-gray-50"
+                                        : ""
+                                }`}
+                            >
+                                {loadingSubcategories ? (
+                                    <option value="">Loading...</option>
+                                ) : (
+                                    <>
+                                        {getActiveSubcategoriesForCategory(
+                                            "instruction-content"
+                                        ).length === 0 ? (
+                                            <option value="">No options</option>
+                                        ) : (
+                                            <>
+                                                <option value="">
+                                                    Select subcategory...
+                                                </option>
+                                                {getActiveSubcategoriesForCategory(
+                                                    "instruction-content"
                                                 ).map((option) => (
                                                     <option
                                                         key={option.id}

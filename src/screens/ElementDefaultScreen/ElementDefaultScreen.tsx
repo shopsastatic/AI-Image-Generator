@@ -1,5 +1,8 @@
+import axios from "axios";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Tooltip } from "react-tooltip";
+import "react-tooltip/dist/react-tooltip.css";
 import HistorySidebar from "./HistorySideBar";
 import ImageInfoDropdown from "./ImageInfoDropdown";
 import ImageSizeSelector from "./ImageSizeSelector";
@@ -63,6 +66,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         useState<string>("Square HD");
 
     const [instructionsContent, setInstructionsContent] = useState("");
+    const [selectedInstructions, setSelectedInstructions] = useState<any>(null);
 
     const [numberOfImages, setNumberOfImages] = useState<number>(1);
     const [selectedQuality, setSelectedQuality] = useState<string>("Low");
@@ -81,8 +85,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
     const [expandedGrid, setExpandedGrid] = useState<boolean>(false);
     const [baseGridCount, setBaseGridCount] = useState<number>(8);
 
-    // ✅ THÊM MỚI: TabSidebar states
-    const [showTabSidebar, setShowTabSidebar] = useState<boolean>(true);
     const [currentTabId, setCurrentTabId] = useState<string | null>(null);
     const [currentWorkspaceData, setCurrentWorkspaceData] =
         useState<TabWorkspaceData>(createDefaultWorkspaceData());
@@ -146,6 +148,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
     const [showImageInfo, setShowImageInfo] = useState<boolean>(false);
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
     const [activeSession, setActiveSession] = useState<string | null>(null);
+    const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
     const [selectedImageSize, setSelectedImageSize] = useState<{
         width: number;
         height: number;
@@ -157,7 +160,15 @@ export const ElementDefaultScreen = (): JSX.Element => {
     });
 
     const handleCategoryChange = (category: string, subcategory: string) => {
-        setSelectedCategory({ category, subcategory });
+        if (category === "instruction-content") {
+            setSelectedInstructions({ category, subcategory });
+        } else {
+            console.log("Setting selected category:", {
+                category,
+                subcategory,
+            });
+            setSelectedCategory({ category, subcategory });
+        }
     };
 
     const handleNavigateToProjectManagement = () => {
@@ -194,15 +205,69 @@ export const ElementDefaultScreen = (): JSX.Element => {
         return result;
     };
 
-    // FIX: Add handlers for model and HD mode changes
     const handleApiChange = useCallback((apis: string[]) => {
-        console.log("🔄 Selected APIs changed to:", apis);
         setSelectedApis(apis);
     }, []);
 
     const handleAspectRatioChange = useCallback((aspectRatio: string) => {
-        console.log("🔄 Selected Aspect Ratio changed to:", aspectRatio);
         setSelectedAspectRatio(aspectRatio);
+    }, []);
+
+    // ✅ THÊM MỚI: Show storage status
+    const showStorageStatus = useCallback(() => {
+        try {
+            // Calculate current storage usage
+            let totalSize = 0;
+            const keys = Object.keys(localStorage);
+
+            keys.forEach((key) => {
+                const item = localStorage.getItem(key);
+                if (item) {
+                    totalSize += new Blob([item]).size;
+                }
+            });
+
+            const sizeInMB = totalSize / (1024 * 1024);
+            const percentUsed = (sizeInMB / 10) * 100; // Assume 10MB limit
+
+            if (sizeInMB > 8) {
+                // Warning at 8MB
+                const notification = document.createElement("div");
+                notification.innerHTML = `
+                    ⚠️ Storage almost full: ${sizeInMB.toFixed(1)}MB / ~10MB
+                    <br><small>Old files will be auto-cleaned</small>
+                `;
+                notification.className = "storage-warning-notification";
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(255, 193, 7, 0.95);
+                    color: #000;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    z-index: 10000;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    border: 1px solid rgba(255, 193, 7, 0.3);
+                `;
+                document.body.appendChild(notification);
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 5000);
+            } else if (sizeInMB > 5) {
+                // Info at 5MB
+                console.log(
+                    `📊 Storage usage: ${sizeInMB.toFixed(
+                        1
+                    )}MB (${percentUsed.toFixed(1)}%)`
+                );
+            }
+        } catch (error) {
+            console.warn("Could not calculate storage usage:", error);
+        }
     }, []);
 
     const [currentViewImageIndex, setCurrentViewImageIndex] = useState<
@@ -332,21 +397,26 @@ export const ElementDefaultScreen = (): JSX.Element => {
         fetchUserInfo();
     }, []);
 
-    // ✅ Auto-load PROMPT CONTENT into textarea
+    const [isUseInstructionsContent, setIsUseInstructionsContent] =
+        useState<boolean>(false);
+
     useEffect(() => {
         const loadInstructions = async () => {
             if (!selectedCategory.category) return;
 
-            // ✅ Xóa sạch textarea ngay
-            if (textareaRef.current) {
-                textareaRef.current.value = "";
+            if (
+                (!isUseInstructionsContent && textareaRef.current) ||
+                (isUseInstructionsContent &&
+                    selectedCategory.category === "instruction-content")
+            ) {
+                if (textareaRef.current) {
+                    // Sử dụng state để clear textarea thay vì thao tác trực tiếp
+                }
                 setPromptText("");
                 adjustHeight();
             }
 
             try {
-                console.log("🔄 Loading instructions for:", selectedCategory);
-
                 const response = await fetch("/api/instructions/resolve", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -358,12 +428,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 });
 
                 if (!response.ok) {
-                    console.error("Failed to load instructions");
                     return;
                 }
 
                 const data = await response.json();
-                console.log("📚 Instructions loaded:", data);
 
                 // ✅ Parse content
                 const parseContent = (rawContent: string) => {
@@ -394,29 +462,16 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     parsedContent = parseContent(data.user_prompt);
                 }
 
-                console.log("📝 Parsed content:", {
-                    promptContentLength: parsedContent.promptContent.length,
-                    instructionsLength: parsedContent.instructions.length,
-                });
-
-                // ✅ FIX: Lấy PROMPT CONTENT thay vì instructions
                 if (
                     parsedContent.promptContent &&
                     parsedContent.promptContent.trim()
                 ) {
                     if (textareaRef.current) {
-                        textareaRef.current.value = parsedContent.promptContent;
+                        // State sẽ tự động cập nhật textarea qua value prop
                         setPromptText(parsedContent.promptContent);
                         adjustHeight();
                     }
-
-                    console.log(
-                        `✅ Loaded ${parsedContent.promptContent.length} characters of PROMPT CONTENT into textarea`
-                    );
                 } else {
-                    console.log(
-                        "⚠️ No prompt content found - textarea remains empty"
-                    );
                 }
             } catch (error) {
                 console.error("Error loading instructions:", error);
@@ -644,11 +699,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     const editPromptFromLoadingSession = (session: LoadingSession) => {
         if (session.prompt && textareaRef.current) {
-            textareaRef.current.value = session.prompt;
+            // Chỉ sử dụng state để update textarea
             setPromptText(session.prompt);
 
-            const event = new Event("input", { bubbles: true });
-            textareaRef.current.dispatchEvent(event);
+            // Không cần dispatch event nữa vì đã là controlled component
             adjustHeight();
         }
     };
@@ -986,12 +1040,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
     // ✅ THÊM MỚI: Tab handlers
     const handleTabChange = useCallback(
         (tabId: string, workspaceData: TabWorkspaceData) => {
-            console.log(
-                "🔄 Switching to tab:",
-                tabId,
-                "with data:",
-                workspaceData
-            );
             setCurrentTabId(tabId);
 
             // ✅ Cập nhật TOÀN BỘ state với workspace data từ tab
@@ -1013,7 +1061,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                 }
 
                 setCurrentWorkspaceData(workspaceData);
-                console.log("✅ Tab content updated successfully!");
             }
         },
         []
@@ -1023,7 +1070,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
     const handleTabWorkspaceUpdate = useCallback(
         (tabId: string, workspaceData: TabWorkspaceData) => {
             setCurrentWorkspaceData(workspaceData);
-            console.log("📦 Workspace updated for tab:", tabId, workspaceData);
         },
         []
     );
@@ -1069,6 +1115,218 @@ export const ElementDefaultScreen = (): JSX.Element => {
         handleTabWorkspaceUpdate,
     ]);
 
+    // ✅ THÊM MỚI: Cleanup storage on app start
+    const performStorageCleanup = useCallback(() => {
+        try {
+            const now = Date.now();
+            const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+            // Clean old workspace cache
+            const cachedState = localStorage.getItem(
+                "ai_generator_workspace_cache"
+            );
+            if (cachedState) {
+                const parsed = JSON.parse(cachedState);
+                if (parsed.timestamp && now - parsed.timestamp > maxAge) {
+                    localStorage.removeItem("ai_generator_workspace_cache");
+                    console.log("🧹 Cleaned old workspace cache");
+                }
+            }
+
+            // Show initial storage status
+            showStorageStatus();
+        } catch (error) {
+            console.warn("Storage cleanup failed:", error);
+        }
+    }, [showStorageStatus]);
+
+    // ✅ THÊM MỚI: Restore workspace state từ cache
+    const restoreWorkspaceState = useCallback(() => {
+        try {
+            const cachedState = localStorage.getItem(
+                "ai_generator_workspace_cache"
+            );
+            if (cachedState) {
+                const parsedState = JSON.parse(cachedState);
+
+                // Kiểm tra xem cache có còn hợp lệ không (trong vòng 1 giờ)
+                const cacheTime = new Date(parsedState.timestamp).getTime();
+                const now = new Date().getTime();
+                const oneHour = 60 * 60 * 1000;
+
+                if (now - cacheTime < oneHour) {
+                    // ✅ Set recovery mode
+                    setIsRecoveryMode(true);
+
+                    // Restore main state
+                    setSelectedImages(parsedState.selectedImages || []);
+                    setLoadingSessions(parsedState.loadingSessions || []);
+                    setSelectedSessions(parsedState.selectedSessions || []);
+                    setPromptText(parsedState.promptText || "");
+                    setUploadedImages(parsedState.uploadedImages || []);
+
+                    // Restore UI state
+                    if (parsedState.uiState) {
+                        setShowImageInfo(
+                            parsedState.uiState.showImageInfo || false
+                        );
+                        setActiveDropdown(
+                            parsedState.uiState.activeDropdown || null
+                        );
+                        setActiveSession(
+                            parsedState.uiState.activeSession || null
+                        );
+                        setSelectedImageSize(
+                            parsedState.uiState.selectedImageSize || {
+                                width: 1024,
+                                height: 1024,
+                                platform: "openai",
+                            }
+                        );
+                        setExpandedGrid(
+                            parsedState.uiState.expandedGrid || false
+                        );
+                        setBaseGridCount(
+                            parsedState.uiState.baseGridCount || 8
+                        );
+                    }
+
+                    // Restore workspace data
+                    if (parsedState.currentWorkspaceData) {
+                        setCurrentWorkspaceData(
+                            parsedState.currentWorkspaceData
+                        );
+                    }
+
+                    // ✅ THÊM MỚI: Resume loading sessions nếu có
+                    if (
+                        parsedState.loadingSessions &&
+                        parsedState.loadingSessions.length > 0
+                    ) {
+                        console.log(
+                            `🚀 Resuming ${parsedState.loadingSessions.length} loading sessions...`
+                        );
+
+                        // Hiển thị notification
+                        showNotification(
+                            "info",
+                            "🔄 Recovery Mode",
+                            `Khôi phục ${parsedState.loadingSessions.length} ảnh đang generate...`
+                        );
+
+                        parsedState.loadingSessions.forEach((session: any) => {
+                            if (session.sessionId && session.jobId) {
+                                // Resume job polling cho session này
+                                startJobPolling(
+                                    session.jobId,
+                                    session.sessionId
+                                );
+                                startSessionCountdown(session.sessionId);
+                            }
+                        });
+                    }
+
+                    // Hiển thị recovery notification
+                    if (
+                        parsedState.selectedImages &&
+                        parsedState.selectedImages.length > 0
+                    ) {
+                        showNotification(
+                            "success",
+                            "✅ Workspace Restored",
+                            `Khôi phục ${parsedState.selectedImages.length} ảnh và workspace state`
+                        );
+                    }
+
+                    // ✅ Tắt recovery mode sau 10 giây
+                    setTimeout(() => {
+                        setIsRecoveryMode(false);
+                    }, 10000);
+                } else {
+                    console.log("🗑️ Cache expired, clearing...");
+                    localStorage.removeItem("ai_generator_workspace_cache");
+                }
+            }
+        } catch (error) {
+            console.error("❌ Error restoring workspace state:", error);
+            localStorage.removeItem("ai_generator_workspace_cache");
+        }
+    }, []);
+
+    // ✅ THÊM MỚI: Clear cache khi không còn cần thiết
+    const clearWorkspaceCache = useCallback(() => {
+        localStorage.removeItem("ai_generator_workspace_cache");
+        console.log("🗑️ Workspace cache cleared");
+    }, []);
+
+    // ✅ THÊM MỚI: Clear cache khi không có loading sessions
+    useEffect(() => {
+        if (loadingSessions.length === 0 && selectedImages.length === 0) {
+            // Delay 5 phút trước khi clear cache để đề phòng
+            const clearTimer = setTimeout(() => {
+                clearWorkspaceCache();
+            }, 5 * 60 * 1000); // 5 phút
+
+            return () => clearTimeout(clearTimer);
+        }
+    }, [loadingSessions.length, selectedImages.length, clearWorkspaceCache]);
+
+    // ✅ THÊM MỚI: Restore state khi component mount
+    useEffect(() => {
+        restoreWorkspaceState();
+        performStorageCleanup(); // ✅ THÊM MỚI: Cleanup storage on mount
+    }, [restoreWorkspaceState, performStorageCleanup]);
+
+    // ✅ THÊM MỚI: Auto-save state định kỳ (mỗi 30 giây)
+    useEffect(() => {
+        const autoSaveInterval = setInterval(() => {
+            try {
+                const workspaceState = {
+                    selectedImages,
+                    loadingSessions,
+                    selectedSessions,
+                    promptText,
+                    uploadedImages,
+                    currentTabId,
+                    currentWorkspaceData,
+                    uiState: {
+                        showImageInfo,
+                        activeDropdown,
+                        activeSession,
+                        selectedImageSize,
+                        expandedGrid,
+                        baseGridCount,
+                    },
+                    timestamp: new Date().toISOString(),
+                };
+
+                localStorage.setItem(
+                    "ai_generator_workspace_cache",
+                    JSON.stringify(workspaceState)
+                );
+                console.log("💾 Auto-saved workspace state");
+            } catch (error) {
+                console.error("❌ Error auto-saving workspace state:", error);
+            }
+        }, 30000); // Save mỗi 30 giây
+
+        return () => clearInterval(autoSaveInterval);
+    }, [
+        selectedImages,
+        loadingSessions,
+        selectedSessions,
+        promptText,
+        uploadedImages,
+        currentTabId,
+        currentWorkspaceData,
+        showImageInfo,
+        activeDropdown,
+        activeSession,
+        selectedImageSize,
+        expandedGrid,
+        baseGridCount,
+    ]);
+
     const updatePageData = useCallback(
         (newData: { title: string; thumbnail?: string; url: string }) => {
             setCurrentPageData(newData);
@@ -1102,6 +1360,35 @@ export const ElementDefaultScreen = (): JSX.Element => {
         generateThumbnail();
     }, [selectedImages, updatePageData]);
 
+    const handleFormSubmitOptimazePrompt = async () => {
+        if (!selectedInstructions || !promptText) return;
+        const dataInstruction = await axios.post(
+            "/api/instructions/load-by-config",
+            {
+                category: "instruction-content",
+                instructionType: "system",
+                subcategory: selectedInstructions.subcategory || "",
+            } as any
+        );
+        const data = await dataInstruction.data;
+
+        if (!data || !data.instructions) {
+            alert("No instructions found");
+            return;
+        }
+
+        const res = await axios.post(
+            "https://n8n.misencorp.com/webhook/optimaze-prompt",
+            {
+                oldPrompt: promptText,
+                instruction: data.instructions,
+            }
+        );
+        if (res.data && res.data.content) {
+            setPromptText(res.data.content);
+        }
+    };
+
     // FIX: Improved handleFormSubmit with better state management
     const handleFormSubmit = async () => {
         if (!promptText.trim()) return;
@@ -1120,15 +1407,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
             countdown: 0,
         };
 
-        setLoadingSessions((prev) => [newLoadingSession, ...prev]);
+        setLoadingSessions((prev) => [newLoadingSession, ...prev] as any);
         setCurrentLoadingPrompt(currentPromptText);
 
-        setPromptText("");
-        if (textareaRef.current) {
-            textareaRef.current.value = "";
-            textareaRef.current.style.height = "auto";
-            adjustHeight();
-        }
+        setPromptText(""); // ✅ Clear prompt text - textarea sẽ tự động cập nhật thông qua value prop
         setUploadedImages([]);
 
         try {
@@ -1535,20 +1817,62 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     useEffect(() => {
         const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
-            if (currentJobId) {
-                try {
-                    await fetch(
-                        `/api/image-generation/cancel/${currentJobId}`,
-                        {
-                            method: "POST",
-                        }
-                    );
-                } catch (error) {
-                    console.error(
-                        "Error cancelling job on page unload:",
-                        error
-                    );
+            // ✅ THÊM MỚI: Cache toàn bộ workspace state
+            try {
+                const workspaceState = {
+                    selectedImages,
+                    loadingSessions,
+                    selectedSessions,
+                    promptText,
+                    uploadedImages,
+                    currentTabId,
+                    currentWorkspaceData,
+                    // Thêm UI state
+                    uiState: {
+                        showImageInfo,
+                        activeDropdown,
+                        activeSession,
+                        selectedImageSize,
+                        expandedGrid,
+                        baseGridCount,
+                    },
+                    timestamp: new Date().toISOString(),
+                };
+
+                // Cache vào localStorage
+                localStorage.setItem(
+                    "ai_generator_workspace_cache",
+                    JSON.stringify(workspaceState)
+                );
+                console.log("💾 Workspace state cached before unload");
+            } catch (error) {
+                console.error("❌ Error caching workspace state:", error);
+            }
+
+            // ✅ Ngăn F5/refresh nếu có loading sessions hoặc jobs đang chạy
+            if (loadingSessions.length > 0 || currentJobId) {
+                event.preventDefault();
+                event.returnValue =
+                    "Bạn có image đang generate. Bạn có chắc muốn rời khỏi trang?";
+
+                // Hủy jobs nếu người dùng thực sự muốn rời khỏi
+                if (currentJobId) {
+                    try {
+                        await fetch(
+                            `/api/image-generation/cancel/${currentJobId}`,
+                            {
+                                method: "POST",
+                            }
+                        );
+                    } catch (error) {
+                        console.error(
+                            "Error cancelling job on page unload:",
+                            error
+                        );
+                    }
                 }
+
+                return "Bạn có image đang generate. Bạn có chắc muốn rời khỏi trang?";
             }
         };
 
@@ -2050,10 +2374,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     .replace(/^\n+|\n+$/g, "");
             }
 
-            textareaRef.current.value = cleanPrompt;
+            // Chỉ sử dụng state để update textarea
             setPromptText(cleanPrompt);
-            const event = new Event("input", { bubbles: true });
-            textareaRef.current.dispatchEvent(event);
+            // Không cần dispatch event nữa vì đã là controlled component
             adjustHeight();
         }
     };
@@ -2133,11 +2456,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
         setShowHistorySidebar(!showHistorySidebar);
     };
 
-    // ✅ THÊM MỚI: Toggle function cho TabSidebar
-    const toggleTabSidebar = () => {
-        setShowTabSidebar(!showTabSidebar);
-    };
-
     const toggleUploadedFilesPanel = () => {
         setShowUploadedFilesPanel(!showUploadedFilesPanel);
     };
@@ -2212,10 +2530,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     const handleSelectSuggestion = (suggestion: string) => {
         if (textareaRef.current) {
-            textareaRef.current.value = suggestion;
+            // Chỉ sử dụng state để update textarea
             setPromptText(suggestion);
-            const event = new Event("input", { bubbles: true });
-            textareaRef.current.dispatchEvent(event);
+            // Không cần dispatch event nữa vì đã là controlled component
             adjustHeight();
         }
         setShowSuggestions(false);
@@ -2258,15 +2575,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         base64Result,
                     ]);
 
-                    // ✅ THÊM MỚI: Lưu file vào storage để tái sử dụng
                     try {
-                        console.log("🔍 Attempting to save file to storage...");
                         const fileId = await storageManager.saveUploadedFile(
                             file,
                             base64Result
-                        );
-                        console.log(
-                            `✅ Saved uploaded file: ${file.name} with ID: ${fileId}`
                         );
                     } catch (error) {
                         console.error("❌ Error saving uploaded file:", error);
@@ -2284,13 +2596,35 @@ export const ElementDefaultScreen = (): JSX.Element => {
         }
     };
 
-    const removeImage = (indexToRemove: number) => {
-        setUploadedImages((prevImages) =>
-            prevImages.filter((_, index) => index !== indexToRemove)
-        );
-    };
+    const removeImage = useCallback(
+        (indexToRemove: number) => {
+            console.log("🗑️ removeImage called for index:", indexToRemove);
+            setUploadedImages((prevImages) => {
+                const updatedImages = prevImages.filter(
+                    (_, index) => index !== indexToRemove
+                );
+                console.log(
+                    `🗑️ Removed image at index ${indexToRemove}, remaining: ${updatedImages.length}`
+                );
 
-    // ✅ THÊM MỚI: Handle paste image
+                const notification = document.createElement("div");
+                notification.textContent = "🗑️ Image removed successfully!";
+                notification.className = "copy-notification";
+                document.body.appendChild(notification);
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 2000);
+
+                setTimeout(showStorageStatus, 100);
+
+                return updatedImages;
+            });
+        },
+        [showStorageStatus]
+    );
+
     const handlePasteImage = useCallback(async (event: ClipboardEvent) => {
         const items = event.clipboardData?.items;
         if (!items) return;
@@ -2304,13 +2638,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
                 const file = item.getAsFile();
                 if (!file) continue;
-
-                console.log(
-                    "🔍 Pasted image file:",
-                    file.name,
-                    file.type,
-                    file.size
-                );
                 await processImageFile(file);
                 break; // Chỉ xử lý ảnh đầu tiên
             }
@@ -2364,10 +2691,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
         }
     }, []);
 
-    // ✅ THÊM MỚI: Shared function để xử lý file ảnh
     const processImageFile = async (file: File) => {
         try {
-            // Đọc file thành base64
             const base64Result = await new Promise<string>(
                 (resolve, reject) => {
                     const reader = new FileReader();
@@ -2380,16 +2705,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     reader.readAsDataURL(file);
                 }
             );
-
-            console.log(
-                "🔍 Generated base64 for image, length:",
-                base64Result.length
-            );
-
-            // Thêm vào uploaded images
             setUploadedImages((prevImages) => [...prevImages, base64Result]);
-
-            // Lưu vào storage để tái sử dụng
             try {
                 const fileName =
                     file.name ||
@@ -2402,14 +2718,15 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     imageFile,
                     base64Result
                 );
-                console.log(`✅ Saved image: ${fileName} with ID: ${fileId}`);
+
+                showStorageStatus();
             } catch (error) {
                 console.error("❌ Error saving image:", error);
             }
 
             // Hiển thị thông báo
             const notification = document.createElement("div");
-            notification.textContent = "� Image added successfully!";
+            notification.textContent = "Image added successfully!";
             notification.className = "copy-notification";
             document.body.appendChild(notification);
             setTimeout(() => {
@@ -2440,27 +2757,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
             adjustHeight();
         };
 
-        // ✅ THÊM MỚI: Add paste event listener cho textarea và document
         const handlePaste = (event: ClipboardEvent) => {
             handlePasteImage(event);
         };
 
-        // ✅ THÊM MỚI: Global paste listener cho toàn bộ document
-        const handleGlobalPaste = (event: ClipboardEvent) => {
-            // Chỉ xử lý nếu không phải đang trong input/textarea khác
-            const target = event.target as HTMLElement;
-            if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
-                // Chỉ xử lý nếu là textarea prompt của chúng ta
-                if (target === textarea) {
-                    handlePasteImage(event);
-                }
-            } else {
-                // Xử lý paste khi không focus vào input nào
-                handlePasteImage(event);
-            }
-        };
-
-        // ✅ THÊM MỚI: Drag and drop listeners
         const handleDragOverEvent = (e: Event) =>
             handleDragOver(e as DragEvent);
         const handleDragLeaveEvent = (e: Event) =>
@@ -2469,7 +2769,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
         window.addEventListener("resize", handleResize);
         textarea.addEventListener("paste", handlePaste);
-        document.addEventListener("paste", handleGlobalPaste);
         document.addEventListener("dragover", handleDragOverEvent);
         document.addEventListener("dragleave", handleDragLeaveEvent);
         document.addEventListener("drop", handleDropEvent);
@@ -2477,7 +2776,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
         return () => {
             window.removeEventListener("resize", handleResize);
             textarea.removeEventListener("paste", handlePaste);
-            document.removeEventListener("paste", handleGlobalPaste);
             document.removeEventListener("dragover", handleDragOverEvent);
             document.removeEventListener("dragleave", handleDragLeaveEvent);
             document.removeEventListener("drop", handleDropEvent);
@@ -2508,44 +2806,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
             document.removeEventListener("mousedown", handleClickOutside);
         };
     }, [showSuggestions]);
-
-    // Debug useEffect to track currentLoadingPrompt changes
-    useEffect(() => {
-        console.log("🔍 LOADING PROMPT CHANGE:", currentLoadingPrompt);
-        console.log("🔍 LOADING PROMPT LENGTH:", currentLoadingPrompt.length);
-    }, [currentLoadingPrompt]);
-
-    // Debug useEffect to track state changes
-    useEffect(() => {
-        console.log(
-            "🔍 DEBUG State Change - currentSessionId:",
-            currentSessionId
-        );
-        console.log(
-            "🔍 DEBUG State Change - currentViewImageIndex:",
-            currentViewImageIndex
-        );
-        console.log(
-            "🔍 DEBUG State Change - selectedSessions count:",
-            selectedSessions.length
-        );
-
-        if (currentSessionId) {
-            const session = selectedSessions.find(
-                (s) => s.sessionId === currentSessionId
-            );
-            console.log(
-                "🔍 DEBUG State Change - Current session found:",
-                session ? "YES" : "NO"
-            );
-            if (session) {
-                console.log(
-                    "🔍 DEBUG State Change - Current session describe:",
-                    session.describe
-                );
-            }
-        }
-    }, [currentSessionId, currentViewImageIndex, selectedSessions]);
 
     useEffect(() => {
         if (currentViewImageIndex !== null) {
@@ -2947,14 +3207,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
     };
 
     return (
-        <div
-            className={`element-default-screen ${
-                showHistorySidebar ? "with-sidebar" : ""
-            } ${showTabSidebar ? "with-tab-sidebar" : ""}`}
-        >
+        <div className={`element-default-screen`}>
             {/* ✅ THÊM MỚI: TabSidebar Component */}
             <TabSidebar
-                isVisible={showTabSidebar}
+                isVisible={true}
                 onTabChange={handleTabChange}
                 onTabWorkspaceUpdate={handleTabWorkspaceUpdate}
                 currentPageData={currentPageData}
@@ -2963,11 +3219,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
             <div className="main-2">
                 <div className="overlap-2">
-                    <div
-                        className={`container-wrapper ${
-                            showHistorySidebar ? "shifted" : ""
-                        } ${showTabSidebar ? "with-tab-sidebar" : ""}`}
-                    >
+                    <div className={`container-wrapper`}>
                         <div className="container-7">
                             <div className="horizontal-border-2">
                                 <div className="heading-images-2">Images</div>
@@ -3006,44 +3258,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                             </div>
                                         </button>
                                     )}
-
-                                    {/* ✅ THÊM MỚI: Tab Sidebar Toggle Button */}
-                                    <button
-                                        className="button-5"
-                                        onClick={toggleTabSidebar}
-                                        title={
-                                            showTabSidebar
-                                                ? "Hide Tabs"
-                                                : "Show Tabs"
-                                        }
-                                    >
-                                        <div className="overlap-group-3">
-                                            <div
-                                                className={`background-5 ${
-                                                    showTabSidebar
-                                                        ? "active"
-                                                        : ""
-                                                }`}
-                                            />
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                width="1em"
-                                                height="1em"
-                                                fill="currentColor"
-                                                viewBox="0 0 24 24"
-                                                className="SVG-5"
-                                            >
-                                                <path
-                                                    fillRule="evenodd"
-                                                    d="M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Zm3-1a1 1 0 0 0-1 1v3h16V6a1 1 0 0 0-1-1H6ZM5 11v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7H5Z"
-                                                    clipRule="evenodd"
-                                                />
-                                            </svg>
-                                            <div className="text-wrapper-6">
-                                                Tabs
-                                            </div>
-                                        </div>
-                                    </button>
 
                                     <button
                                         className="button-5"
@@ -3733,11 +3947,10 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                                 ref={textareaRef}
                                                 className="input-prompt"
                                                 placeholder="Describe what you want to see... (or paste image with Ctrl+V)"
-                                                onInput={(e) =>
+                                                value={promptText} // ✅ THÊM MỚI: Controlled component
+                                                onChange={(e) =>
                                                     setPromptText(
-                                                        (
-                                                            e.target as HTMLTextAreaElement
-                                                        ).value
+                                                        e.target.value
                                                     )
                                                 }
                                                 onKeyPress={handleKeyPress}
@@ -3793,6 +4006,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                                     setNumberOfImages={
                                                         setNumberOfImages
                                                     }
+                                                    setIsUseInstructionsContent={
+                                                        setIsUseInstructionsContent
+                                                    }
                                                     imageSizes={imageSizes}
                                                     setImageSizes={
                                                         setImageSizes
@@ -3806,7 +4022,9 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                                     onAspectRatioChange={
                                                         handleAspectRatioChange
                                                     } // ✅ THÊM MỚI
-                                                    currentUser={currentUser}
+                                                    currentUser={
+                                                        currentUser as any
+                                                    }
                                                 />
 
                                                 <div
@@ -3848,24 +4066,57 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                                 </div>
                                             </div>
 
-                                            <div
-                                                className={`button-7 ${
-                                                    promptText.trim()
-                                                        ? "active"
-                                                        : ""
-                                                }`}
-                                                onClick={
-                                                    promptText.trim()
-                                                        ? handleFormSubmit
-                                                        : undefined
-                                                }
-                                                ref={submitButtonRef}
-                                            >
-                                                <img
-                                                    className="SVG-6"
-                                                    alt="Svg"
-                                                    src="/img/svg-4.svg"
-                                                />
+                                            <div className="flex gap-3 items-center">
+                                                <div
+                                                    className={`button-7 ${
+                                                        isUseInstructionsContent
+                                                            ? "active !bg-[#a1a1eb]"
+                                                            : ""
+                                                    }`}
+                                                    onClick={
+                                                        promptText.trim()
+                                                            ? handleFormSubmitOptimazePrompt
+                                                            : undefined
+                                                    }
+                                                    data-tooltip-content="Dùng instruction tối ưu lại prompt hiện tại"
+                                                    data-tooltip-id="optimize-tooltip"
+                                                >
+                                                    <svg
+                                                        className="w-4 h-4"
+                                                        data-testid="geist-icon"
+                                                        height="16"
+                                                        strokeLinejoin="round"
+                                                        viewBox="0 0 16 16"
+                                                        width="16"
+                                                        style={{
+                                                            color: "currentcolor",
+                                                        }}
+                                                    >
+                                                        <path
+                                                            d="M15.11 4.44L5.08 14.47C4.42 15.13 3.53 15.5 2.59 15.5H0.235V13.14C0.235 12.2 0.607 11.31 1.268 10.65L11.29 0.62L15.11 4.44ZM12 10.09C12.38 10.09 12.69 10.4 12.69 10.78C12.69 10.91 12.76 11.09 12.91 11.24C13.06 11.39 13.24 11.46 13.37 11.46C13.75 11.46 14.06 11.77 14.06 12.15C14.06 12.53 13.75 12.84 13.37 12.84C13.24 12.84 13.06 12.91 12.91 13.06C12.76 13.21 12.69 13.39 12.69 13.52C12.69 13.9 12.38 14.21 12 14.21C11.62 14.21 11.31 13.9 11.31 13.52C11.31 13.39 11.24 13.21 11.09 13.06C10.94 12.91 10.76 12.84 10.63 12.84C10.25 12.84 9.94 12.53 9.94 12.15C9.94 11.77 10.25 11.46 10.63 11.46C10.76 11.46 10.94 11.39 11.09 11.24C11.24 11.09 11.31 10.91 11.31 10.78C11.31 10.4 11.62 10.09 12 10.09ZM2.26 11.63C1.87 12.02 1.65 12.58 1.65 13.17V14.09H2.59C3.18 14.09 3.74 13.87 4.13 13.48L10.29 7.32L8.47 5.5L2.26 11.63ZM3.29 0.68C3.68 0.68 4 0.99 4 1.39C4 1.7 4.15 2.06 4.43 2.34C4.71 2.62 5.07 2.77 5.38 2.77C5.78 2.77 6.09 3.08 6.09 3.48C6.09 3.88 5.78 4.19 5.38 4.19C5.07 4.19 4.71 4.34 4.43 4.62C4.15 4.9 4 5.26 4 5.57C4 5.97 3.68 6.28 3.29 6.28C2.9 6.28 2.59 5.97 2.59 5.57C2.59 5.26 2.44 4.9 2.16 4.62C1.88 4.34 1.52 4.19 1.21 4.19C0.79 4.19 0.47 3.88 0.47 3.48C0.47 3.08 0.79 2.77 1.21 2.77C1.52 2.77 1.88 2.62 2.16 2.34C2.44 2.06 2.59 1.7 2.59 1.39C2.59 0.99 2.9 0.68 3.29 0.68ZM9.47 4.44L11.29 6.26L12.76 4.79L11.29 2.61L9.47 4.44ZM3.14 3.34C3.09 3.39 3.04 3.44 2.98 3.49C3.04 3.54 3.09 3.59 3.14 3.64C3.19 3.69 3.24 3.74 3.29 3.8C3.34 3.74 3.39 3.69 3.44 3.64C3.49 3.59 3.54 3.54 3.6 3.49C3.54 3.44 3.49 3.39 3.44 3.34C3.39 3.29 3.34 3.24 3.29 3.18C3.24 3.24 3.19 3.29 3.14 3.34Z"
+                                                            fill="currentColor"
+                                                        ></path>
+                                                    </svg>
+                                                </div>
+                                                <div
+                                                    className={`button-7 ${
+                                                        promptText.trim()
+                                                            ? "active"
+                                                            : ""
+                                                    }`}
+                                                    onClick={
+                                                        promptText.trim()
+                                                            ? handleFormSubmit
+                                                            : undefined
+                                                    }
+                                                    ref={submitButtonRef}
+                                                >
+                                                    <img
+                                                        className="SVG-6"
+                                                        alt="Svg"
+                                                        src="/img/svg-4.svg"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -4733,6 +4984,34 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     </div>
                 </div>
             )}
+
+            {/* Tooltip cho optimize button */}
+            <Tooltip
+                id="optimize-tooltip"
+                style={{
+                    zIndex: 9999999,
+                    backgroundColor: "#333",
+                    color: "#fff",
+                    fontSize: "12px",
+                    borderRadius: "4px",
+                    padding: "8px 12px",
+                }}
+                place="top"
+                delayShow={200}
+            />
+            <Tooltip
+                id="optimize-tooltip-sidebar"
+                style={{
+                    zIndex: 9999999,
+                    backgroundColor: "#333",
+                    color: "#fff",
+                    fontSize: "12px",
+                    borderRadius: "4px",
+                    padding: "8px 12px",
+                }}
+                place="top"
+                delayShow={200}
+            />
         </div>
     );
 };

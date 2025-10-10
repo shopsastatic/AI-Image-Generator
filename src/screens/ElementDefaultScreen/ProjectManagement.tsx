@@ -1663,9 +1663,6 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                                 </div>
                             </div>
                         </div>
-
-                        {/* Projects Table */}
-                        {/* Projects Table */}
                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                             <div className="overflow-x-auto">
                                 <table className="w-full">
@@ -1701,6 +1698,13 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                                                         category.value
                                                 ) {
                                                     return false;
+                                                }
+
+                                                if (
+                                                    category.value ===
+                                                    "instruction-content"
+                                                ) {
+                                                    return true;
                                                 }
 
                                                 // Check if category has projects
@@ -2684,35 +2688,38 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                                         </div>
                                     </div>
                                 </div>
-
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-900 mb-3">
-                                        Prompt Content
-                                    </label>
-                                    <textarea
-                                        value={formData.promptContent}
-                                        onChange={(e) =>
-                                            setFormData({
-                                                ...formData,
-                                                promptContent: e.target.value,
-                                            })
-                                        }
-                                        placeholder="Enter optional prompt content here (e.g., context, variables, examples)..."
-                                        rows={6}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-vertical font-mono text-sm leading-relaxed"
-                                    />
-                                    <div className="flex items-center justify-between mt-2">
-                                        <div className="text-xs text-gray-500">
-                                            Optional: Additional context or
-                                            content to prepend before
-                                            instructions
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                            {formData.promptContent.length}{" "}
-                                            characters
+                                {formData.category !==
+                                    "instruction-content" && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-900 mb-3">
+                                            Prompt Content
+                                        </label>
+                                        <textarea
+                                            value={formData.promptContent}
+                                            onChange={(e) =>
+                                                setFormData({
+                                                    ...formData,
+                                                    promptContent:
+                                                        e.target.value,
+                                                })
+                                            }
+                                            placeholder="Enter optional prompt content here (e.g., context, variables, examples)..."
+                                            rows={6}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-vertical font-mono text-sm leading-relaxed"
+                                        />
+                                        <div className="flex items-center justify-between mt-2">
+                                            <div className="text-xs text-gray-500">
+                                                Optional: Additional context or
+                                                content to prepend before
+                                                instructions
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                                {formData.promptContent.length}{" "}
+                                                characters
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {/* Instructions Content */}
                                 <div>
