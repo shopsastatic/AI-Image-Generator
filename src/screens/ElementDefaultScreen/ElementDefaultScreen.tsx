@@ -2606,7 +2606,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                                           const foundIndex =
                                             session.list.findIndex(
                                               (img) =>
-                                                img.imageBase64 ===
+                                                img.imageUrl ===
                                                   image.imageUrl ||
                                                 img.prompt === image.prompt
                                             );
@@ -3204,42 +3204,34 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       </div>
 
                       <button
-                        className="image-viewer-download"
-                        onClick={() => {
-                          if (
-                            currentSessionId &&
-                            currentViewImageIndex !== null
-                          ) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
+                          className="image-viewer-download"
+                          onClick={() => {
+                            if (currentSessionId && currentViewImageIndex !== null) {
+                              const session = selectedSessions.find(
+                                (s) => s.sessionId === currentSessionId
+                              );
 
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex]
-                            ) {
-                              const imageData =
-                                session.list[currentSessionImageIndex];
-                              downloadImage(
-                                imageData.imageBase64,
-                                imageData.claudeResponse,
-                                currentSessionImageIndex,
-                                imageData.imageName
-                              );
-                            } else if (selectedImages[currentViewImageIndex]) {
-                              const imageData =
-                                selectedImages[currentViewImageIndex];
-                              downloadImage(
-                                imageData.imageUrl,
-                                imageData.claudeResponse,
-                                imageData.imageIndex || 0,
-                                imageData.imageName
-                              );
+                              if (session && session.list[currentSessionImageIndex]) {
+                                const imageData = session.list[currentSessionImageIndex];
+                                downloadImage(
+                                  imageData.imageUrl,  // ✅ ĐỔI TỪ imageBase64 THÀNH imageUrl
+                                  imageData.claudeResponse,
+                                  currentSessionImageIndex,
+                                  imageData.imageName
+                                );
+                              } else if (selectedImages[currentViewImageIndex]) {
+                                const imageData = selectedImages[currentViewImageIndex];
+                                downloadImage(
+                                  imageData.imageUrl,
+                                  imageData.claudeResponse,
+                                  imageData.imageIndex || 0,
+                                  imageData.imageName
+                                );
+                              }
                             }
-                          }
-                        }}
-                        title="Download image"
-                      >
+                          }}
+                          title="Download image"
+                        >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           width="1em"
