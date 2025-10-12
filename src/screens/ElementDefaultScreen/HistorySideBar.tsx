@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { historyService } from "./historyService";
+import { FixedSizeList as List } from 'react-window';
 
 interface HistoryImage {
-  imageUrl: string;        // ✅ ĐỔI từ imageBase64
+  imageUrl: string;
   prompt: string;
-  category?: string;       // ✅ THAY platform
-  subCategory?: string;    // ✅ THÊM
+  category?: string;
+  subCategory?: string;
   platform?: string;
   AdCreativeA?: string;
   AdCreativeB?: string;
@@ -16,23 +17,19 @@ interface HistoryItem {
   id: string;
   isSelected?: boolean;
   describe?: string;
-  category?: string;       // ✅ THÊM
-  subCategory?: string;    // ✅ THÊM
+  category?: string;
+  subCategory?: string;
   platform?: string;
   list: HistoryImage[];
-  thumbnail?: string;      // ✅ THÊM để cache thumbnail
-  imageCount?: number;     // ✅ THÊM để cache count
-}
-
-interface HistoryDateGroup {
-  date: string;
-  items: HistoryItem[];
+  thumbnail?: string;
+  imageCount?: number;
+  timestamp?: string;
 }
 
 interface HistorySidebarProps {
   isVisible: boolean;
   toggleSidebar: () => void;
-  onItemClick: (item: HistoryItem) => void;
+  onItemClick: (item: any) => void;
   selectedImages: Array<{
     imageUrl: string;
     clickedAt: number;
@@ -52,7 +49,6 @@ const ClearHistoryOverlay: React.FC<{
         <h4 className="clear-overlay-warning-title">
           This will refresh your history from the server.
         </h4>
-
         <p className="clear-overlay-description">
           Your image generation history is stored on our servers. 
           This action will clear the local cache and reload the latest 
@@ -60,7 +56,6 @@ const ClearHistoryOverlay: React.FC<{
           the database.
         </p>
       </div>
-
       <div className="clear-overlay-footer">
         <button className="clear-overlay-cancel-btn" onClick={onCancel}>
           Cancel
@@ -79,15 +74,15 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onItemClick,
   selectedImages,
   onSelectAll,
-  maxGridItems
 }) => {
-  const [historyData, setHistoryData] = useState<HistoryDateGroup[]>([]);
-  const [hasUnselectedItems, setHasUnselectedItems] = useState<boolean>(false);
+  const [allHistoryItems, setAllHistoryItems] = useState<HistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
+  
   const loadingRef = useRef<boolean>(false);
   const errorShownRef = useRef<boolean>(false);
+  const listRef = useRef<any>(null);
 
   const loadHistoryData = useCallback(async () => {
     if (loadingRef.current) return;
@@ -96,63 +91,43 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setIsLoading(true);
     
     try {
-      // ✅ Fetch từ N8N API thay vì storage
       const sessions = await historyService.fetchHistory();
-
+      
       if (sessions && sessions.length > 0) {
         console.log("✅ History loaded:", sessions.length, "sessions");
         
-        // ✅ Group theo ngày
-        const historyGroups = historyService.groupByDate(sessions);
+        const allItems: HistoryItem[] = sessions.map(session => ({
+          id: session.sessionId,
+          describe: session.describe,
+          category: session.category,
+          subCategory: session.subCategory,
+          platform: session.platform,
+          list: session.images.map(img => ({
+            imageUrl: img.imageUrl,
+            prompt: img.prompt,
+            category: img.category,
+            subCategory: img.subCategory,
+            platform: img.platform,
+            timestamp: img.timestamp,
+            AdCreativeA: '',
+            AdCreativeB: '',
+          })),
+          thumbnail: session.images[0]?.imageUrl || '',
+          imageCount: session.images.length,
+          timestamp: session.timestamp,
+        }));
         
-        setHistoryData(historyGroups);
+        setAllHistoryItems(allItems);
       } else {
-        setHistoryData([]);
+        setAllHistoryItems([]);
       }
     } catch (error) {
       console.error("❌ Failed to load history:", error);
-      setHistoryData([]);
+      setAllHistoryItems([]);
       
-      // Show error notification (only once per session)
       if (!errorShownRef.current) {
         errorShownRef.current = true;
-        
-        const notification = document.createElement("div");
-        notification.innerHTML = `
-          <div style="
-            position: fixed; 
-            top: 20px; 
-            right: 20px; 
-            background: #f44336; 
-            color: white; 
-            padding: 15px 20px; 
-            border-radius: 8px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 10000;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          ">
-            <strong>⚠️ Failed to Load History</strong><br>
-            Could not fetch history from server. Please check your connection.
-            <button style="
-              display: block;
-              margin-top: 8px;
-              background: white;
-              color: #f44336;
-              border: none;
-              padding: 5px 10px;
-              border-radius: 4px;
-              cursor: pointer;
-              font-weight: bold;
-            " onclick="this.parentElement.parentElement.remove();">Close</button>
-          </div>
-        `;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-          if (notification.parentElement) {
-            document.body.removeChild(notification);
-          }
-        }, 10000);
+        showNotification('error', 'Failed to Load History', 'Could not fetch history from server.');
       }
     } finally {
       setIsLoading(false);
@@ -161,16 +136,10 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   }, []);
 
   useEffect(() => {
-    // ✅ Load ngay khi mount
-    loadHistoryData();
-    
-    // ✅ KHÔNG cần historyUpdated event nữa
-    // Data luôn fresh từ API
-    
-    return () => {
-      // Cleanup if needed
-    };
-  }, [loadHistoryData]);
+    if (isVisible) {
+      loadHistoryData();
+    }
+  }, [isVisible, loadHistoryData]);
 
   const isItemSelected = useCallback(
     (item: HistoryItem): boolean => {
@@ -179,154 +148,79 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     [selectedImages]
   );
 
-  useEffect(() => {
-    const anyUnselectedItems = historyData.some((group) =>
-      group.items.some((item) => !isItemSelected(item))
-    );
+  const hasUnselectedItems = allHistoryItems.some(item => !isItemSelected(item));
 
-    setHasUnselectedItems(anyUnselectedItems);
-  }, [historyData, isItemSelected]);
-
- const handleItemClick = async (item: HistoryItem) => {
-  // Check if already selected
-  if (isItemSelected(item)) {
-    console.log("🔄 Item already selected, skipping:", item.id);
-    return;
-  }
-
-  try {
-    console.log("🔄 Loading session for:", item.id);
-
-    // ✅ Fetch session từ API
-    const session = await historyService.getSessionById(item.id);
-
-    if (!session || !session.images || session.images.length === 0) {
-      console.warn("⚠️ No valid images found for session:", item.id);
-      
-      const notification = document.createElement("div");
-      notification.innerHTML = `
-        <div style="
-          position: fixed; 
-          top: 20px; 
-          right: 20px; 
-          background: #ff9800; 
-          color: white; 
-          padding: 15px 20px; 
-          border-radius: 8px; 
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          z-index: 10000;
-        ">
-          <strong>No Images</strong><br>
-          No valid images found in this history item.
-        </div>
-      `;
-      document.body.appendChild(notification);
-      
-      setTimeout(() => {
-        if (notification.parentElement) {
-          document.body.removeChild(notification);
-        }
-      }, 3000);
-      
+  const handleItemClick = async (item: HistoryItem) => {
+    if (isItemSelected(item)) {
+      console.log("🔄 Item already selected, skipping:", item.id);
       return;
     }
 
-    console.log("✅ Loaded", session.images.length, "images for session:", item.id);
+    try {
+      console.log("🔄 Loading session for:", item.id);
 
-    // ✅ KHÔNG CẦN convert blob nữa - dùng URLs trực tiếp
-    const imageList = session.images.map(img => ({
-      imageUrl: img.imageUrl,  // ✅ URL trực tiếp, không convert
-      prompt: img.prompt || '',
-      category: img.category || session.category || '',
-      subCategory: img.subCategory || session.subCategory || '',
-      platform: img.platform || session.platform || '',
-      timestamp: img.timestamp || new Date().toISOString(),
-      size: 'Square',
-      quality: 'Standard',
-      claudeResponse: '',
-      AdCreativeA: img.AdCreativeA || '',
-      AdCreativeB: img.AdCreativeB || '',
-      targeting: '',
-      imageName: '',
-    }));
+      const session = await historyService.getSessionById(item.id);
 
-    const compatibleItem = {
-      sessionId: item.id,
-      clickedAt: Date.now(),
-      currentImageIndex: 0,
-      describe: session.describe || item.describe || "Image session",
-      category: session.category || '',
-      subCategory: session.subCategory || '',
-      platform: session.platform || '',
-      list: imageList,  // ✅ URLs trực tiếp, không có blob
-    };
-
-    // Add to processed set
-    setProcessedIds(prev => {
-      const updated = new Set(prev);
-      updated.add(item.id);
-      return updated;
-    });
-
-    onItemClick(compatibleItem);
-  } catch (error) {
-    console.error("❌ Failed to load session images:", error);
-    
-    const errorNotification = document.createElement("div");
-    errorNotification.innerHTML = `
-      <div style="
-        position: fixed; 
-        top: 20px; 
-        right: 20px; 
-        background: #f44336; 
-        color: white; 
-        padding: 15px 20px; 
-        border-radius: 8px; 
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        z-index: 10000;
-      ">
-        <strong>❌ Load Failed</strong><br>
-        Failed to load images from server.
-      </div>
-    `;
-    document.body.appendChild(errorNotification);
-    
-    setTimeout(() => {
-      if (errorNotification.parentElement) {
-        document.body.removeChild(errorNotification);
+      if (!session || !session.images || session.images.length === 0) {
+        console.warn("⚠️ No valid images found for session:", item.id);
+        showNotification('warning', 'No Images', 'No valid images found in this history item.');
+        return;
       }
-    }, 3000);
-  }
-};
+
+      console.log("✅ Loaded", session.images.length, "images for session:", item.id);
+
+      const imageList = session.images.map(img => ({
+        imageUrl: img.imageUrl,
+        prompt: img.prompt || '',
+        category: img.category || session.category || '',
+        subCategory: img.subCategory || session.subCategory || '',
+        platform: img.platform || session.platform || '',
+        timestamp: img.timestamp || new Date().toISOString(),
+        size: 'Square',
+        quality: 'Standard',
+        claudeResponse: '',
+        AdCreativeA: img.AdCreativeA || '',
+        AdCreativeB: img.AdCreativeB || '',
+        targeting: '',
+        imageName: '',
+      }));
+
+      const compatibleItem = {
+        sessionId: item.id,
+        clickedAt: Date.now(),
+        currentImageIndex: 0,
+        describe: session.describe || item.describe || "Image session",
+        category: session.category || '',
+        subCategory: session.subCategory || '',
+        platform: session.platform || '',
+        list: imageList,
+      };
+
+      setProcessedIds(prev => {
+        const updated = new Set(prev);
+        updated.add(item.id);
+        return updated;
+      });
+
+      onItemClick(compatibleItem);
+    } catch (error) {
+      console.error("❌ Failed to load session images:", error);
+      showNotification('error', 'Load Failed', 'Failed to load images from server.');
+    }
+  };
 
   const handleSelectAllUnselected = () => {
-    // Count unselected items
-    let unselectedItems: HistoryItem[] = [];
-    
-    historyData.forEach(group => {
-      group.items.forEach(item => {
-        if (!isItemSelected(item)) {
-          unselectedItems.push(item);
-        }
-      });
-    });
+    const unselectedItems = allHistoryItems.filter(item => !isItemSelected(item));
     
     if (onSelectAll && unselectedItems.length > 0) {
       onSelectAll(unselectedItems.length);
     }
 
-    unselectedItems.reverse();
-    
-    // Process them one by one with a small delay to prevent racing conditions
-    unselectedItems.forEach((item, index) => {
+    unselectedItems.reverse().forEach((item, index) => {
       setTimeout(() => {
         handleItemClick(item);
-      }, index * 50); // 50ms delay between each item
+      }, index * 50);
     });
-  };
-
-  const clearHistory = () => {
-    setShowClearConfirm(true);
   };
 
   const handleCancelClear = () => {
@@ -336,88 +230,77 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const handleConfirmClear = async () => {
     try {
       setIsLoading(true);
-      
-      // ✅ Chỉ cần clear cache, không xóa database
       historyService.clearCache();
-      
-      setHistoryData([]);
+      setAllHistoryItems([]);
       setShowClearConfirm(false);
       setProcessedIds(new Set());
-      console.log("✅ History cache cleared");
-
-      // Show success notification
-      const notification = document.createElement("div");
-      notification.innerHTML = `
-        <div style="
-          position: fixed; 
-          top: 20px; 
-          right: 20px; 
-          background: #4CAF50; 
-          color: white; 
-          padding: 15px 20px; 
-          border-radius: 8px; 
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          z-index: 10000;
-        ">
-          <strong>✅ History Refreshed</strong><br>
-          History cache cleared. Reloading latest data...
-        </div>
-      `;
-      document.body.appendChild(notification);
-
-      setTimeout(() => {
-        if (notification.parentElement) {
-          document.body.removeChild(notification);
-        }
-      }, 2000);
       
-      // ✅ Reload fresh data từ API
+      showNotification('success', 'History Refreshed', 'History cache cleared. Reloading latest data...');
+      
       await loadHistoryData();
     } catch (error) {
       console.error("❌ Failed to refresh history:", error);
       setShowClearConfirm(false);
-
-      const errorNotification = document.createElement("div");
-      errorNotification.innerHTML = `
-        <div style="
-          position: fixed; 
-          top: 20px; 
-          right: 20px; 
-          background: #f44336; 
-          color: white; 
-          padding: 15px 20px; 
-          border-radius: 8px; 
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          z-index: 10000;
-        ">
-          <strong>❌ Refresh Failed</strong><br>
-          Could not reload history. Please try again.
-        </div>
-      `;
-      document.body.appendChild(errorNotification);
-
-      setTimeout(() => {
-        if (errorNotification.parentElement) {
-          document.body.removeChild(errorNotification);
-        }
-      }, 5000);
+      showNotification('error', 'Refresh Failed', 'Could not reload history. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Force reload when visibility changes
-  useEffect(() => {
-    if (isVisible) {
-      loadHistoryData();
-    }
-  }, [isVisible, loadHistoryData]);
+  // ✅ Row renderer với grid layout bên trong
+  const Row = useCallback(({ index, style }: { index: number; style: React.CSSProperties }) => {
+    // Mỗi row chứa 3 items (grid 3 cột)
+    const ITEMS_PER_ROW = 3;
+    const startIdx = index * ITEMS_PER_ROW;
+    const itemsInRow = allHistoryItems.slice(startIdx, startIdx + ITEMS_PER_ROW);
+
+    if (itemsInRow.length === 0) return null;
+
+    return (
+      <div style={style}>
+        <div className="history-row-grid">
+          {itemsInRow.map((item) => {
+            const isItemDisabled = isItemSelected(item);
+            
+            return (
+              <div
+                key={item.id}
+                className={`history-item ${isItemDisabled ? "disabled" : ""}`}
+                onClick={() => !isItemDisabled && handleItemClick(item)}
+                style={{
+                  opacity: isItemDisabled ? 0.5 : 1,
+                  cursor: isItemDisabled ? "default" : "pointer",
+                }}
+              >
+                <SafeHistoryImage 
+                  src={item.thumbnail || ''}
+                  alt={item.describe || "Generated image"}
+                  id={item.id}
+                  count={item.imageCount || 0}
+                  category={item.category}
+                  subCategory={item.subCategory}
+                  platform={item.platform}
+                />
+                {(item.imageCount || 0) > 1 && (
+                  <div className="history-item-count">{item.imageCount}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }, [allHistoryItems, isItemSelected, handleItemClick]);
+
+  // Tính số rows cần thiết
+  const ITEMS_PER_ROW = 3;
+  const rowCount = Math.ceil(allHistoryItems.length / ITEMS_PER_ROW);
 
   return (
     <div className={`history-sidebar ${isVisible ? "visible" : ""}`}>
       <div className="history-header">
         <div className="history-title-section">
-          <span className="history-period">History</span>
+          <span className="history-period">History ({allHistoryItems.length})</span>
           {isLoading && (
             <span className="loading-indicator">
               <span className="loading-spinner"></span>
@@ -450,7 +333,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
           <button
             className="history-action-button"
-            onClick={clearHistory}
+            onClick={() => setShowClearConfirm(true)}
             title="Clear history"
           >
             <svg
@@ -492,109 +375,51 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
             onCancel={handleCancelClear}
             onConfirm={handleConfirmClear}
           />
+        ) : isLoading && allHistoryItems.length === 0 ? (
+          <div className="history-empty">
+            <p>Loading...</p>
+          </div>
+        ) : allHistoryItems.length === 0 ? (
+          <div className="history-empty">
+            <p>No history items found</p>
+            <button 
+              className="history-refresh-button"
+              onClick={loadHistoryData}
+            >
+              Refresh
+            </button>
+          </div>
         ) : (
-          <>
-            {!historyData || historyData.length === 0 ? (
-              <div className="history-empty">
-                <p>{isLoading ? "Loading..." : "No history items found"}</p>
-                
-                {!isLoading && (
-                  <button 
-                    className="history-refresh-button"
-                    onClick={loadHistoryData}
-                  >
-                    Refresh
-                  </button>
-                )}
-              </div>
-            ) : (
-              <HistoryDisplay
-                historyData={historyData}
-                isItemSelected={isItemSelected}
-                handleItemClick={handleItemClick}
-              />
-            )}
-          </>
+          <List
+            ref={listRef}
+            height={window.innerHeight - 120}
+            itemCount={rowCount}
+            itemSize={120}
+            width="100%"
+            overscanCount={3}
+          >
+            {Row}
+          </List>
         )}
       </div>
     </div>
   );
 };
 
-// Separate component for history display to improve performance
-const HistoryDisplay: React.FC<{
-  historyData: HistoryDateGroup[];
-  isItemSelected: (item: HistoryItem) => boolean;
-  handleItemClick: (item: HistoryItem) => void;
-}> = React.memo(({ historyData, isItemSelected, handleItemClick }) => {
-  return (
-    <>
-      {historyData.map((dateGroup, groupIndex) => (
-        <div key={`date-${groupIndex}-${dateGroup.date}`} className="history-date-group">
-          <div className="history-date">{dateGroup.date}</div>
-
-          <div className="history-items">
-            {dateGroup.items.map((item) => {
-              const isItemDisabled = isItemSelected(item);
-              
-              return (
-                <div
-                  key={`item-${item.id}`}
-                  className={`history-item ${isItemDisabled ? "disabled" : ""}`}
-                  onClick={() => !isItemDisabled && handleItemClick(item)}
-                  style={{
-                    opacity: isItemDisabled ? 0.5 : 1,
-                    cursor: isItemDisabled ? "default" : "pointer",
-                  }}
-                >
-                  <SafeHistoryImage 
-                    src={item.thumbnail}
-                    alt={item.describe || "Generated image"}
-                    id={item.id}
-                    count={item.imageCount}
-                    category={item.category}        // ✅ THAY platform
-                    subCategory={item.subCategory}  // ✅ THÊM
-                    platform={item.platform}
-                  />
-
-                  {item.imageCount > 1 && (
-                    <div className="history-item-count">{item.imageCount}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </>
-  );
-});
-
 const SafeHistoryImage: React.FC<{
   src: string;
   alt: string;
   id: string;
   count: number;
-  category?: string;     // ✅ THAY platform
-  subCategory?: string;  // ✅ THÊM
+  category?: string;
+  subCategory?: string;
   platform?: string;
-}> = ({ src, alt, id, count, category, subCategory, platform }) => {
+}> = ({ src, alt, count, category, subCategory }) => {
   const [hasError, setHasError] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const handleImageError = () => {
-    setIsLoading(false);
-    setHasError(true);
-  };
-
-  const handleImageLoad = () => {
-    setIsLoading(false);
-    setHasError(false);
-  };
-
   return (
     <div className="history-image-container">
-      {/* ✅ THÊM category label */}
       {(category || subCategory) && (
         <div className="category-label category-label-history">
           {category && subCategory 
@@ -604,20 +429,26 @@ const SafeHistoryImage: React.FC<{
         </div>
       )}
       
-      {isLoading && (
+      {isLoading && !hasError && (
         <div className="history-image-loading">
           <div className="loading-spinner"></div>
         </div>
       )}
       
-      {/* ✅ Dùng URL trực tiếp, không convert blob */}
       <img
         src={src}
         alt={alt}
         className="history-image"
         loading="lazy"
-        onError={handleImageError}
-        onLoad={handleImageLoad}
+        onError={() => {
+          setIsLoading(false);
+          setHasError(true);
+        }}
+        onLoad={() => {
+          setIsLoading(false);
+          setHasError(false);
+        }}
+        style={{ display: hasError ? 'none' : 'block' }}
       />
       
       {hasError && (
@@ -646,6 +477,42 @@ const SafeHistoryImage: React.FC<{
     </div>
   );
 };
+
+function showNotification(type: 'success' | 'error' | 'warning', title: string, message: string) {
+  const colors = {
+    error: { bg: '#ff6b6b', text: 'white' },
+    warning: { bg: '#f39c12', text: 'white' },
+    success: { bg: '#4CAF50', text: 'white' },
+  };
+
+  const color = colors[type];
+
+  const notification = document.createElement("div");
+  notification.innerHTML = `
+    <div style="
+      position: fixed; 
+      top: 20px; 
+      right: 20px; 
+      background: ${color.bg}; 
+      color: ${color.text}; 
+      padding: 15px 20px; 
+      border-radius: 8px; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 10000;
+      max-width: 350px;
+    ">
+      <strong>${title}</strong><br>
+      ${message}
+    </div>
+  `;
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    if (notification.parentElement) {
+      document.body.removeChild(notification);
+    }
+  }, type === 'error' ? 5000 : 3000);
+}
 
 export { HistorySidebar };
 export default HistorySidebar;

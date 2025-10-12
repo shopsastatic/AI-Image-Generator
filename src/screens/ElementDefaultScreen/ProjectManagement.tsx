@@ -26,6 +26,8 @@ import {
   Tags,
   ChevronDown,
   ChevronRight,
+  Users,
+  BookOpen
 } from "lucide-react";
 
 // ✅ TypeScript Interfaces
@@ -331,20 +333,28 @@ const ProjectManagement: React.FC = () => {
       description: "Social media advertising campaigns",
     },
     {
-      value: "website-content", // ✅ NEW
+      value: "website-content",
       label: "Website Content",
-      icon: Globe, // ✅ NEW
-      color: "bg-emerald-50 text-emerald-700", // ✅ NEW
-      description: "Website and content marketing visuals", // ✅ NEW
+      icon: Globe, 
+      color: "bg-emerald-50 text-emerald-700",
+      description: "Website and content marketing visuals",
+    },
+    {
+      value: "social",
+      label: "Social",
+      icon: Users,
+      color: "bg-emerald-50 text-emerald-700",
+      description: "Social",
     },
     {
       value: "instructions",
       label: "Instructions",
-      icon: Globe, // ✅ NEW
-      color: "bg-emerald-50 text-emerald-700", // ✅ NEW
-      description: "Website and content marketing visuals", // ✅ NEW
+      icon: BookOpen,
+      color: "bg-emerald-50 text-emerald-700",
+      description: "Instructions",
     },
   ];
+  
 
   const modelOptions = [
     {

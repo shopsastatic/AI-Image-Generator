@@ -2698,6 +2698,7 @@ button {
 .history-sidebar .history-content {
   position: relative;
   min-height: 200px;
+  padding: 20px;
 }
 
 
@@ -3050,4 +3051,44 @@ button {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.history-content {
+  overflow: hidden; /* Virtual list tự xử lý scroll */
+}
+
+/* Grid layout bên trong mỗi row */
+.history-row-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .history-row-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 400px) {
+  .history-row-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.history-item {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.history-item:hover:not(.disabled) {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.history-item.disabled {
+  pointer-events: none;
 }

@@ -449,17 +449,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
 
               <select
                 value={childOption}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  console.log("📝 Instructions subcategory changed:", newValue);
-                  
-                  setChildOption(newValue);
-                  
-                  // ✅ Force category thành "instructions"
-                  if (onCategoryChange) {
-                    onCategoryChange("instructions", newValue);
-                  }
-                }}
+                onChange={(e) => handleChildOptionChange(e.target.value)}
                 disabled={
                   loadingSubcategories ||
                   !getActiveSubcategoriesForCategory(parentCategory).length

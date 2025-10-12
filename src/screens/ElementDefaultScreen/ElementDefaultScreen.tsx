@@ -3455,16 +3455,10 @@ useEffect(() => {
                               session ? "YES" : "NO"
                             );
                             if (session) {
-                              console.log(
-                                "🔍 Session describe value:",
-                                session.describe
-                              );
+                  
                               if (session.describe) {
                                 describeText = session.describe;
-                                console.log(
-                                  "✅ Found describe from currentSessionId:",
-                                  describeText
-                                );
+                          
                               }
                             }
                           }

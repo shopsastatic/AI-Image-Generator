@@ -93,37 +93,43 @@ class HistoryService {
    * Transform N8N data sang format component cần
    */
   private transformN8NData(data: N8NHistoryItem[]): HistorySession[] {
-    return data.map(item => {
-      const images: HistoryImage[] = [];
-      
-      // Map URLs và prompts theo index
-      const urlCount = item.data.url?.length || 0;
-      const promptCount = item.data.prompt?.length || 0;
-      const maxCount = Math.max(urlCount, promptCount);
+  const sessions = data.map(item => {
+    const images: HistoryImage[] = [];
+    
+    const urlCount = item.data.url?.length || 0;
+    const promptCount = item.data.prompt?.length || 0;
+    const maxCount = Math.max(urlCount, promptCount);
 
-      for (let i = 0; i < maxCount; i++) {
-        images.push({
-          imageUrl: item.data.url?.[i] || '',
-          prompt: item.data.prompt?.[i] || item.data.describe || '',
-          category: item.data.category || '',
-          subCategory: item.data.sub_category || '',
-          platform: item.data.platform || '',
-          timestamp: item.created_at || new Date().toISOString(),
-        });
-      }
-
-      return {
-        sessionId: item.id,
-        describe: item.data.describe || '',
+    for (let i = 0; i < maxCount; i++) {
+      images.push({
+        imageUrl: item.data.url?.[i] || '',
+        prompt: item.data.prompt?.[i] || item.data.describe || '',
         category: item.data.category || '',
         subCategory: item.data.sub_category || '',
         platform: item.data.platform || '',
-        images: images,
         timestamp: item.created_at || new Date().toISOString(),
-        createdAt: item.created_at || new Date().toISOString(),
-      };
-    });
-  }
+      });
+    }
+
+    return {
+      sessionId: item.id,
+      describe: item.data.describe || '',
+      category: item.data.category || '',
+      subCategory: item.data.sub_category || '',
+      platform: item.data.platform || '',
+      images: images,
+      timestamp: item.created_at || new Date().toISOString(),
+      createdAt: item.created_at || new Date().toISOString(),
+    };
+  });
+
+  // ✅ THÊM: Sắp xếp theo thời gian mới nhất trước
+  return sessions.sort((a, b) => {
+    const timeA = new Date(a.timestamp || a.createdAt).getTime();
+    const timeB = new Date(b.timestamp || b.createdAt).getTime();
+    return timeB - timeA; // Mới nhất trước
+  });
+}
 
   /**
    * Nhóm sessions theo ngày cho sidebar
