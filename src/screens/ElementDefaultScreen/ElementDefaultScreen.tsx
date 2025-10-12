@@ -3462,6 +3462,7 @@ useEffect(() => {
                               }
                             }
                           }
+                          
 
                           // Method 2: Get from current image's session
                           if (
