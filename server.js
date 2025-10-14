@@ -2376,6 +2376,56 @@ app.get('/api/subcategories/stats', requireAuth, (req, res) => {
   }
 });
 
+// ✅ GET /api/instructions/all-files - Get all instruction files with content
+app.get('/api/instructions/all-files', async (req, res) => {
+  try {
+    const instructionsDir = path.join(__dirname, 'static', 'instructions');
+    
+    // Check if directory exists
+    if (!fs.existsSync(instructionsDir)) {
+      return res.json({ success: true, files: [] });
+    }
+
+    // Read all .txt files
+    const allFiles = fs.readdirSync(instructionsDir)
+      .filter(filename => filename.endsWith('.txt'));
+
+    // Read content of each file
+    const filesWithContent = allFiles.map(filename => {
+      const filePath = path.join(instructionsDir, filename);
+      const content = fs.readFileSync(filePath, 'utf8');
+      
+      // Parse content if it has prompt content section
+      const parsed = instructionsManager.parseFileContent(content);
+      
+      return {
+        filename,
+        promptContent: parsed.promptContent,
+        instructions: parsed.instructions,
+        fullContent: content,
+        size: content.length,
+        lastModified: fs.statSync(filePath).mtime
+      };
+    });
+
+    console.log(`📦 Returned ${filesWithContent.length} instruction files with content`);
+
+    res.json({
+      success: true,
+      total: filesWithContent.length,
+      files: filesWithContent,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error reading instruction files:', error);
+    res.status(500).json({
+      error: 'Failed to read instruction files',
+      message: error.message
+    });
+  }
+});
+
 // ✅ POST /api/subcategories/import - Import subcategories from JSON
 app.post('/api/subcategories/import', requireAuth, (req, res) => {
   try {
