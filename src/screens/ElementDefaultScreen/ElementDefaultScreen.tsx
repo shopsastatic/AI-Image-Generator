@@ -947,6 +947,17 @@ useEffect(() => {
 
           const data = await response.json();
 
+          if(!data[0].job_id) {
+            clearInterval(generateImagePool);
+            removeLoadingSession(sessionId);
+            showNotification(
+              "error",
+              "Server Busy!",
+              "The server is currently busy. Please try again in a few moments."
+            );
+            return;
+          }
+
           // Check if results are ready
           if (data && data[0] && data[0].data != null) {
             clearInterval(generateImagePool);
