@@ -3090,7 +3090,7 @@ useEffect(() => {
                 </div>
               </div>
 
-              <img className="SVG-7" alt="Svg" src="/img/svg-13.svg" />
+              <img className="SVG-7" alt="Svg" src="/img/svg-14.svg" />
             </div>
           </div>
 
