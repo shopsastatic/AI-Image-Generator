@@ -1756,72 +1756,65 @@ useEffect(() => {
     }
   };
 
-  const downloadImage = async (
-    imageUrl: string,
-    claudeResponse?: string,
-    imageIndex?: number,
-    imageName?: string // Thêm param imageName trực tiếp
-  ) => {
-    try {
-      let fileName = "";
+  const downloadImage = async (imageUrl, claudeResponse, imageIndex, imageName) => {
+  try {
+    let fileName = imageName?.trim() 
+      ? cleanFileName(imageName)
+      : extractImageNameFromClaudeResponse(claudeResponse, imageIndex || 0);
+    
+    if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      fileName = `${fileName}.png`;
+    }
 
-      // Fix: Ưu tiên imageName từ Claude response trước
-      if (imageName && imageName.trim()) {
-        fileName = cleanFileName(imageName);
-        console.log("🏷️ Using imageName from Claude:", fileName);
-      } else if (claudeResponse) {
-        fileName = extractImageNameFromClaudeResponse(
-          claudeResponse,
-          imageIndex || 0
-        );
-        console.log("📝 Extracted from Claude response:", fileName);
-      } else {
-        fileName = `ai-image-${Date.now()}`;
-        console.log("🔄 Using fallback name:", fileName);
-      }
-
-      // Đảm bảo có extension
-      if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        fileName = `${fileName}.png`;
-      }
-
-      if (imageUrl.startsWith("data:")) {
-        const link = document.createElement("a");
-        link.href = imageUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        return;
-      }
-
-      const response = await fetch(imageUrl, { mode: "cors" });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch image: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-
+    // Base64 - direct download
+    if (imageUrl.startsWith("data:")) {
       const link = document.createElement("a");
-      link.href = blobUrl;
+      link.href = imageUrl;
       link.download = fileName;
-
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
-      URL.revokeObjectURL(blobUrl);
-
-      console.log("✅ Downloaded:", fileName);
-    } catch (error) {
-      console.error("Error downloading image:", error);
-      window.open(imageUrl, "_blank");
+      return;
     }
-  };
+
+    // Try direct fetch first
+    try {
+      const response = await fetch(imageUrl, { mode: "cors" });
+      if (!response.ok) throw new Error("Direct fetch failed");
+      
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      return;
+    } catch (directError) {
+      // Fallback to proxy
+      console.log("Direct fetch failed, trying proxy...");
+      const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(imageUrl)}`;
+      const proxyResponse = await fetch(proxyUrl);
+      
+      if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
+      
+      const blob = await proxyResponse.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    }
+  } catch (error) {
+    console.error("All download methods failed:", error);
+    window.open(imageUrl, "_blank"); // Last resort
+  }
+};
 
   const toggleSuggestions = () => {
     setShowSuggestions(!showSuggestions);
