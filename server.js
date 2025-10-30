@@ -2798,8 +2798,7 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
     const categoryMap = {
       'google_prompt': 'google_ads',
       'facebook_prompt': 'facebook_ads',
-      'website_prompt': 'website_content',
-      'social_prompt': 'social'
+      'website_prompt': 'website_content'
     };
     const normalizedCategory = categoryMap[category] || category.replace(/-/g, '_');
     
@@ -2817,12 +2816,11 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       targetModel 
     });
 
-    // Build ALL filenames to try (không dừng khi tìm thấy)
+    // Build ALL filenames to try
     const userPromptFiles = [];
     const systemPromptFiles = [];
 
     if (normalizedSubcategory) {
-      // With subcategory - specific model first, then universal
       userPromptFiles.push(
         `user_prompt_${targetModel}_${normalizedCategory}_${normalizedSubcategory}.txt`,
         `user_prompt_universal_${normalizedCategory}_${normalizedSubcategory}.txt`
@@ -2833,7 +2831,6 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       );
     }
     
-    // Without subcategory (fallback)
     userPromptFiles.push(
       `user_prompt_${targetModel}_${normalizedCategory}.txt`,
       `user_prompt_universal_${normalizedCategory}.txt`
@@ -2843,10 +2840,7 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       `system_prompt_universal_${normalizedCategory}.txt`
     );
 
-    console.log('📋 User prompt files to try:', userPromptFiles);
-    console.log('📋 System prompt files to try:', systemPromptFiles);
-
-    // Try to find user_prompt
+    // ✅ Try to find user_prompt - CHỈ LẤY INSTRUCTIONS
     let userPromptContent = null;
     let userPromptFilename = null;
 
@@ -2863,6 +2857,10 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       }
     }
 
+    // ✅ Try to find system_prompt - CHỈ LẤY INSTRUCTIONS
+    let systemPromptContent = null;
+    let systemPromptFilename = null;
+
     for (const filename of systemPromptFiles) {
       const filePath = path.join(instructionsDir, filename);
       
@@ -2876,10 +2874,17 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       }
     }
 
+    console.log('📦 Final result:', {
+      hasUserPrompt: !!userPromptContent,
+      hasSystemPrompt: !!systemPromptContent,
+      userPromptFile: userPromptFilename,
+      systemPromptFile: systemPromptFilename
+    });
+
     return res.json({
       success: true,
-      user_prompt: userPromptContent,
-      system_prompt: systemPromptContent,
+      user_prompt: userPromptContent, // ✅ CHỈ Instructions
+      system_prompt: systemPromptContent, // ✅ CHỈ Instructions
       files: {
         user_prompt: userPromptFilename,
         system_prompt: systemPromptFilename
