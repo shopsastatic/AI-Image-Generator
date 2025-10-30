@@ -135,16 +135,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     setSelectedCategory({ category, subcategory });
 
-    // ✅ Kiểm tra nếu là instructions
+    setSelectedCategory({ category, subcategory });
+
+    // ✅ CHỈ UPDATE instructionsSubcategory khi category === "instructions"
     if (category === "instructions") {
       console.log("✅ Updating instructions subcategory:", subcategory);
       setHasInstructionsSubcategory(!!subcategory);
       setInstructionsSubcategory(subcategory);
-    } else {
-      // Reset khi KHÔNG phải instructions
-      console.log("❌ Not instructions, resetting");
-      setHasInstructionsSubcategory(false);
-      setInstructionsSubcategory("");
     }
   };
 
@@ -266,17 +263,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
     if (rawContent.includes("--- PROMPT CONTENT ---")) {
       const parts = rawContent.split("--- INSTRUCTIONS ---");
-      console.log(parts);
       return {
         promptContent: parts[0].replace("--- PROMPT CONTENT ---", "").trim(),
         instructions: parts[1] ? parts[1].trim() : "",
       };
     }
-
-    console.log({
-      promptContent: "",
-      instructions: rawContent,
-    });
+    console.log("Failed to parse content:", rawContent);
+    
     return {
       promptContent: "",
       instructions: rawContent,
@@ -364,8 +357,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
         const data = await response.json();
 
-        // ✅ Parse content
-
         // ✅ Parse system_prompt or user_prompt
         let parsedContent = { promptContent: "", instructions: "" };
 
@@ -374,6 +365,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
         } else if (data.user_prompt) {
           parsedContent = parseContent(data.user_prompt);
         }
+
 
         // ✅ FIX: Lấy PROMPT CONTENT thay vì instructions
         if (parsedContent.promptContent && parsedContent.promptContent.trim()) {
@@ -2938,11 +2930,26 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         ref={textareaRef}
                         className="input-prompt"
                         placeholder="Describe what you want to see..."
+                        maxLength={3000}
                         onInput={(e) =>
                           setPromptText((e.target as HTMLTextAreaElement).value)
                         }
                         onKeyPress={handleKeyPress}
                       ></textarea>
+
+                      {/* ✅ THÊM CHARACTER COUNTER */}
+                      {promptText && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '8px',
+                          right: '12px',
+                          fontSize: '11px',
+                          color: promptText.length > 2800 ? '#ef4444' : '#999',
+                          pointerEvents: 'none'
+                        }}>
+                          {promptText.length}/3000
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex gap-10 justify-between prompt-actions">
@@ -3013,58 +3020,58 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       </div>
 
                       <div className="flex gap-2">
-                        {hasInstructionsSubcategory && (
-                          <div
-                            className={`button-7 ${
-                              promptText.trim() && !isOptimizing ? "active" : ""
-                            }`}
-                            onClick={
-                              promptText.trim() && !isOptimizing
-                                ? handleOptimizePrompt
-                                : undefined
-                            }
-                            style={{
-                              cursor:
-                                !promptText.trim() || isOptimizing
-                                  ? "not-allowed"
-                                  : "pointer",
-                              opacity:
-                                !promptText.trim() || isOptimizing ? 0.7 : 1,
-                            }}
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="20"
-                              height="20"
-                              fill="#fff"
-                              viewBox="0 0 24 24"
-                              style={{
-                                animation: isOptimizing
-                                  ? "spin 1s linear infinite"
-                                  : "none",
-                              }}
-                            >
-                              <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 22l-.394-1.433a2.25 2.25 0 0 0-1.423-1.423L13.25 18.75l1.433-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.433.394 1.433a2.25 2.25 0 0 0 1.423 1.423l1.433.394-1.433.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-                            </svg>
-                          </div>
-                        )}
-
+                      {instructionsSubcategory && (
                         <div
                           className={`button-7 ${
-                            promptText.trim() ? "active" : ""
+                            promptText.trim() && !isOptimizing ? "active" : ""
                           }`}
                           onClick={
-                            promptText.trim() ? handleFormSubmit : undefined
+                            promptText.trim() && !isOptimizing
+                              ? handleOptimizePrompt
+                              : undefined
                           }
-                          ref={submitButtonRef}
+                          style={{
+                            cursor:
+                              !promptText.trim() || isOptimizing
+                                ? "not-allowed"
+                                : "pointer",
+                            opacity:
+                              !promptText.trim() || isOptimizing ? 0.7 : 1,
+                          }}
                         >
-                          <img
-                            className="SVG-6"
-                            alt="Svg"
-                            src="/img/svg-4.svg"
-                          />
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="20"
+                            height="20"
+                            fill="#fff"
+                            viewBox="0 0 24 24"
+                            style={{
+                              animation: isOptimizing
+                                ? "spin 1s linear infinite"
+                                : "none",
+                            }}
+                          >
+                            <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 22l-.394-1.433a2.25 2.25 0 0 0-1.423-1.423L13.25 18.75l1.433-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.433.394 1.433a2.25 2.25 0 0 0 1.423 1.423l1.433.394-1.433.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+                          </svg>
                         </div>
+                      )}
+
+                      <div
+                        className={`button-7 ${
+                          promptText.trim() ? "active" : ""
+                        }`}
+                        onClick={
+                          promptText.trim() ? handleFormSubmit : undefined
+                        }
+                        ref={submitButtonRef}
+                      >
+                        <img
+                          className="SVG-6"
+                          alt="Svg"
+                          src="/img/svg-4.svg"
+                        />
                       </div>
+                    </div>
                     </div>
                   </div>
                 </div>

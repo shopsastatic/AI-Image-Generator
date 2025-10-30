@@ -2854,14 +2854,10 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       const filePath = path.join(instructionsDir, filename);
       
       if (fs.existsSync(filePath)) {
-        const rawContent = fs.readFileSync(filePath, 'utf8');
-        const parsed = instructionsManager.parseFileContent(rawContent);
-        userPromptContent = parsed.instructions; // ✅ CHỈ lấy Instructions
+        userPromptContent = fs.readFileSync(filePath, 'utf8'); // ✅ LẤY TOÀN BỘ
         userPromptFilename = filename;
-        console.log(`✅ Found user_prompt: ${filename} (instructions: ${parsed.instructions.length} chars, skipped prompt: ${parsed.promptContent.length} chars)`);
+        console.log(`✅ Found user_prompt: ${filename}`);
         break;
-      } else {
-        console.log(`⭕️ User prompt not found: ${filename}`);
       }
     }
 
@@ -2870,14 +2866,10 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       const filePath = path.join(instructionsDir, filename);
       
       if (fs.existsSync(filePath)) {
-        const rawContent = fs.readFileSync(filePath, 'utf8');
-        const parsed = instructionsManager.parseFileContent(rawContent);
-        systemPromptContent = parsed.instructions; // ✅ CHỈ lấy Instructions
+        systemPromptContent = fs.readFileSync(filePath, 'utf8'); // ✅ LẤY TOÀN BỘ
         systemPromptFilename = filename;
-        console.log(`✅ Found system_prompt: ${filename} (instructions: ${parsed.instructions.length} chars, skipped prompt: ${parsed.promptContent.length} chars)`);
+        console.log(`✅ Found system_prompt: ${filename}`);
         break;
-      } else {
-        console.log(`⭕️ System prompt not found: ${filename}`);
       }
     }
 

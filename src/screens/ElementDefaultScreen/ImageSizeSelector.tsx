@@ -66,15 +66,29 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const [useNano, setUseNano] = useState(true);
   const [useSeed, setUseSeed] = useState(false);
   const [useOpenAI, setUseOpenAI] = useState(false);
+
+    // ✅ NEW: States for dynamic subcategories
+  const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
+  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
   
   const [parentCategory, setParentCategory] = useState("facebook_prompt");
   const [childOption, setChildOption] = useState("");
   const [instructionsSubcategory, setInstructionsSubcategory] = useState("");
+  
+  const hasSetDefaultRef = useRef(false);
 
-
-  // ✅ NEW: States for dynamic subcategories
-  const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
-  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
+  useEffect(() => {
+    if (!hasSetDefaultRef.current && !loadingSubcategories && subcategories.length > 0) {
+      const instructionsOpts = getActiveSubcategoriesForCategory("instructions");
+      const hasDefault = instructionsOpts.some(opt => opt.value === "create-prompt-product-info");
+      
+      if (hasDefault) {
+        setInstructionsSubcategory("create-prompt-product-info");
+        onCategoryChange?.("instructions", "create-prompt-product-info");
+        hasSetDefaultRef.current = true;
+      }
+    }
+  }, [loadingSubcategories, subcategories]);
 
   // ✅ NEW: Single aspect ratio state (default Square HD)
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("1:1");
@@ -492,7 +506,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                       <option value="">No options</option>
                     ) : (
                       <>
-                        <option value="">Select subcategory...</option>
+                        <option value="">---</option>
                         {getActiveSubcategoriesForCategory(parentCategory).map(
                           (option) => (
                             <option key={option.id} value={option.value}>
@@ -549,7 +563,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                     <option value="">No options</option>
                   ) : (
                     <>
-                      <option value="">Select subcategory...</option>
+                      <option value="">---</option>
                       {getActiveSubcategoriesForCategory("instructions").map(
                         (option) => (
                           <option key={option.id} value={option.value}>
