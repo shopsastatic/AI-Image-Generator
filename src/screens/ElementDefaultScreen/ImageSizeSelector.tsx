@@ -65,9 +65,9 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   // ✅ NEW: API selection states (default both selected)
   const [useNano, setUseNano] = useState(true);
   const [useSeed, setUseSeed] = useState(false);
-  const [useOpenAI, setUseOpenAI] = useState(false); 
+  const [useOpenAI, setUseOpenAI] = useState(false);
   
-  const [parentCategory, setParentCategory] = useState("google_prompt");
+  const [parentCategory, setParentCategory] = useState("facebook_prompt");
   const [childOption, setChildOption] = useState("");
   const [instructionsSubcategory, setInstructionsSubcategory] = useState("");
 
@@ -89,6 +89,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     { value: "google_prompt", label: "Google" },
     { value: "facebook_prompt", label: "Facebook" },
     { value: "website_prompt", label: "Website" },
+    { value: "social_prompt", label: "Social" },
   ];
 
   const categoryInstructions: CategoryOption[] = [
@@ -100,10 +101,13 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     { value: "Square HD", label: "Square HD", format: "Square" },
     { value: "Portrait 3:4", label: "Portrait 3:4", format: "Portrait" },
     { value: "Portrait 2:3", label: "Portrait 2:3", format: "Portrait" },
+    { value: "Portrait 4:5", label: "Portrait 4:5", format: "Portrait" },
     { value: "Portrait 9:16", label: "Portrait 9:16", format: "Portrait" },
     { value: "Landscape 4:3", label: "Landscape 4:3", format: "Landscape" },
     { value: "Landscape 3:2", label: "Landscape 3:2", format: "Landscape" },
+    { value: "Landscape 5:4", label: "Landscape 5:4", format: "Landscape" },
     { value: "Landscape 16:9", label: "Landscape 16:9", format: "Landscape" },
+    { value: "Landscape 21:9", label: "Landscape 21:9", format: "Landscape" },
   ];
 
   // ✅ NEW: Get icon and format type for selected aspect ratio
@@ -180,6 +184,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
       google_prompt: "google-ads",
       facebook_prompt: "facebook-ads",
       website_prompt: "website-content",
+      social_prompt: "social"
     };
     return categoryMap[displayCategory] || displayCategory;
   };
@@ -346,7 +351,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     const selected = [];
     if (useNano) selected.push("Nano");
     if (useSeed) selected.push("SeeD");
-    if (useOpenAI) selected.push("OpenAI"); // ✅ THÊM
+    if (useOpenAI) selected.push("OpenAI");
     
     if (selected.length === 0) return "SeeD";
     return selected.join(" • ");
@@ -402,7 +407,6 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
-                    <Zap className="w-3 h-3" />
                     <span>SeeD</span>
                   </button>
 
@@ -414,7 +418,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
-                    <span>OpenAI</span>
+                    <span>GPT</span>
                   </button>
                 </div>
               </div>

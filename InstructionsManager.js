@@ -78,9 +78,11 @@ class InstructionsManager {
             'google_prompt': 'google_ads',
             'facebook_prompt': 'facebook_ads',
             'website_prompt': 'website_content',
+            'social_prompt': 'social',
             'google-ads': 'google_ads',
             'facebook-ads': 'facebook_ads',
-            'website-content': 'website_content'
+            'website-content': 'website_content',
+            'social': 'social'
         };
 
         const normalizedCategory = categoryMap[category] || category.replace(/-/g, '_');
@@ -110,6 +112,7 @@ class InstructionsManager {
             'google_prompt': 'google-ads',
             'facebook_prompt': 'facebook-ads', 
             'website_prompt': 'website-content',
+            'social_prompt': 'social',
             'instructions': 'instructions'
         };
 

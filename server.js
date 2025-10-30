@@ -2798,7 +2798,8 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
     const categoryMap = {
       'google_prompt': 'google_ads',
       'facebook_prompt': 'facebook_ads',
-      'website_prompt': 'website_content'
+      'website_prompt': 'website_content',
+      'social_prompt': 'social'
     };
     const normalizedCategory = categoryMap[category] || category.replace(/-/g, '_');
     
