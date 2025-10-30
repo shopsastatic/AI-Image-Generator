@@ -334,19 +334,28 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
           }),
         });
 
+        console.log(19)
+
         if (!response.ok) {
           console.error("Failed to load instructions");
           return;
         }
 
+        console.log(11)
+
         const data = await response.json();
+
+        console.log(22)
 
         // ✅ Parse content
         const parseContent = (rawContent: string) => {
+          console.log(33)
           if (!rawContent) return { promptContent: "", instructions: "" };
 
+          console.log(44)
           if (rawContent.includes("--- PROMPT CONTENT ---")) {
             const parts = rawContent.split("--- INSTRUCTIONS ---");
+            console.log(55)
             return {
               promptContent: parts[0]
                 .replace("--- PROMPT CONTENT ---", "")
