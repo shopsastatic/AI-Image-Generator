@@ -507,16 +507,29 @@ export class JobManager {
   // ✅ UPDATED: Load system instructions dynamically with subcategory support
   async loadInstructions(category = 'google_prompt', selectedModel = 'claude-sonnet', subcategory = '') {
     try {
+      // Determine target model for instructions
       const targetModel = selectedModel === 'deepsearch' ? 'deepseek' : 'universal';
       
-      const { instructions } = await this.instructionsManager.getInstructionsForJob( // ✅ Destructure
+      console.log(`📚 Loading system instructions:`, {
         category,
         subcategory,
+        selectedModel,
+        targetModel,
+        instructionType: 'system'
+      });
+
+      // ✅ Use InstructionsManager with proper parameters
+      const instructions = await this.instructionsManager.getInstructionsForJob(
+        category,
+        subcategory, // ← Now properly passed
         targetModel
       );
 
-      return instructions; // ✅ Return only instructions string
+      console.log(`✅ System instructions loaded: ${instructions.length} characters`);
+      return instructions;
+
     } catch (error) {
+      console.error(`❌ Failed to load system instructions for ${category}:`, error);
       return "You are an AI assistant that helps generate image prompts.";
     }
   }
@@ -524,14 +537,25 @@ export class JobManager {
   // ✅ UPDATED: Load deepseek user instructions dynamically with subcategory support
   async loadDeepseekInstruction(category = 'google_prompt', subcategory = '') {
     try {
-      const { instructions } = await this.instructionsManager.getInstructionsForJob( // ✅ Destructure
+      console.log(`📚 Loading DeepSeek user instruction:`, {
         category,
         subcategory,
+        targetModel: 'deepseek',
+        instructionType: 'user'
+      });
+
+      // ✅ Use InstructionsManager with proper parameters for user instructions
+      const instructions = await this.instructionsManager.getInstructionsForJob(
+        category,
+        subcategory, // ← Now properly passed
         'deepseek'
       );
 
-      return instructions; // ✅ Return only instructions string
+      console.log(`✅ DeepSeek user instruction loaded: ${instructions.length} characters`);
+      return instructions;
+
     } catch (error) {
+      console.error(`❌ Failed to load DeepSeek user instruction for ${category}:`, error);
       return '';
     }
   }
