@@ -63,8 +63,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   
   // ✅ NEW: API selection states (default both selected)
-  const [useNano, setUseNano] = useState(false);
-  const [useSeed, setUseSeed] = useState(true);
+  const [useNano, setUseNano] = useState(true);
+  const [useSeed, setUseSeed] = useState(false);
   const [useOpenAI, setUseOpenAI] = useState(false); 
   
   const [parentCategory, setParentCategory] = useState("google_prompt");
