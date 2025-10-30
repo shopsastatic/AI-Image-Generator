@@ -354,6 +354,11 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
               instructions: parts[1] ? parts[1].trim() : "",
             };
           }
+
+          console.log({
+            promptContent: "",
+            instructions: rawContent,
+          })
           return {
             promptContent: "",
             instructions: rawContent,
