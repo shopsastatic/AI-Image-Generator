@@ -65,6 +65,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   // ✅ NEW: API selection states (default both selected)
   const [useNano, setUseNano] = useState(false);
   const [useSeed, setUseSeed] = useState(true);
+  const [useOpenAI, setUseOpenAI] = useState(false); 
   
   const [parentCategory, setParentCategory] = useState("google_prompt");
   const [childOption, setChildOption] = useState("");
@@ -118,22 +119,27 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     }
   };
 
+  const toggleOpenAI = () => {
+    setUseOpenAI((prev) => !prev);
+  };
+
   // ✅ NEW: Notify parent component when API selection changes
   useEffect(() => {
     const selectedApis: string[] = [];
     
-    // If both unselected, use both APIs
-    if (!useNano && !useSeed) {
-      selectedApis.push("nano", "seed");
+    // If all unselected, use seed as default
+    if (!useNano && !useSeed && !useOpenAI) {
+      selectedApis.push("seed");
     } else {
       if (useNano) selectedApis.push("nano");
       if (useSeed) selectedApis.push("seed");
+      if (useOpenAI) selectedApis.push("openai"); // ✅ THÊM
     }
     
     if (onApiChange) {
       onApiChange(selectedApis);
     }
-  }, [useNano, useSeed]); // Removed onApiChange from deps
+  }, [useNano, useSeed, useOpenAI]); // Removed onApiChange from deps
 
   // ✅ ADDED: Notify parent when aspect ratio changes
   useEffect(() => {
@@ -337,11 +343,13 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
 
   // ✅ NEW: Get API status text
   const getApiStatusText = () => {
-    if (!useNano && !useSeed) return "Nano • SeeD";
-    if (useNano && useSeed) return "Nano • SeeD";
-    if (useNano) return "Nano";
-    if (useSeed) return "SeeD";
-    return "";
+    const selected = [];
+    if (useNano) selected.push("Nano");
+    if (useSeed) selected.push("SeeD");
+    if (useOpenAI) selected.push("OpenAI"); // ✅ THÊM
+    
+    if (selected.length === 0) return "SeeD";
+    return selected.join(" • ");
   };
 
   return (
@@ -396,6 +404,17 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
                   >
                     <Zap className="w-3 h-3" />
                     <span>SeeD</span>
+                  </button>
+
+                  <button
+                    onClick={toggleOpenAI}
+                    className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      useOpenAI
+                        ? "bg-orange-100 text-orange-700"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    <span>OpenAI</span>
                   </button>
                 </div>
               </div>
