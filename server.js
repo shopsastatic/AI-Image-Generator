@@ -1990,17 +1990,20 @@ const generateSubcategoryId = (subcategories) => {
   return (maxId + 1).toString();
 };
 
-// ✅ GET /api/subcategories - Get all subcategories
+// GET /api/subcategories - Get all subcategories
 app.get('/api/subcategories', requireAuth, (req, res) => {
   try {
     const subcategories = loadSubcategories();
 
-    console.log(`📊 Retrieved ${subcategories.length} subcategories`);
+    // ✅ FIX: Sort by order before returning
+    const sorted = subcategories.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    console.log(`📊 Retrieved ${sorted.length} subcategories (sorted by order)`);
 
     res.json({
       success: true,
-      subcategories: subcategories,
-      total: subcategories.length,
+      subcategories: sorted, // ✅ Return sorted
+      total: sorted.length,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -2045,6 +2048,7 @@ app.get('/api/subcategories/category/:category', requireAuth, (req, res) => {
 });
 
 // ✅ POST /api/subcategories - Create or update subcategory
+// POST /api/subcategories - Create or update subcategory
 app.post('/api/subcategories', requireAdmin, (req, res) => {
   try {
     const {
@@ -2055,7 +2059,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       status = 'active'
     } = req.body;
 
-    console.log(`📝 ${id ? 'Updating' : 'Creating'} subcategory:`, {
+    console.log(`🔧 ${id ? 'Updating' : 'Creating'} subcategory:`, {
       id,
       value,
       label,
@@ -2063,7 +2067,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       status
     });
 
-    // ✅ Validate required fields
+    // Validate required fields
     if (!value || !label || !category) {
       return res.status(400).json({
         error: 'Missing required fields',
@@ -2072,7 +2076,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       });
     }
 
-    // ✅ Validate category
+    // Validate category
     const validCategories = ['google-ads', 'facebook-ads', 'website-content', 'social', 'instructions'];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
@@ -2082,7 +2086,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       });
     }
 
-    // ✅ Validate status
+    // Validate status
     const validStatuses = ['active', 'inactive'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -2092,7 +2096,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       });
     }
 
-    // ✅ Validate value format (lowercase with hyphens)
+    // Validate value format
     const valuePattern = /^[a-z0-9-]+$/;
     if (!valuePattern.test(value)) {
       return res.status(400).json({
@@ -2104,7 +2108,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
 
     const subcategories = loadSubcategories();
 
-    // ✅ Check for conflicts (duplicate value within same category)
+    // Check for conflicts (duplicate value within same category)
     const existingIndex = subcategories.findIndex(sub =>
       sub.value === value &&
       sub.category === category &&
@@ -2122,7 +2126,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
     const now = new Date().toISOString();
 
     if (id) {
-      // ✅ Update existing subcategory
+      // ✅ UPDATE existing subcategory
       const updateIndex = subcategories.findIndex(sub => sub.id === id);
 
       if (updateIndex === -1) {
@@ -2133,7 +2137,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       }
 
       subcategories[updateIndex] = {
-        ...subcategories[updateIndex],
+        ...subcategories[updateIndex], // Keep existing fields including order
         value,
         label,
         category,
@@ -2143,8 +2147,17 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
 
       console.log(`✅ Updated subcategory: ${id}`);
     } else {
-      // ✅ Create new subcategory
+      // ✅ CREATE new subcategory
       const newId = generateSubcategoryId(subcategories);
+
+      // ✅ FIX: Calculate next order for this category
+      const categorySubcategories = subcategories.filter(
+        sub => sub.category === category
+      );
+      const maxOrder = categorySubcategories.length > 0
+        ? Math.max(...categorySubcategories.map(sub => sub.order || 0))
+        : -1;
+      const nextOrder = maxOrder + 1;
 
       const newSubcategory = {
         id: newId,
@@ -2152,15 +2165,16 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
         label,
         category,
         status,
+        order: nextOrder, // ✅ FIX: Add order field
         createdAt: now,
         lastModified: now
       };
 
       subcategories.push(newSubcategory);
-      console.log(`✅ Created subcategory: ${newId}`);
+      console.log(`✅ Created subcategory: ${newId} with order: ${nextOrder}`);
     }
 
-    // ✅ Save to file
+    // Save to file
     if (saveSubcategories(subcategories)) {
       res.json({
         success: true,
@@ -2187,7 +2201,6 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
     });
   }
 });
-
 // ✅ GET /api/subcategories/:id - Get specific subcategory
 app.get('/api/subcategories/:id', requireAuth, (req, res) => {
   try {
@@ -2270,8 +2283,7 @@ app.patch('/api/subcategories/:id/status', requireAuth, (req, res) => {
   }
 });
 
-// ✅ DELETE /api/subcategories/:id - Delete subcategory
-// DELETE /api/subcategories/:id - Delete subcategory and all related files
+// DELETE /api/subcategories/:id - Delete subcategory
 app.delete('/api/subcategories/:id', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
@@ -2290,7 +2302,7 @@ app.delete('/api/subcategories/:id', requireAdmin, (req, res) => {
 
     const subcategoryToDelete = subcategories[deleteIndex];
 
-    // ✅ NEW: Find and delete all projects using this subcategory
+    // Find and delete all related projects
     const projects = instructionsManager.getAllProjects();
     const relatedProjects = projects.filter(
       project => 
@@ -2314,6 +2326,9 @@ app.delete('/api/subcategories/:id', requireAdmin, (req, res) => {
 
     // Remove subcategory from array
     const deletedSubcategory = subcategories.splice(deleteIndex, 1)[0];
+
+    // ✅ NO RE-INDEX: Keep existing orders as-is
+    // This is simpler and works fine with sorting
 
     if (saveSubcategories(subcategories)) {
       console.log(`✅ Subcategory deleted: ${id}`);
@@ -2908,6 +2923,39 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
 app.get('/*', (req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(frontendBuildPath, 'index.html'));
+  }
+});
+
+app.post('/api/subcategories/reorder', requireAuth, (req, res) => {
+  try {
+    const { subcategories: reorderedItems } = req.body;
+
+    if (!Array.isArray(reorderedItems)) {
+      return res.status(400).json({
+        error: 'Invalid data format',
+        message: 'Expected an array of subcategories'
+      });
+    }
+
+    const subcategories = loadSubcategories();
+
+    // Update order
+    reorderedItems.forEach(item => {
+      const index = subcategories.findIndex(sub => sub.id === item.id);
+      if (index !== -1) {
+        subcategories[index].order = item.order;
+        subcategories[index].lastModified = new Date().toISOString();
+      }
+    });
+
+    if (saveSubcategories(subcategories)) {
+      res.json({
+        success: true,
+        message: 'Order saved successfully'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

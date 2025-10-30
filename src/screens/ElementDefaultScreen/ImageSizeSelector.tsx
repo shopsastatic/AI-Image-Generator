@@ -170,27 +170,29 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   }, [selectedAspectRatio]); // Only selectedAspectRatio, not onAspectRatioChange
 
   // ✅ FIXED: Simplified fetch function
-  const fetchSubcategories = async () => {
-    try {
-      setLoadingSubcategories(true);
+const fetchSubcategories = async () => {
+  try {
+    console.log("🔄 Fetching subcategories...");
+    const response = await fetch("/api/subcategories");
+    const data = await response.json();
 
-      const response = await fetch("/api/subcategories/filtered");
-      const data = await response.json();
-
-      if (data.success) {
-
-        setSubcategories(data.subcategories);
-      } else {
-        console.error("❌ Failed to fetch filtered subcategories:", data.error);
-        setSubcategories([]);
-      }
-    } catch (error) {
-      console.error("❌ Error fetching filtered subcategories:", error);
+    if (data.success) {
+      console.log(`📊 Raw subcategories from API:`, data.subcategories);
+      
+      // ✅ FIX: Sort by order before setting state
+      const sorted = data.subcategories.sort((a, b) => (a.order || 0) - (b.order || 0));
+      
+      console.log(`✅ Sorted ${sorted.length} subcategories by order`);
+      setSubcategories(sorted);
+    } else {
+      console.error("❌ Failed to fetch subcategories:", data.error);
       setSubcategories([]);
-    } finally {
-      setLoadingSubcategories(false);
     }
-  };
+  } catch (error) {
+    console.error("❌ Error fetching subcategories:", error);
+    setSubcategories([]);
+  }
+};
 
   // ✅ NEW: Helper function to convert category display names to API format
   const getCategoryKey = (displayCategory: string): string => {
@@ -205,15 +207,19 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
 
   // ✅ NEW: Helper function to get active subcategories for a category
   const getActiveSubcategoriesForCategory = (
-    category: string,
-    subcategoriesList?: SubcategoryOption[]
-  ): SubcategoryOption[] => {
-    const list = subcategoriesList || subcategories;
-    return list.filter(
+  category: string,
+  subcategoriesList?: SubcategoryOption[]
+): SubcategoryOption[] => {
+  const list = subcategoriesList || subcategories;
+  
+  // ✅ Filter and sort
+  return list
+    .filter(
       (sub) =>
         sub.category === getCategoryKey(category) && sub.status === "active"
-    );
-  };
+    )
+    .sort((a, b) => (a.order || 0) - (b.order || 0)); // ✅ This should already be here
+};
 
   // ✅ Load subcategories on component mount
   useEffect(() => {

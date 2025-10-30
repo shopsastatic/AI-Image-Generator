@@ -3092,3 +3092,23 @@ button {
 .history-item.disabled {
   pointer-events: none;
 }
+
+/* Drag and drop styles */
+.cursor-grab {
+  cursor: grab;
+}
+
+.cursor-grab:active,
+.active\:cursor-grabbing:active {
+  cursor: grabbing;
+}
+
+/* Smooth transitions for dragging */
+tbody tr {
+  transition: background-color 150ms ease;
+}
+
+tbody tr.dragging {
+  z-index: 10;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}

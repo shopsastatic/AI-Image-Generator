@@ -1,4 +1,21 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import DraggableSelect from "./DraggableSelect";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical } from "lucide-react";
 import {
   Plus,
   Edit2,
@@ -27,7 +44,7 @@ import {
   ChevronDown,
   ChevronRight,
   Users,
-  BookOpen
+  BookOpen,
 } from "lucide-react";
 
 // ✅ TypeScript Interfaces
@@ -158,6 +175,155 @@ const Notification: React.FC<NotificationProps> = ({
   );
 };
 
+// ✅ Sortable Row Component for Subcategories
+interface SortableSubcategoryRowProps {
+  subcategory: SubcategoryOption;
+  parentCategories: CategoryOption[];
+  onEdit: (sub: SubcategoryOption) => void;
+  onDelete: (sub: SubcategoryOption) => void;
+  onStatusToggle: (sub: SubcategoryOption) => void;
+  onCopy: (value: string, label: string) => void;
+  getParentCategoryData: (value: string) => CategoryOption | undefined;
+  getStatusStyle: (status: string) => string;
+  getTimeAgo: (date: string) => string;
+}
+
+const SortableSubcategoryRow: React.FC<SortableSubcategoryRowProps> = ({
+  subcategory,
+  parentCategories,
+  onEdit,
+  onDelete,
+  onStatusToggle,
+  onCopy,
+  getParentCategoryData,
+  getStatusStyle,
+  getTimeAgo,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: subcategory.id,
+    transition: {
+      duration: 200,
+      easing: "cubic-bezier(0.25, 1, 0.5, 1)",
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? "#f3f4f6" : "white",
+  };
+
+  const parentCat = getParentCategoryData(subcategory.category);
+  const ParentIcon = parentCat?.icon;
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={`hover:bg-gray-50 transition-colors ${
+        isDragging ? "shadow-lg" : ""
+      }`}
+    >
+      {/* Drag Handle */}
+      <td className="py-4 px-4 w-12">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 transition-colors"
+          title="Drag to reorder"
+        >
+          <GripVertical className="w-5 h-5" />
+        </div>
+      </td>
+
+      {/* Subcategory Name */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 rounded-lg bg-gray-100 text-gray-600">
+            <Tags className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">
+              {subcategory.label}
+            </h3>
+            <div className="text-xs text-gray-500 font-mono">
+              {subcategory.value}
+            </div>
+          </div>
+        </div>
+      </td>
+
+      {/* Parent Category */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-2">
+          <div className={`p-1.5 rounded-lg ${parentCat?.color}`}>
+            {ParentIcon && <ParentIcon className="w-4 h-4" />}
+          </div>
+          <span className="text-sm font-medium text-gray-900">
+            {parentCat?.label}
+          </span>
+        </div>
+      </td>
+
+      {/* Status */}
+      <td className="py-4 px-6">
+        <button
+          onClick={() => onStatusToggle(subcategory)}
+          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusStyle(
+            subcategory.status
+          )} hover:opacity-80 transition-opacity`}
+        >
+          {subcategory.status.charAt(0).toUpperCase() +
+            subcategory.status.slice(1)}
+        </button>
+      </td>
+
+      {/* Updated */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-1 text-sm text-gray-600">
+          <Clock className="w-4 h-4" />
+          <span>{getTimeAgo(subcategory.lastModified)}</span>
+        </div>
+      </td>
+
+      {/* Actions */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => onCopy(subcategory.value, "Subcategory value")}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Copy value"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onEdit(subcategory)}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Edit subcategory"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onDelete(subcategory)}
+            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Delete subcategory"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 // ✅ Main Component
 const ProjectManagement: React.FC = () => {
   // ✅ State Management
@@ -210,6 +376,117 @@ const ProjectManagement: React.FC = () => {
       }
     >
   >(new Map());
+
+  // ✅ Add sensors for drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before drag starts
+      },
+    })
+  );
+
+  const handleFormSubcategoryReorder = async (reorderedItems: any[]) => {
+    console.log("🔄 Reordering subcategories from form modal:", reorderedItems);
+
+    try {
+      const response = await fetch("/api/subcategories/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subcategories: reorderedItems }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        console.log("✅ Subcategories reordered successfully");
+
+        // Refresh subcategories list
+        await fetchSubcategories();
+
+        showNotification(
+          "success",
+          "Order Updated!",
+          "Subcategories reordered successfully."
+        );
+      } else {
+        console.error("❌ Failed to reorder:", data.error);
+        showNotification(
+          "error",
+          "Reorder Failed",
+          data.error || "Failed to save new order."
+        );
+      }
+    } catch (error) {
+      console.error("❌ Error reordering subcategories:", error);
+      showNotification(
+        "error",
+        "Network Error",
+        "Failed to reorder subcategories."
+      );
+    }
+  };
+
+  // ✅ Handle subcategory reorder
+  const handleSubcategoryDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = filteredSubcategories.findIndex(
+      (item) => item.id === active.id
+    );
+    const newIndex = filteredSubcategories.findIndex(
+      (item) => item.id === over.id
+    );
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(filteredSubcategories, oldIndex, newIndex);
+
+    // Update order field
+    const withNewOrder = reordered.map((item, index) => ({
+      ...item,
+      order: index,
+    }));
+
+    // Optimistic update
+    setSubcategories((prev) => {
+      const others = prev.filter(
+        (s) => !withNewOrder.some((updated) => updated.id === s.id)
+      );
+      return [...others, ...withNewOrder].sort(
+        (a, b) => (a.order || 0) - (b.order || 0)
+      );
+    });
+
+    // Save to server
+    try {
+      const response = await fetch("/api/subcategories/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subcategories: withNewOrder }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showNotification(
+          "success",
+          "Order Updated!",
+          "Subcategories reordered successfully."
+        );
+        console.log("✅ Subcategories reordered successfully");
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error) {
+      console.error("Failed to reorder subcategories:", error);
+      showNotification("error", "Reorder Failed", "Failed to save new order.");
+      // Rollback on error
+      await fetchSubcategories();
+    }
+  };
 
   // Helper to generate unique key for each configuration
   const getConfigKey = (
@@ -335,7 +612,7 @@ const ProjectManagement: React.FC = () => {
     {
       value: "website-content",
       label: "Website Content",
-      icon: Globe, 
+      icon: Globe,
       color: "bg-emerald-50 text-emerald-700",
       description: "Website and content marketing visuals",
     },
@@ -354,7 +631,6 @@ const ProjectManagement: React.FC = () => {
       description: "Instructions",
     },
   ];
-  
 
   const modelOptions = [
     {
@@ -673,9 +949,13 @@ const ProjectManagement: React.FC = () => {
       const data = await response.json();
 
       if (data.success) {
-        setSubcategories(data.subcategories);
+        // ✅ FIX: Sort by order before setting state
+        const sorted = data.subcategories.sort(
+          (a, b) => (a.order || 0) - (b.order || 0)
+        );
+        setSubcategories(sorted);
         console.log(
-          `📊 ProjectManagement: Loaded ${data.subcategories.length} subcategories from API`
+          `📊 ProjectManagement: Loaded ${sorted.length} subcategories (sorted by order)`
         );
       } else {
         console.error(
@@ -1914,136 +2194,55 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
             {/* Subcategories Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Subcategory
-                      </th>
-                      <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Parent Category
-                      </th>
-                      <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Status
-                      </th>
-                      <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Updated
-                      </th>
-                      <th className="text-left py-4 px-6 font-semibold text-gray-900">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredSubcategories.map((subcategory) => {
-                      const parentCat = getParentCategoryData(
-                        subcategory.category
-                      );
-                      const ParentIcon = parentCat?.icon;
-
-                      return (
-                        <tr
-                          key={subcategory.id}
-                          className="hover:bg-gray-50 transition-colors"
-                        >
-                          {/* Subcategory Name */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-3">
-                              <div className="p-2 rounded-lg bg-gray-100 text-gray-600">
-                                <Tags className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-gray-900 text-sm">
-                                  {subcategory.label}
-                                </h3>
-                                <div className="text-xs text-gray-500 font-mono">
-                                  {subcategory.value}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Parent Category */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-2">
-                              <div
-                                className={`p-1.5 rounded-lg ${parentCat?.color}`}
-                              >
-                                {ParentIcon && (
-                                  <ParentIcon className="w-4 h-4" />
-                                )}
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">
-                                {parentCat?.label}
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* Status */}
-                          <td className="py-4 px-6">
-                            <button
-                              onClick={() =>
-                                handleSubcategoryStatusToggle(subcategory)
-                              }
-                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusStyle(
-                                subcategory.status
-                              )} hover:opacity-80 transition-opacity`}
-                            >
-                              {subcategory.status.charAt(0).toUpperCase() +
-                                subcategory.status.slice(1)}
-                            </button>
-                          </td>
-
-                          {/* Updated */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-1 text-sm text-gray-600">
-                              <Clock className="w-4 h-4" />
-                              <span>
-                                {getTimeAgo(subcategory.lastModified)}
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-2">
-                              <button
-                                onClick={() =>
-                                  copyToClipboard(
-                                    subcategory.value,
-                                    "Subcategory value"
-                                  )
-                                }
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Copy value"
-                              >
-                                <Copy className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleEditSubcategory(subcategory)
-                                }
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Edit subcategory"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleDeleteSubcategory(subcategory)
-                                }
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete subcategory"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSubcategoryDragEnd}
+                >
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="w-12"></th> {/* Drag handle column */}
+                        <th className="text-left py-4 px-6 font-semibold text-gray-900">
+                          Subcategory
+                        </th>
+                        <th className="text-left py-4 px-6 font-semibold text-gray-900">
+                          Parent Category
+                        </th>
+                        <th className="text-left py-4 px-6 font-semibold text-gray-900">
+                          Status
+                        </th>
+                        <th className="text-left py-4 px-6 font-semibold text-gray-900">
+                          Updated
+                        </th>
+                        <th className="text-left py-4 px-6 font-semibold text-gray-900">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      <SortableContext
+                        items={filteredSubcategories.map((s) => s.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {filteredSubcategories.map((subcategory) => (
+                          <SortableSubcategoryRow
+                            key={subcategory.id}
+                            subcategory={subcategory}
+                            parentCategories={parentCategories}
+                            onEdit={handleEditSubcategory}
+                            onDelete={handleDeleteSubcategory}
+                            onStatusToggle={handleSubcategoryStatusToggle}
+                            onCopy={copyToClipboard}
+                            getParentCategoryData={getParentCategoryData}
+                            getStatusStyle={getStatusStyle}
+                            getTimeAgo={getTimeAgo}
+                          />
+                        ))}
+                      </SortableContext>
+                    </tbody>
+                  </table>
+                </DndContext>
               </div>
 
               {/* Empty State for Subcategories */}
@@ -2172,50 +2371,52 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                         </label>
 
                         <div className="flex items-center space-x-2">
-                          {/* Select Dropdown */}
+                          {/* DraggableSelect - chỉ có các subcategories thực */}
                           <div className="relative flex-1">
-                            <select
+                            <DraggableSelect
                               value={formData.subcategory}
-                              onChange={(e) => {
-                                if (e.target.value === "__add_new__") {
-                                  setShowQuickAddSubcategory(true);
-                                } else {
-                                  handleSubcategoryChange(e.target.value);
-                                }
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500"
-                            >
-                              <option value="">Select subcategory...</option>
-                              {getActiveSubcategoriesForCategory(
+                              options={getActiveSubcategoriesForCategory(
                                 formData.category
-                              ).map((child) => (
-                                <option key={child.id} value={child.value}>
-                                  {child.label}
-                                </option>
-                              ))}
-                              <option
-                                value="__add_new__"
-                                className="text-blue-600 font-medium"
-                              >
-                                ➕ Add New Subcategory
-                              </option>
-                            </select>
+                              ).map((opt) => ({
+                                id: opt.id,
+                                value: opt.value,
+                                label: opt.label,
+                                order: opt.order || 0,
+                              }))}
+                              onChange={handleSubcategoryChange}
+                              onReorder={handleFormSubcategoryReorder}
+                              placeholder="Select subcategory..."
+                              disabled={
+                                loadingSubcategories ||
+                                !getActiveSubcategoriesForCategory(
+                                  formData.category
+                                ).length
+                              }
+                            />
                           </div>
 
                           {/* Delete Icon */}
-                          {formData.subcategory &&
-                            formData.subcategory !== "__add_new__" && (
-                              <button
-                                onClick={() =>
-                                  handleDeleteSelectedSubcategory()
-                                }
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                                title="Delete this subcategory"
-                              >
-                                <Trash2 className="w-5 h-5" />
-                              </button>
-                            )}
+                          {formData.subcategory && (
+                            <button
+                              onClick={() => handleDeleteSelectedSubcategory()}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              title="Delete this subcategory"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          )}
                         </div>
+
+                        {/* ✅ Add New Button - Always visible */}
+                        {!showQuickAddSubcategory && (
+                          <button
+                            onClick={() => setShowQuickAddSubcategory(true)}
+                            className="mt-2 inline-flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Add New Subcategory</span>
+                          </button>
+                        )}
 
                         {/* Quick Add Inline Form */}
                         {showQuickAddSubcategory && (

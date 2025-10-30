@@ -11,6 +11,9 @@
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:server\""
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@tailwindcss/vite": "^4.1.8",
     "@types/react-window": "^1.8.8",
     "@types/uuid": "^10.0.0",
