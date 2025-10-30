@@ -78,14 +78,15 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
-const [instructionsSubcategory, setInstructionsSubcategory] = useState<string>(""); // ✅ THÊM DÒNG NÀY
-const [instructionsApiData, setInstructionsApiData] = useState<{
-  user_prompt: string | null;
-  system_prompt: string | null;
-}>({
-  user_prompt: null,
-  system_prompt: null,
-});
+  const [instructionsSubcategory, setInstructionsSubcategory] =
+    useState<string>(""); // ✅ THÊM DÒNG NÀY
+  const [instructionsApiData, setInstructionsApiData] = useState<{
+    user_prompt: string | null;
+    system_prompt: string | null;
+  }>({
+    user_prompt: null,
+    system_prompt: null,
+  });
 
   const [selectedSessions, setSelectedSessions] = useState<
     Array<{
@@ -131,9 +132,9 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
 
   const handleCategoryChange = (category: string, subcategory: string) => {
     console.log("📝 handleCategoryChange called:", { category, subcategory });
-    
+
     setSelectedCategory({ category, subcategory });
-    
+
     // ✅ Kiểm tra nếu là instructions
     if (category === "instructions") {
       console.log("✅ Updating instructions subcategory:", subcategory);
@@ -260,6 +261,28 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
     return currentTotal < numberOfImages;
   };
 
+  const parseContent = (rawContent: string) => {
+    if (!rawContent) return { promptContent: "", instructions: "" };
+
+    if (rawContent.includes("--- PROMPT CONTENT ---")) {
+      const parts = rawContent.split("--- INSTRUCTIONS ---");
+      console.log(parts);
+      return {
+        promptContent: parts[0].replace("--- PROMPT CONTENT ---", "").trim(),
+        instructions: parts[1] ? parts[1].trim() : "",
+      };
+    }
+
+    console.log({
+      promptContent: "",
+      instructions: rawContent,
+    });
+    return {
+      promptContent: "",
+      instructions: rawContent,
+    };
+  };
+
   const generateImageSizesString = (): string => {
     const totalSelected = getTotalSelectedImages();
     const totalNeeded = numberOfImages;
@@ -334,46 +357,14 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
           }),
         });
 
-        console.log(19)
-
         if (!response.ok) {
           console.error("Failed to load instructions");
           return;
         }
 
-        console.log(11)
-
         const data = await response.json();
 
-        console.log(22)
-
         // ✅ Parse content
-        const parseContent = (rawContent: string) => {
-          console.log(33)
-          if (!rawContent) return { promptContent: "", instructions: "" };
-
-          console.log(44)
-          if (rawContent.includes("--- PROMPT CONTENT ---")) {
-            const parts = rawContent.split("--- INSTRUCTIONS ---");
-            console.log(55)
-            console.log(parts)
-            return {
-              promptContent: parts[0]
-                .replace("--- PROMPT CONTENT ---", "")
-                .trim(),
-              instructions: parts[1] ? parts[1].trim() : "",
-            };
-          }
-
-          console.log({
-            promptContent: "",
-            instructions: rawContent,
-          })
-          return {
-            promptContent: "",
-            instructions: rawContent,
-          };
-        };
 
         // ✅ Parse system_prompt or user_prompt
         let parsedContent = { promptContent: "", instructions: "" };
@@ -403,52 +394,57 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
   }, [selectedCategory, selectedApis]);
 
   // ✅ useEffect riêng cho Instructions
-useEffect(() => {
-  const loadInstructionsContent = async () => {
-    console.log("🔍 useEffect triggered - instructionsSubcategory:", instructionsSubcategory);
-    
-    if (!instructionsSubcategory) {
-      console.log("⚠️ No instructionsSubcategory, clearing data");
-      setInstructionsApiData({ user_prompt: null, system_prompt: null });
-      return;
-    }
+  useEffect(() => {
+    const loadInstructionsContent = async () => {
+      console.log(
+        "🔍 useEffect triggered - instructionsSubcategory:",
+        instructionsSubcategory
+      );
 
-    console.log("📥 Loading instructions content for:", instructionsSubcategory);
-
-    try {
-      const response = await fetch("/api/instructions/resolve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: "instructions",
-          subcategory: instructionsSubcategory,
-          selectedModel: selectedApis[0] || "claude-sonnet",
-        }),
-      });
-
-      if (!response.ok) {
-        console.error("❌ Failed to load instructions content");
+      if (!instructionsSubcategory) {
+        console.log("⚠️ No instructionsSubcategory, clearing data");
+        setInstructionsApiData({ user_prompt: null, system_prompt: null });
         return;
       }
 
-      const data = await response.json();
-      console.log("✅ Instructions API Response:", data);
+      console.log(
+        "📥 Loading instructions content for:",
+        instructionsSubcategory
+      );
 
-      setInstructionsApiData({
-        user_prompt: data.user_prompt || null,
-        system_prompt: data.system_prompt || null,
-      });
-      
-      console.log("✅ instructionsApiData updated");
+      try {
+        const response = await fetch("/api/instructions/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            category: "instructions",
+            subcategory: instructionsSubcategory,
+            selectedModel: selectedApis[0] || "claude-sonnet",
+          }),
+        });
 
-    } catch (error) {
-      console.error("❌ Error loading instructions content:", error);
-      setInstructionsApiData({ user_prompt: null, system_prompt: null });
-    }
-  };
+        if (!response.ok) {
+          console.error("❌ Failed to load instructions content");
+          return;
+        }
 
-  loadInstructionsContent();
-}, [instructionsSubcategory, selectedApis]);
+        const data = await response.json();
+        console.log("✅ Instructions API Response:", data);
+
+        setInstructionsApiData({
+          user_prompt: data.user_prompt || null,
+          system_prompt: data.system_prompt || null,
+        });
+
+        console.log("✅ instructionsApiData updated");
+      } catch (error) {
+        console.error("❌ Error loading instructions content:", error);
+        setInstructionsApiData({ user_prompt: null, system_prompt: null });
+      }
+    };
+
+    loadInstructionsContent();
+  }, [instructionsSubcategory, selectedApis]);
   const getFirst10Words = (text: string): string => {
     return text.split(" ").slice(0, 10).join(" ") + "...";
   };
@@ -891,8 +887,6 @@ useEffect(() => {
 
       const instructionData = await instructionResponse.json();
 
-      console.log(instructionData)
-
       const generateResponse = await fetch(
         "https://n8n.misencorp.com/webhook/ms-image-generator",
         {
@@ -901,8 +895,8 @@ useEffect(() => {
           body: JSON.stringify({
             sessionId,
             userPrompt: currentPromptText,
-            userPromptInstruction: instructionData.user_prompt,
-            systemPromptInstruction: instructionData.system_prompt,
+            userPromptInstruction: parseContent(instructionData.user_prompt).promptContent,
+            systemPromptInstruction: parseContent(instructionData.system_prompt).instructions,
             uploadedImageUrls,
             numberOfImages,
             imageSizesString: generateImageSizesString(),
@@ -923,7 +917,6 @@ useEffect(() => {
           }),
         }
       );
-
 
       if (!generateResponse.ok) {
         throw new Error(`N8N webhook failed: ${generateResponse.status}`);
@@ -965,7 +958,7 @@ useEffect(() => {
 
           const data = await response.json();
 
-          if(!data[0].job_id) {
+          if (!data[0].job_id) {
             clearInterval(generateImagePool);
             removeLoadingSession(sessionId);
             showNotification(
@@ -1195,7 +1188,7 @@ useEffect(() => {
 
     try {
       console.log("🔄 Optimizing prompt with instructions...");
-      
+
       const response = await fetch(
         "https://n8n.misencorp.com/webhook/optimize-prompt",
         {
@@ -1774,65 +1767,72 @@ useEffect(() => {
     }
   };
 
-  const downloadImage = async (imageUrl, claudeResponse, imageIndex, imageName) => {
-  try {
-    let fileName = imageName?.trim() 
-      ? cleanFileName(imageName)
-      : extractImageNameFromClaudeResponse(claudeResponse, imageIndex || 0);
-    
-    if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-      fileName = `${fileName}.png`;
-    }
-
-    // Base64 - direct download
-    if (imageUrl.startsWith("data:")) {
-      const link = document.createElement("a");
-      link.href = imageUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return;
-    }
-
-    // Try direct fetch first
+  const downloadImage = async (
+    imageUrl,
+    claudeResponse,
+    imageIndex,
+    imageName
+  ) => {
     try {
-      const response = await fetch(imageUrl, { mode: "cors" });
-      if (!response.ok) throw new Error("Direct fetch failed");
-      
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-      return;
-    } catch (directError) {
-      // Fallback to proxy
-      console.log("Direct fetch failed, trying proxy...");
-      const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(imageUrl)}`;
-      const proxyResponse = await fetch(proxyUrl);
-      
-      if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
-      
-      const blob = await proxyResponse.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
+      let fileName = imageName?.trim()
+        ? cleanFileName(imageName)
+        : extractImageNameFromClaudeResponse(claudeResponse, imageIndex || 0);
+
+      if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        fileName = `${fileName}.png`;
+      }
+
+      // Base64 - direct download
+      if (imageUrl.startsWith("data:")) {
+        const link = document.createElement("a");
+        link.href = imageUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      // Try direct fetch first
+      try {
+        const response = await fetch(imageUrl, { mode: "cors" });
+        if (!response.ok) throw new Error("Direct fetch failed");
+
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+        return;
+      } catch (directError) {
+        // Fallback to proxy
+        console.log("Direct fetch failed, trying proxy...");
+        const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(
+          imageUrl
+        )}`;
+        const proxyResponse = await fetch(proxyUrl);
+
+        if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
+
+        const blob = await proxyResponse.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }
+    } catch (error) {
+      console.error("All download methods failed:", error);
+      window.open(imageUrl, "_blank"); // Last resort
     }
-  } catch (error) {
-    console.error("All download methods failed:", error);
-    window.open(imageUrl, "_blank"); // Last resort
-  }
-};
+  };
 
   const toggleSuggestions = () => {
     setShowSuggestions(!showSuggestions);
@@ -3014,28 +3014,40 @@ useEffect(() => {
 
                       <div className="flex gap-2">
                         {hasInstructionsSubcategory && (
-                            <div
-                              className={`button-7 ${promptText.trim() && !isOptimizing ? "active" : ""}`}
-                              onClick={promptText.trim() && !isOptimizing ? handleOptimizePrompt : undefined}
-                              style={{ 
-                                cursor: !promptText.trim() || isOptimizing ? "not-allowed" : "pointer",
-                                opacity: !promptText.trim() || isOptimizing ? 0.7 : 1
+                          <div
+                            className={`button-7 ${
+                              promptText.trim() && !isOptimizing ? "active" : ""
+                            }`}
+                            onClick={
+                              promptText.trim() && !isOptimizing
+                                ? handleOptimizePrompt
+                                : undefined
+                            }
+                            style={{
+                              cursor:
+                                !promptText.trim() || isOptimizing
+                                  ? "not-allowed"
+                                  : "pointer",
+                              opacity:
+                                !promptText.trim() || isOptimizing ? 0.7 : 1,
+                            }}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="20"
+                              height="20"
+                              fill="#fff"
+                              viewBox="0 0 24 24"
+                              style={{
+                                animation: isOptimizing
+                                  ? "spin 1s linear infinite"
+                                  : "none",
                               }}
                             >
-                              <svg 
-                                xmlns="http://www.w3.org/2000/svg" 
-                                width="20" 
-                                height="20" 
-                                fill="#fff" 
-                                viewBox="0 0 24 24"
-                                style={{
-                                  animation: isOptimizing ? "spin 1s linear infinite" : "none"
-                                }}
-                              >
-                                <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 22l-.394-1.433a2.25 2.25 0 0 0-1.423-1.423L13.25 18.75l1.433-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.433.394 1.433a2.25 2.25 0 0 0 1.423 1.423l1.433.394-1.433.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-                              </svg>
-                            </div>
-                          )}
+                              <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 22l-.394-1.433a2.25 2.25 0 0 0-1.423-1.423L13.25 18.75l1.433-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.433.394 1.433a2.25 2.25 0 0 0 1.423 1.423l1.433.394-1.433.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+                            </svg>
+                          </div>
+                        )}
 
                         <div
                           className={`button-7 ${
@@ -3477,14 +3489,11 @@ useEffect(() => {
                               session ? "YES" : "NO"
                             );
                             if (session) {
-                  
                               if (session.describe) {
                                 describeText = session.describe;
-                          
                               }
                             }
                           }
-                          
 
                           // Method 2: Get from current image's session
                           if (
