@@ -2923,7 +2923,7 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
 app.post('/api/subcategories/reorder', requireAuth, (req, res) => {
   try {
     const { subcategories: reorderedItems } = req.body;
-
+    
     if (!Array.isArray(reorderedItems)) {
       return res.status(400).json({
         error: 'Invalid data format',
@@ -2931,25 +2931,40 @@ app.post('/api/subcategories/reorder', requireAuth, (req, res) => {
       });
     }
 
+    console.log(`🔄 Reordering ${reorderedItems.length} subcategories...`);
+
     const subcategories = loadSubcategories();
 
-    // Update order
+    let updatedCount = 0;
     reorderedItems.forEach(item => {
       const index = subcategories.findIndex(sub => sub.id === item.id);
       if (index !== -1) {
         subcategories[index].order = item.order;
         subcategories[index].lastModified = new Date().toISOString();
+        updatedCount++;
       }
     });
 
     if (saveSubcategories(subcategories)) {
+      console.log(`✅ Reordered ${updatedCount} subcategories successfully`);
+      
       res.json({
         success: true,
-        message: 'Order saved successfully'
+        message: 'Order saved successfully',
+        total: updatedCount
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to save new order'
       });
     }
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('❌ Failed to reorder subcategories:', error);
+    res.status(500).json({
+      error: 'Failed to reorder subcategories',
+      message: error.message
+    });
   }
 });
 
