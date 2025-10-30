@@ -356,6 +356,7 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
           if (rawContent.includes("--- PROMPT CONTENT ---")) {
             const parts = rawContent.split("--- INSTRUCTIONS ---");
             console.log(55)
+            console.log(parts)
             return {
               promptContent: parts[0]
                 .replace("--- PROMPT CONTENT ---", "")
