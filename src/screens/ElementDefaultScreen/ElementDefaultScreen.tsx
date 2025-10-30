@@ -891,6 +891,8 @@ useEffect(() => {
 
       const instructionData = await instructionResponse.json();
 
+      console.log(instructionData)
+
       const generateResponse = await fetch(
         "https://n8n.misencorp.com/webhook/ms-image-generator",
         {
