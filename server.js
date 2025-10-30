@@ -2798,7 +2798,8 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
     const categoryMap = {
       'google_prompt': 'google_ads',
       'facebook_prompt': 'facebook_ads',
-      'website_prompt': 'website_content'
+      'website_prompt': 'website_content',
+      'social_prompt': 'social'
     };
     const normalizedCategory = categoryMap[category] || category.replace(/-/g, '_');
     
@@ -2816,11 +2817,12 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       targetModel 
     });
 
-    // Build ALL filenames to try
+    // Build ALL filenames to try (không dừng khi tìm thấy)
     const userPromptFiles = [];
     const systemPromptFiles = [];
 
     if (normalizedSubcategory) {
+      // With subcategory - specific model first, then universal
       userPromptFiles.push(
         `user_prompt_${targetModel}_${normalizedCategory}_${normalizedSubcategory}.txt`,
         `user_prompt_universal_${normalizedCategory}_${normalizedSubcategory}.txt`
@@ -2831,6 +2833,7 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       );
     }
     
+    // Without subcategory (fallback)
     userPromptFiles.push(
       `user_prompt_${targetModel}_${normalizedCategory}.txt`,
       `user_prompt_universal_${normalizedCategory}.txt`
@@ -2840,7 +2843,10 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       `system_prompt_universal_${normalizedCategory}.txt`
     );
 
-    // ✅ Try to find user_prompt - CHỈ LẤY INSTRUCTIONS
+    console.log('📋 User prompt files to try:', userPromptFiles);
+    console.log('📋 System prompt files to try:', systemPromptFiles);
+
+    // Try to find user_prompt
     let userPromptContent = null;
     let userPromptFilename = null;
 
@@ -2849,42 +2855,35 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       
       if (fs.existsSync(filePath)) {
         const rawContent = fs.readFileSync(filePath, 'utf8');
-        const parsed = instructionsManager.parseFileContent(rawContent); // ✅ Parse
+        const parsed = instructionsManager.parseFileContent(rawContent);
         userPromptContent = parsed.instructions; // ✅ CHỈ lấy Instructions
         userPromptFilename = filename;
-        console.log(`✅ Found user_prompt: ${filename} (instructions only: ${parsed.instructions.length} chars)`);
+        console.log(`✅ Found user_prompt: ${filename} (instructions: ${parsed.instructions.length} chars, skipped prompt: ${parsed.promptContent.length} chars)`);
         break;
+      } else {
+        console.log(`⭕️ User prompt not found: ${filename}`);
       }
     }
-
-    // ✅ Try to find system_prompt - CHỈ LẤY INSTRUCTIONS
-    let systemPromptContent = null;
-    let systemPromptFilename = null;
 
     for (const filename of systemPromptFiles) {
       const filePath = path.join(instructionsDir, filename);
       
       if (fs.existsSync(filePath)) {
         const rawContent = fs.readFileSync(filePath, 'utf8');
-        const parsed = instructionsManager.parseFileContent(rawContent); // ✅ Parse
+        const parsed = instructionsManager.parseFileContent(rawContent);
         systemPromptContent = parsed.instructions; // ✅ CHỈ lấy Instructions
         systemPromptFilename = filename;
-        console.log(`✅ Found system_prompt: ${filename} (instructions only: ${parsed.instructions.length} chars)`);
+        console.log(`✅ Found system_prompt: ${filename} (instructions: ${parsed.instructions.length} chars, skipped prompt: ${parsed.promptContent.length} chars)`);
         break;
+      } else {
+        console.log(`⭕️ System prompt not found: ${filename}`);
       }
     }
 
-    console.log('📦 Final result:', {
-      hasUserPrompt: !!userPromptContent,
-      hasSystemPrompt: !!systemPromptContent,
-      userPromptFile: userPromptFilename,
-      systemPromptFile: systemPromptFilename
-    });
-
     return res.json({
       success: true,
-      user_prompt: userPromptContent, // ✅ CHỈ Instructions
-      system_prompt: systemPromptContent, // ✅ CHỈ Instructions
+      user_prompt: userPromptContent,
+      system_prompt: systemPromptContent,
       files: {
         user_prompt: userPromptFilename,
         system_prompt: systemPromptFilename
