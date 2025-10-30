@@ -2920,12 +2920,6 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
   }
 });
 
-app.get('/*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(frontendBuildPath, 'index.html'));
-  }
-});
-
 app.post('/api/subcategories/reorder', requireAuth, (req, res) => {
   try {
     const { subcategories: reorderedItems } = req.body;
@@ -2956,6 +2950,12 @@ app.post('/api/subcategories/reorder', requireAuth, (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
   }
 });
 
