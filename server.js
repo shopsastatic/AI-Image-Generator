@@ -2855,19 +2855,13 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       
       if (fs.existsSync(filePath)) {
         const rawContent = fs.readFileSync(filePath, 'utf8');
-        const parsed = instructionsManager.parseFileContent(rawContent); // ✅ Parse ra 2 phần
-        userPromptContent = parsed.instructions; // ✅ CHỈ lấy Instructions, bỏ Prompt Content
+        const parsed = instructionsManager.parseFileContent(rawContent); // ✅ Parse
+        userPromptContent = parsed.instructions; // ✅ CHỈ lấy Instructions
         userPromptFilename = filename;
         console.log(`✅ Found user_prompt: ${filename} (instructions only: ${parsed.instructions.length} chars)`);
         break;
-      } else {
-        console.log(`⏭️  User prompt not found: ${filename}`);
       }
     }
-
-    // Try to find system_prompt
-    let systemPromptContent = null;
-    let systemPromptFilename = null;
 
     for (const filename of systemPromptFiles) {
       const filePath = path.join(instructionsDir, filename);
@@ -2879,23 +2873,13 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
         systemPromptFilename = filename;
         console.log(`✅ Found system_prompt: ${filename} (instructions only: ${parsed.instructions.length} chars)`);
         break;
-      } else {
-        console.log(`⏭️  System prompt not found: ${filename}`);
       }
     }
 
-    // Log final result
-    console.log('📦 Final result:', {
-      hasUserPrompt: !!userPromptContent,
-      hasSystemPrompt: !!systemPromptContent,
-      userPromptFile: userPromptFilename,
-      systemPromptFile: systemPromptFilename
-    });
-
     return res.json({
       success: true,
-      user_prompt: userPromptContent, // null nếu không tìm thấy
-      system_prompt: systemPromptContent, // null nếu không tìm thấy
+      user_prompt: userPromptContent,
+      system_prompt: systemPromptContent,
       files: {
         user_prompt: userPromptFilename,
         system_prompt: systemPromptFilename
