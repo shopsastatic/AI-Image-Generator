@@ -368,6 +368,7 @@ const [instructionsApiData, setInstructionsApiData] = useState<{
         } else if (data.user_prompt) {
           parsedContent = parseContent(data.user_prompt);
         }
+        console.log("�� Parsed instructions:", parsedContent);
 
         // ✅ FIX: Lấy PROMPT CONTENT thay vì instructions
         if (parsedContent.promptContent && parsedContent.promptContent.trim()) {
@@ -876,6 +877,8 @@ useEffect(() => {
 
       const instructionData = await instructionResponse.json();
 
+      console.log("�� Received instruction data:", instructionData);
+
       const generateResponse = await fetch(
         "https://n8n.misencorp.com/webhook/ms-image-generator",
         {
@@ -885,7 +888,7 @@ useEffect(() => {
             sessionId,
             userPrompt: currentPromptText,
             userPromptInstruction: instructionData.user_prompt,
-            systemPromptInstruction: instructionData.system_prompt,
+            systemPromptInstruction: instructionData.instructions,
             uploadedImageUrls,
             numberOfImages,
             imageSizesString: generateImageSizesString(),
@@ -906,6 +909,7 @@ useEffect(() => {
           }),
         }
       );
+
 
       if (!generateResponse.ok) {
         throw new Error(`N8N webhook failed: ${generateResponse.status}`);
