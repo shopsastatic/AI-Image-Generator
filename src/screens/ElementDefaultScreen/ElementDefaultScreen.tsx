@@ -284,7 +284,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       // Try to parse as JSON
       const parsed = JSON.parse(prompt);
       // If successful, format with indentation
-      return `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 13px; line-height: 1.6; background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto;">${JSON.stringify(parsed, null, 2)}</pre>`;
+      return `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: 'Inter'; font-size: 15px; line-height: 1.5; background: #f7f7f7; padding: 12px; border-radius: 6px; overflow-x: auto;">${JSON.stringify(parsed, null, 2)}</pre>`;
     } catch (e) {
       // Not JSON, return as-is
       return prompt;

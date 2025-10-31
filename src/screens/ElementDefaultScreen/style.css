@@ -2836,6 +2836,13 @@ button {
   white-space: break-spaces;
 }
 
+.describe-box {
+  font-family: 'Inter';
+    font-size: 15px;
+    line-height: 1.5;
+    background: #f7f7f7;
+}
+
 .link-6 {
   cursor: pointer;
 }
