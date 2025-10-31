@@ -4,18 +4,18 @@ import "./LoginScreen.css";
 
 interface LoginScreenProps {
   onLoginSuccess: () => void;
+  onShowRegister?: () => void;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState("");
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onShowRegister }) => {
+  const [username, setUsername] = useState(""); // ✅ CHANGE: email -> username
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [isEmailFocused, setIsEmailFocused] = useState(false);
+  const [isUsernameFocused, setIsUsernameFocused] = useState(false); // ✅ CHANGE
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
 
-  // Check if already logged in on component mount
   useEffect(() => {
     checkExistingAuth();
   }, []);
@@ -49,7 +49,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         },
         credentials: "include",
         body: JSON.stringify({
-          email: email.trim(),
+          username: username.trim(),
           password: password,
         }),
       });
@@ -86,9 +86,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           }
         }, 2000);
 
-        // Redirect after short delay
+        // ✅ CHANGE: Pass user data instead of just calling callback
         setTimeout(() => {
-          onLoginSuccess();
+          onLoginSuccess(data.user);
         }, 1000);
       } else {
         setError(data.error || "Login failed. Please check your credentials.");
@@ -121,11 +121,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         <form onSubmit={handleSubmit} className="login-form" noValidate>
           <div className="login-fields">
             <div className="login-field-group">
-              {/* Email Field */}
+              {/* Username Field */}
               <div className="login-field-container">
                 <div
                   className={`login-field-footprint ${
-                    isEmailFocused || email ? "focused" : ""
+                    isUsernameFocused || username ? "focused" : ""
                   }`}
                 >
                   <label className="login-typeable-label">
@@ -134,14 +134,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     </div>
                   </label>
                   <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onFocus={() => setIsEmailFocused(true)}
-                    onBlur={() => setIsEmailFocused(false)}
-                    placeholder="Email address"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    onFocus={() => setIsUsernameFocused(true)}
+                    onBlur={() => setIsUsernameFocused(false)}
+                    placeholder="Enter your username"
                     className="login-input"
-                    autoComplete="email"
+                    autoComplete="username"
                     required
                   />
                 </div>
@@ -238,7 +238,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           <div className="login-ctas">
             <button
               type="submit"
-              disabled={isLoading || !email.trim() || !password}
+              disabled={isLoading || !username.trim() || !password}
               className={`login-button ${isLoading ? "loading" : ""}`}
             >
               {isLoading ? (
@@ -247,6 +247,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 "Continue"
               )}
             </button>
+
+            {/* Register Link */}
+            {onShowRegister && (
+              <button
+                type="button"
+                onClick={onShowRegister}
+                className="text-sm text-blue-600 hover:text-blue-700 mt-4"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "8px 0"
+                }}
+              >
+                Don't have an account? Register here
+              </button>
+            )}
           </div>
         </form>
       </div>

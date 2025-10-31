@@ -1,93 +1,62 @@
 import React, { useState } from "react";
 import { API_ENDPOINTS } from "../../utils/apiConfig";
-import "./RegisterScreen.css";
+import "./LoginScreen.css";
 
 interface RegisterScreenProps {
-  onRegisterSuccess: () => void;
-  onSwitchToLogin: () => void;
+  onSuccess: () => void;
+  onBack: () => void;
 }
 
-const RegisterScreen: React.FC<RegisterScreenProps> = ({
-  onRegisterSuccess,
-  onSwitchToLogin,
-}) => {
-  const [email, setEmail] = useState("");
-  const [userName, setUserName] = useState("");
+const RegisterScreen: React.FC<RegisterScreenProps> = ({ onSuccess, onBack }) => {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [fullName, setFullName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  // Focus states
-  const [isEmailFocused, setIsEmailFocused] = useState(false);
-  const [isUserNameFocused, setIsUserNameFocused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUsernameFocused, setIsUsernameFocused] = useState(false);
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [isConfirmPasswordFocused, setIsConfirmPasswordFocused] = useState(false);
-  const [isFullNameFocused, setIsFullNameFocused] = useState(false);
-
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const validatePassword = (password: string): boolean => {
-    // Password phải có ít nhất 6 ký tự
-    return password.length >= 6;
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setSuccess("");
 
     // Validation
-    if (!email.trim() || !userName.trim() || !password || !confirmPassword) {
-      setError("Vui lòng điền đầy đủ thông tin");
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      setError("Email không hợp lệ");
-      return;
-    }
-
-    if (!validatePassword(password)) {
-      setError("Mật khẩu phải có ít nhất 6 ký tự");
+    if (!username.trim() || !password || !confirmPassword) {
+      setError("All fields are required");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Mật khẩu xác nhận không khớp");
+      setError("Passwords do not match");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const response = await fetch(API_ENDPOINTS.AUTH_REGISTER, {
+      const response = await fetch(API_ENDPOINTS.AUTH_LOGIN.replace('/login', '/register'), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
         body: JSON.stringify({
-          email: email.trim(),
-          user_name: userName.trim(),
+          username: username.trim(),
           password: password,
-          full_name: fullName.trim() || null,
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        console.log("✅ Registration successful");
-        setSuccess("Đăng ký thành công! Đang chuyển đến trang đăng nhập...");
-
         // Show success notification
         const notification = document.createElement("div");
         notification.innerHTML = `
@@ -103,8 +72,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
             z-index: 10000;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           ">
-            <strong>✅ Đăng ký thành công</strong><br>
-            Chào mừng bạn!
+            <strong>✅ Registration Successful!</strong><br>
+            Please login with your credentials.
           </div>
         `;
         document.body.appendChild(notification);
@@ -113,136 +82,74 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
           if (notification.parentElement) {
             document.body.removeChild(notification);
           }
-        }, 2000);
+        }, 3000);
 
-        // Redirect to login after delay
         setTimeout(() => {
-          onSwitchToLogin();
-        }, 2000);
+          onSuccess();
+        }, 1500);
       } else {
-        setError(data.error || "Đăng ký thất bại. Vui lòng thử lại.");
+        setError(data.error || "Registration failed. Please try again.");
       }
     } catch (error) {
       console.error("Registration error:", error);
-      setError("Lỗi kết nối. Vui lòng thử lại.");
+      setError("Network error. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="register-container">
-      <div className="register-root">
-        <div className="register-icon">
+    <div className="login-container">
+      <div className="login-root">
+        <div className="login-icon">
           <svg width="32" height="32" fill="black" viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"></path>
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM7.07 18.28c.43-.9 3.05-1.78 4.93-1.78s4.51.88 4.93 1.78C15.57 19.36 13.86 20 12 20s-3.57-.64-4.93-1.72zm11.29-1.45c-1.43-1.74-4.9-2.33-6.36-2.33s-4.93.59-6.36 2.33C4.62 15.49 4 13.82 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8c0 1.82-.62 3.49-1.64 4.83zM12 6c-1.94 0-3.5 1.56-3.5 3.5S10.06 13 12 13s3.5-1.56 3.5-3.5S13.94 6 12 6zm0 5c-.83 0-1.5-.67-1.5-1.5S11.17 8 12 8s1.5.67 1.5 1.5S12.83 11 12 11z"></path>
           </svg>
         </div>
 
-        <div className="register-title-block">
-          <span className="register-heading">Tạo tài khoản mới</span>
-          <span className="register-subheading">
-            Đã có tài khoản?{" "}
-            <button
-              type="button"
-              onClick={onSwitchToLogin}
-              className="register-switch-link"
-            >
-              Đăng nhập
-            </button>
-          </span>
+        <div className="login-title-block">
+          <span className="login-heading">Create your account</span>
         </div>
 
-        <form onSubmit={handleSubmit} className="register-form" noValidate>
-          <div className="register-fields">
-            <div className="register-field-group">
-              {/* Email Field */}
-              <div className="register-field-container">
-                <div
-                  className={`register-field-footprint ${
-                    isEmailFocused || email ? "focused" : ""
-                  }`}
-                >
-                  <label className="register-typeable-label">
-                    <div className="register-label-positioner">
-                      <div className="register-label-text">Email</div>
-                    </div>
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onFocus={() => setIsEmailFocused(true)}
-                    onBlur={() => setIsEmailFocused(false)}
-                    placeholder="email@example.com"
-                    className="register-input"
-                    autoComplete="email"
-                    required
-                  />
-                </div>
-              </div>
-
+        <form onSubmit={handleSubmit} className="login-form" noValidate>
+          <div className="login-fields">
+            <div className="login-field-group">
               {/* Username Field */}
-              <div className="register-field-container">
+              <div className="login-field-container">
                 <div
-                  className={`register-field-footprint ${
-                    isUserNameFocused || userName ? "focused" : ""
+                  className={`login-field-footprint ${
+                    isUsernameFocused || username ? "focused" : ""
                   }`}
                 >
-                  <label className="register-typeable-label">
-                    <div className="register-label-positioner">
-                      <div className="register-label-text">Username</div>
+                  <label className="login-typeable-label">
+                    <div className="login-label-positioner">
+                      <div className="login-label-text">Username</div>
                     </div>
                   </label>
                   <input
                     type="text"
-                    value={userName}
-                    onChange={(e) => setUserName(e.target.value)}
-                    onFocus={() => setIsUserNameFocused(true)}
-                    onBlur={() => setIsUserNameFocused(false)}
-                    placeholder="Tên đăng nhập"
-                    className="register-input"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    onFocus={() => setIsUsernameFocused(true)}
+                    onBlur={() => setIsUsernameFocused(false)}
+                    placeholder="Choose a username"
+                    className="login-input"
                     autoComplete="username"
                     required
                   />
                 </div>
               </div>
 
-              {/* Full Name Field (Optional) */}
-              <div className="register-field-container">
-                <div
-                  className={`register-field-footprint ${
-                    isFullNameFocused || fullName ? "focused" : ""
-                  }`}
-                >
-                  <label className="register-typeable-label">
-                    <div className="register-label-positioner">
-                      <div className="register-label-text">Họ và tên (tùy chọn)</div>
-                    </div>
-                  </label>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    onFocus={() => setIsFullNameFocused(true)}
-                    onBlur={() => setIsFullNameFocused(false)}
-                    placeholder="Nguyễn Văn A"
-                    className="register-input"
-                    autoComplete="name"
-                  />
-                </div>
-              </div>
-
               {/* Password Field */}
-              <div className="register-field-container">
+              <div className="login-field-container">
                 <div
-                  className={`register-field-footprint ${
+                  className={`login-field-footprint ${
                     isPasswordFocused || password ? "focused" : ""
                   }`}
                 >
-                  <label className="register-typeable-label">
-                    <div className="register-label-positioner">
-                      <div className="register-label-text">Mật khẩu</div>
+                  <label className="login-typeable-label">
+                    <div className="login-label-positioner">
+                      <div className="login-label-text">Password</div>
                     </div>
                   </label>
                   <input
@@ -251,27 +158,20 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setIsPasswordFocused(true)}
                     onBlur={() => setIsPasswordFocused(false)}
-                    placeholder="Ít nhất 6 ký tự"
-                    className="register-input"
+                    placeholder="Create a password (min 6 characters)"
+                    className="login-input"
                     autoComplete="new-password"
                     required
                   />
-                  <div className="register-end-decoration">
+                  <div className="login-end-decoration">
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="register-toggle-visibility"
-                      aria-label={
-                        showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"
-                      }
+                      className="login-toggle-visibility"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                           <path
                             fillRule="evenodd"
                             clipRule="evenodd"
@@ -284,12 +184,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                           />
                         </svg>
                       ) : (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                           <path
                             fillRule="evenodd"
                             clipRule="evenodd"
@@ -304,15 +199,15 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
               </div>
 
               {/* Confirm Password Field */}
-              <div className="register-field-container">
+              <div className="login-field-container">
                 <div
-                  className={`register-field-footprint ${
+                  className={`login-field-footprint ${
                     isConfirmPasswordFocused || confirmPassword ? "focused" : ""
                   }`}
                 >
-                  <label className="register-typeable-label">
-                    <div className="register-label-positioner">
-                      <div className="register-label-text">Xác nhận mật khẩu</div>
+                  <label className="login-typeable-label">
+                    <div className="login-label-positioner">
+                      <div className="login-label-text">Confirm Password</div>
                     </div>
                   </label>
                   <input
@@ -321,27 +216,20 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     onFocus={() => setIsConfirmPasswordFocused(true)}
                     onBlur={() => setIsConfirmPasswordFocused(false)}
-                    placeholder="Nhập lại mật khẩu"
-                    className="register-input"
+                    placeholder="Confirm your password"
+                    className="login-input"
                     autoComplete="new-password"
                     required
                   />
-                  <div className="register-end-decoration">
+                  <div className="login-end-decoration">
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="register-toggle-visibility"
-                      aria-label={
-                        showConfirmPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"
-                      }
+                      className="login-toggle-visibility"
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                     >
                       {showConfirmPassword ? (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                           <path
                             fillRule="evenodd"
                             clipRule="evenodd"
@@ -354,12 +242,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
                           />
                         </svg>
                       ) : (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                           <path
                             fillRule="evenodd"
                             clipRule="evenodd"
@@ -377,7 +260,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
           {/* Error Display */}
           {error && (
-            <div className="register-error">
+            <div className="login-error">
               <svg
                 width="16"
                 height="16"
@@ -390,39 +273,33 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({
             </div>
           )}
 
-          {/* Success Display */}
-          {success && (
-            <div className="register-success">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-              </svg>
-              {success}
-            </div>
-          )}
-
-          {/* Submit Button */}
-          <div className="register-ctas">
+          {/* Submit Buttons */}
+          <div className="login-ctas">
             <button
               type="submit"
-              disabled={
-                isLoading ||
-                !email.trim() ||
-                !userName.trim() ||
-                !password ||
-                !confirmPassword
-              }
-              className={`register-button ${isLoading ? "loading" : ""}`}
+              disabled={isLoading || !username.trim() || !password || !confirmPassword}
+              className={`login-button ${isLoading ? "loading" : ""}`}
             >
               {isLoading ? (
-                <div className="register-loading-spinner"></div>
+                <div className="login-loading-spinner"></div>
               ) : (
-                "Đăng ký"
+                "Create Account"
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isLoading}
+              className="login-button"
+              style={{
+                background: "transparent",
+                color: "#666",
+                marginTop: "10px",
+                border: "1px solid #e3e3e3"
+              }}
+            >
+              Back to Login
             </button>
           </div>
         </form>

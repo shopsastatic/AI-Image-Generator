@@ -47,6 +47,12 @@ import {
   BookOpen,
 } from "lucide-react";
 
+interface Role {
+  name: string;
+  subcategoryCount: number;
+  users: number;
+}
+
 // ✅ TypeScript Interfaces
 interface Project {
   filename: string;
@@ -324,6 +330,207 @@ const SortableSubcategoryRow: React.FC<SortableSubcategoryRowProps> = ({
   );
 };
 
+// Add new component before ProjectManagement component
+interface SubcategoryRowProps {
+  subcategory: SubcategoryOption;
+  currentUser: { email: string; role: string; id?: string } | null;
+  parentCategories: CategoryOption[];
+  onEdit: (sub: SubcategoryOption) => void;
+  onDelete: (sub: SubcategoryOption) => void;
+  onStatusToggle: (sub: SubcategoryOption) => void;
+  onCopy: (value: string, label: string) => void;
+  getParentCategoryData: (value: string) => CategoryOption | undefined;
+  getStatusStyle: (status: string) => string;
+  getTimeAgo: (date: string) => string;
+}
+
+const SubcategoryRow: React.FC<SubcategoryRowProps> = ({
+  subcategory,
+  currentUser,
+  parentCategories,
+  onEdit,
+  onDelete,
+  onStatusToggle,
+  onCopy,
+  getParentCategoryData,
+  getStatusStyle,
+  getTimeAgo,
+}) => {
+  const isAdmin = currentUser?.role === "Admin";
+  const isOwner = subcategory.createdBy?.userId === currentUser?.id;
+  const canEdit = isAdmin || isOwner;
+  const canDelete = isAdmin || isOwner;
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: subcategory.id,
+    disabled: !isAdmin, // ✅ Only admin can drag
+    transition: {
+      duration: 200,
+      easing: "cubic-bezier(0.25, 1, 0.5, 1)",
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? "#f3f4f6" : "white",
+  };
+
+  const parentCat = getParentCategoryData(subcategory.category);
+  const ParentIcon = parentCat?.icon;
+
+  // ✅ Get access type for display
+  const getAccessType = () => {
+    if (isOwner) return "Owner";
+    if (subcategory.allowedRoles?.includes(currentUser?.role || ""))
+      return "Assigned";
+    if (isAdmin) return "Admin";
+    return "No Access";
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={`hover:bg-gray-50 transition-colors ${
+        isDragging ? "shadow-lg" : ""
+      }`}
+    >
+      {/* ✅ Drag Handle - Only for Admin */}
+      {isAdmin && (
+        <td className="py-4 px-4 w-12">
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 transition-colors"
+            title="Drag to reorder"
+          >
+            <GripVertical className="w-5 h-5" />
+          </div>
+        </td>
+      )}
+
+      {/* Subcategory Name */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 rounded-lg bg-gray-100 text-gray-600">
+            <Tags className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">
+              {subcategory.label}
+            </h3>
+            <div className="text-xs text-gray-500 font-mono">
+              {subcategory.value}
+            </div>
+          </div>
+        </div>
+      </td>
+
+      {/* Parent Category */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-2">
+          <div className={`p-1.5 rounded-lg ${parentCat?.color}`}>
+            {ParentIcon && <ParentIcon className="w-4 h-4" />}
+          </div>
+          <span className="text-sm font-medium text-gray-900">
+            {parentCat?.label}
+          </span>
+        </div>
+      </td>
+
+      {/* Status */}
+      <td className="py-4 px-6">
+        <button
+          onClick={() => canEdit && onStatusToggle(subcategory)}
+          disabled={!canEdit}
+          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusStyle(
+            subcategory.status
+          )} ${
+            canEdit
+              ? "hover:opacity-80 cursor-pointer"
+              : "cursor-not-allowed opacity-60"
+          } transition-opacity`}
+        >
+          {subcategory.status.charAt(0).toUpperCase() +
+            subcategory.status.slice(1)}
+        </button>
+      </td>
+
+      {/* ✅ Access Type - Only for non-admin */}
+      {!isAdmin && (
+        <td className="py-4 px-6">
+          <span
+            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+              isOwner
+                ? "bg-purple-100 text-purple-700 border border-purple-200"
+                : "bg-green-100 text-green-700 border border-green-200"
+            }`}
+          >
+            {getAccessType()}
+          </span>
+        </td>
+      )}
+
+      {/* Updated */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-1 text-sm text-gray-600">
+          <Clock className="w-4 h-4" />
+          <span>{getTimeAgo(subcategory.lastModified)}</span>
+        </div>
+      </td>
+
+      {/* Actions */}
+      <td className="py-4 px-6">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => onCopy(subcategory.value, "Subcategory value")}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Copy value"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+
+          {/* ✅ Edit - Only for Admin or Owner */}
+          {canEdit && (
+            <button
+              onClick={() => onEdit(subcategory)}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Edit subcategory"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* ✅ Delete - Only for Admin or Owner */}
+          {canDelete && (
+            <button
+              onClick={() => onDelete(subcategory)}
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Delete subcategory"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* ✅ View only indicator */}
+          {!canEdit && !canDelete && (
+            <span className="text-xs text-gray-400 px-2 py-1">View only</span>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 // ✅ Main Component
 const ProjectManagement: React.FC = () => {
   // ✅ State Management
@@ -344,9 +551,10 @@ const ProjectManagement: React.FC = () => {
   const [filterInstructionType, setFilterInstructionType] =
     useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("recent");
-  const [activeTab, setActiveTab] = useState<"projects" | "subcategories">(
-    "projects"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "projects" | "subcategories" | "roles"
+  >("projects");
+
   const [subcategorySearchTerm, setSubcategorySearchTerm] =
     useState<string>("");
   const [subcategoryFilterCategory, setSubcategoryFilterCategory] =
@@ -365,6 +573,20 @@ const ProjectManagement: React.FC = () => {
   const [showQuickAddSubcategory, setShowQuickAddSubcategory] = useState(false);
   const [quickAddSubcategoryName, setQuickAddSubcategoryName] = useState("");
   const [savingQuickAdd, setSavingQuickAdd] = useState(false);
+
+  const [roles, setRoles] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [roleSubcategories, setRoleSubcategories] = useState<
+    SubcategoryOption[]
+  >([]);
+
+  const MANAGEABLE_ROLES = ["Marketing", "Designer", "Video Editor", "Content"];
+
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    role: string;
+    id?: string;
+  } | null>(null);
 
   const [configDrafts, setConfigDrafts] = useState<
     Map<
@@ -385,6 +607,50 @@ const ProjectManagement: React.FC = () => {
       },
     })
   );
+
+  const fetchRoles = useCallback(async () => {
+    try {
+      const response = await fetch("/api/roles");
+      const data = await response.json();
+
+      if (data.success) {
+        // Should already exclude Admin from backend
+        setRoles(data.roles);
+        console.log(`📊 Loaded ${data.roles.length} manageable roles`);
+      } else {
+        setRoles(MANAGEABLE_ROLES);
+        console.log("⚠️ Using local manageable roles");
+      }
+    } catch (error) {
+      console.error("Failed to fetch roles:", error);
+      setRoles(MANAGEABLE_ROLES);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRoles();
+  }, []);
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch("/api/auth/verify", {
+          credentials: "include",
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.user) {
+          setCurrentUser(data.user);
+          console.log("✅ Current user loaded:", data.user);
+        }
+      } catch (error) {
+        console.error("Failed to fetch current user:", error);
+      }
+    };
+
+    fetchCurrentUser();
+  }, []);
 
   const handleFormSubcategoryReorder = async (reorderedItems: any[]) => {
     console.log("🔄 Reordering subcategories from form modal:", reorderedItems);
@@ -498,6 +764,60 @@ const ProjectManagement: React.FC = () => {
     return `${category}__${subcategory}__${targetModel}__${instructionType}`;
   };
 
+  const handleToggleRoleAccess = async (
+    role: string,
+    subcategoryId: string,
+    hasAccess: boolean
+  ) => {
+    try {
+      const subcategory = subcategories.find((sub) => sub.id === subcategoryId);
+      if (!subcategory) return;
+
+      let allowedRoles = subcategory.allowedRoles || [];
+
+      if (hasAccess) {
+        if (!allowedRoles.includes(role)) {
+          allowedRoles = [...allowedRoles, role];
+        }
+      } else {
+        allowedRoles = allowedRoles.filter((r) => r !== role);
+      }
+
+      const response = await fetch(
+        `/api/subcategories/${subcategoryId}/roles`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ allowedRoles }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        await fetchSubcategories();
+        showNotification("success", "Updated!", `Access updated for ${role}`);
+      } else {
+        showNotification("error", "Failed", data.error);
+      }
+    } catch (error) {
+      showNotification("error", "Error", error.message);
+    }
+  };
+
+  const fetchRoleSubcategories = async (role: string) => {
+    try {
+      const response = await fetch(`/api/roles/${role}/subcategories`);
+      const data = await response.json();
+
+      if (data.success) {
+        setRoleSubcategories(data.subcategories);
+      }
+    } catch (error) {
+      console.error("Failed to fetch role subcategories:", error);
+    }
+  };
+
   const loadContentByConfig = async (
     category: string,
     subcategory: string,
@@ -573,6 +893,27 @@ const ProjectManagement: React.FC = () => {
       setIsLoadingContent(false);
     }
   };
+
+  // Add this helper function in ProjectManagement.tsx
+const getAccessibleSubcategoriesForCategory = (
+  category: string,
+  user: { role: string; id?: string } | null
+): SubcategoryOption[] => {
+  if (!user) return [];
+  
+  // Admin sees all
+  if (user.role === 'Admin') {
+    return subcategories.filter(sub => sub.category === category);
+  }
+  
+  // Other roles see only allowed or created by them
+  return subcategories.filter(sub => {
+    if (sub.category !== category) return false;
+    if (sub.createdBy?.userId === user.id) return true;
+    if (sub.allowedRoles?.includes(user.role)) return true;
+    return false;
+  });
+};
 
   const [formData, setFormData] = useState<FormData>({
     name: "",
@@ -1713,26 +2054,28 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
             <nav className="-mb-px flex space-x-8">
               <button
                 onClick={() => setActiveTab("projects")}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === "projects"
                     ? "border-gray-900 text-gray-900"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
                 }`}
               >
                 <div className="flex items-center space-x-2">
                   <FileText className="w-5 h-5" />
-                  <span>Instruction Projects</span>
+                  <span>Projects</span>
                   <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
-                    {projects.length}
+                    {filteredProjects.length}
                   </span>
                 </div>
               </button>
+
+              {/* ✅ Subcategories tab - Available for ALL roles */}
               <button
                 onClick={() => setActiveTab("subcategories")}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === "subcategories"
                     ? "border-gray-900 text-gray-900"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
                 }`}
               >
                 <div className="flex items-center space-x-2">
@@ -1743,6 +2086,26 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                   </span>
                 </div>
               </button>
+
+              {/* ✅ Roles tab - ONLY for Admin */}
+              {currentUser?.role === "Admin" && (
+                <button
+                  onClick={() => setActiveTab("roles")}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "roles"
+                      ? "border-gray-900 text-gray-900"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <Users className="w-5 h-5" />
+                    <span>Roles</span>
+                    <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
+                      {roles.length}
+                    </span>
+                  </div>
+                </button>
+              )}
             </nav>
           </div>
         </div>
@@ -1847,7 +2210,6 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
             </div>
 
             {/* Projects Table */}
-            {/* Projects Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -1874,263 +2236,280 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {parentCategories
-                      .filter((category) => {
-                        // Apply filters
-                        if (
-                          filterCategory !== "all" &&
-                          filterCategory !== category.value
-                        ) {
-                          return false;
-                        }
-
-                        // Check if category has projects
-                        const categoryProjects = filteredProjects.filter(
-                          (p) => p.category === category.value
-                        );
-
-                        return categoryProjects.length > 0;
-                      })
-                      .map((category) => {
-                        const Icon = category.icon;
-                        const categoryProjects = filteredProjects.filter(
-                          (p) => p.category === category.value
-                        );
-
-                        // Get unique subcategories
-                        const uniqueSubcategories = [
-                          ...new Set(
-                            categoryProjects.map((p) => p.subcategory)
-                          ),
-                        ];
-
-                        // Get most recent update
-                        const lastModified = categoryProjects.reduce(
-                          (latest, project) => {
-                            const projectDate = new Date(
-                              project.lastModified
-                            ).getTime();
-                            return projectDate > latest ? projectDate : latest;
-                          },
-                          0
-                        );
-
-                        // Count active vs inactive files
-                        const activeFiles = categoryProjects.filter(
-                          (p) => p.status === "active"
-                        ).length;
-                        const inactiveFiles = categoryProjects.filter(
-                          (p) => p.status === "inactive"
-                        ).length;
-                        const privateFiles = categoryProjects.filter(
-                          (p) => p.status === "private"
-                        ).length;
-
-                        return (
-                          <tr
-                            key={category.value}
-                            className="hover:bg-gray-50 transition-colors"
-                          >
-                            {/* Category */}
-                            <td className="py-4 px-6">
-                              <div className="flex items-center space-x-3">
-                                <div
-                                  className={`p-2 rounded-lg ${category.color}`}
-                                >
-                                  <Icon className="w-5 h-5" />
-                                </div>
-                                <div>
-                                  <h3 className="font-semibold text-gray-900 text-sm">
-                                    {category.label}
-                                  </h3>
-                                  <div className="text-xs text-gray-500">
-                                    {category.description}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Subcategories */}
-                            <td className="py-4 px-6">
-                              <div className="flex flex-wrap gap-1.5">
-                                {uniqueSubcategories
-                                  .slice(0, 3)
-                                  .map((subcategoryValue) => {
-                                    const subcategoryData = getSubcategoryData(
-                                      category.value,
-                                      subcategoryValue
-                                    );
-                                    return (
-                                      <span
-                                        key={subcategoryValue}
-                                        className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700"
-                                      >
-                                        {subcategoryData?.label ||
-                                          subcategoryValue}
-                                      </span>
-                                    );
-                                  })}
-                                {uniqueSubcategories.length > 3 && (
-                                  <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
-                                    +{uniqueSubcategories.length - 3} more
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Files Count */}
-                            <td className="py-4 px-6">
-                              <div className="text-sm text-gray-900 font-medium">
-                                {categoryProjects.length} files
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1 space-x-2">
-                                {activeFiles > 0 && (
-                                  <span className="text-green-600">
-                                    {activeFiles} active
-                                  </span>
-                                )}
-                                {inactiveFiles > 0 && (
-                                  <span className="text-gray-500">
-                                    {inactiveFiles} inactive
-                                  </span>
-                                )}
-                                {privateFiles > 0 && (
-                                  <span className="text-purple-600">
-                                    {privateFiles} private
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Overall Status */}
-                            <td className="py-4 px-6">
-                              <span
-                                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
-                                  activeFiles > 0
-                                    ? "bg-green-50 text-green-700 border-green-200"
-                                    : "bg-gray-50 text-gray-700 border-gray-200"
-                                }`}
-                              >
-                                {activeFiles > 0 ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-
-                            {/* Last Updated */}
-                            <td className="py-4 px-6">
-                              <div className="flex items-center space-x-1 text-sm text-gray-600">
-                                <Clock className="w-4 h-4" />
-                                <span>
-                                  {getTimeAgo(
-                                    new Date(lastModified).toISOString()
-                                  )}
-                                </span>
-                              </div>
-                            </td>
-
-                            {/* Actions */}
-                            <td className="py-4 px-6">
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => {
-                                    // Open form to manage this category
-                                    setFormData({
-                                      name: "",
-                                      promptContent: "",
-                                      instructions: "",
-                                      category: category.value,
-                                      subcategory:
-                                        getActiveSubcategoriesForCategory(
-                                          category.value
-                                        )[0]?.value || "",
-                                      targetModel: "universal",
-                                      instructionType: "system",
-                                      status: "active",
-                                    });
-                                    setIsFormOpen(true);
-                                  }}
-                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                  title="Manage content"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (
-                                      window.confirm(
-                                        `Delete all ${categoryProjects.length} files in "${category.label}"?\n\nThis action cannot be undone.`
-                                      )
-                                    ) {
-                                      // Delete all files in this category
-                                      Promise.all(
-                                        categoryProjects.map((p) =>
-                                          deleteProject(p.filename)
-                                        )
-                                      ).then(() => {
-                                        showNotification(
-                                          "success",
-                                          "Deleted!",
-                                          `All files in ${category.label} deleted.`
-                                        );
-                                      });
-                                    }
-                                  }}
-                                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="Delete all files"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Empty State */}
-              {parentCategories.filter((category) => {
+            {parentCategories
+              .filter((category) => {
+                // ✅ SIMPLIFIED: Only filter by category filter
                 if (
                   filterCategory !== "all" &&
                   filterCategory !== category.value
                 ) {
                   return false;
                 }
-                const categoryProjects = filteredProjects.filter(
+                
+                // ✅ ALWAYS SHOW ALL CATEGORIES - No subcategory check
+                return true;
+              })
+              .map((category) => {
+                const Icon = category.icon;
+                
+                // ✅ Get accessible subcategories (for display only)
+                const accessibleSubcategories = getAccessibleSubcategoriesForCategory(
+                  category.value,
+                  currentUser
+                );
+
+                // ✅ Get ALL projects for this category (not filtered by subcategory access)
+                const allCategoryProjects = projects.filter(
                   (p) => p.category === category.value
                 );
-                return categoryProjects.length > 0;
-              }).length === 0 && (
-                <div className="text-center py-16">
-                  <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    No projects found
-                  </h3>
-                  <p className="text-gray-600 mb-6">
-                    {searchTerm ||
-                    filterCategory !== "all" ||
-                    filterStatus !== "all"
-                      ? "Try adjusting your search criteria or filters"
-                      : "Get started by creating your first instruction project"}
-                  </p>
-                  {!searchTerm &&
-                    filterCategory === "all" &&
-                    filterStatus === "all" && (
-                      <button
-                        onClick={handleCreateNew}
-                        className="inline-flex items-center space-x-2 bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-900 transition-colors font-medium"
+
+                // ✅ Filter projects for display based on role
+                const visibleProjects = currentUser?.role === 'Admin'
+                  ? allCategoryProjects
+                  : allCategoryProjects.filter((p) =>
+                      accessibleSubcategories.some(
+                        sub => sub.value === p.subcategory
+                      )
+                    );
+
+                // Get unique subcategories from visible projects
+                const uniqueSubcategories = [
+                  ...new Set(visibleProjects.map((p) => p.subcategory)),
+                ];
+
+                const lastModified = visibleProjects.length > 0
+                  ? visibleProjects.reduce((latest, project) => {
+                      const projectDate = new Date(project.lastModified).getTime();
+                      return projectDate > latest ? projectDate : latest;
+                    }, 0)
+                  : Date.now();
+
+                const activeFiles = visibleProjects.filter(
+                  (p) => p.status === "active"
+                ).length;
+                const inactiveFiles = visibleProjects.filter(
+                  (p) => p.status === "inactive"
+                ).length;
+                const privateFiles = visibleProjects.filter(
+                  (p) => p.status === "private"
+                ).length;
+
+                return (
+                  <tr
+                    key={category.value}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    {/* Category */}
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-3">
+                        <div className={`p-2 rounded-lg ${category.color}`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 text-sm">
+                            {category.label}
+                          </h3>
+                          <div className="text-xs text-gray-500">
+                            {category.description}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Subcategories */}
+                    <td className="py-4 px-6">
+                      {uniqueSubcategories.length > 0 ? (
+                        <>
+                          <div className="flex flex-wrap gap-1.5">
+                            {uniqueSubcategories
+                              .slice(0, 3)
+                              .map((subcategoryValue) => {
+                                const subcategoryData = getSubcategoryData(
+                                  category.value,
+                                  subcategoryValue
+                                );
+                                return (
+                                  <span
+                                    key={subcategoryValue}
+                                    className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700"
+                                  >
+                                    {subcategoryData?.label || subcategoryValue}
+                                  </span>
+                                );
+                              })}
+                            {uniqueSubcategories.length > 3 && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
+                                +{uniqueSubcategories.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                          {currentUser?.role !== 'Admin' && visibleProjects.length > 0 && (
+                            <div className="text-xs text-gray-400 mt-1">
+                              Showing {uniqueSubcategories.length} accessible subcategories
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        // ✅ No subcategories - Show message
+                        <div className="text-sm text-gray-500 italic">
+                          {currentUser?.role === 'Admin' 
+                            ? 'No subcategories yet'
+                            : 'No accessible subcategories'
+                          }
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Files Count */}
+                    <td className="py-4 px-6">
+                      {visibleProjects.length > 0 ? (
+                        <>
+                          <div className="text-sm text-gray-900 font-medium">
+                            {visibleProjects.length} files
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1 space-x-2">
+                            {activeFiles > 0 && (
+                              <span className="text-green-600">
+                                {activeFiles} active
+                              </span>
+                            )}
+                            {inactiveFiles > 0 && (
+                              <span className="text-gray-500">
+                                {inactiveFiles} inactive
+                              </span>
+                            )}
+                            {privateFiles > 0 && (
+                              <span className="text-purple-600">
+                                {privateFiles} private
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        // ✅ No files
+                        <div className="text-sm text-gray-400 italic">
+                          No files yet
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Status */}
+                    <td className="py-4 px-6">
+                      <span
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
+                          activeFiles > 0
+                            ? "bg-green-50 text-green-700 border-green-200"
+                            : "bg-gray-50 text-gray-700 border-gray-200"
+                        }`}
                       >
-                        <Plus className="w-5 h-5" />
-                        <span>Create First Project</span>
-                      </button>
-                    )}
-                </div>
-              )}
-            </div>
+                        {activeFiles > 0 ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+
+                    {/* Last Updated */}
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-1 text-sm text-gray-600">
+                        <Clock className="w-4 h-4" />
+                        <span>
+                          {getTimeAgo(new Date(lastModified).toISOString())}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-4 px-6">
+                      <div className="flex items-center space-x-2">
+                        {/* ✅ ALL users can click to manage content */}
+                        <button
+                          onClick={() => {
+                            // Get first accessible subcategory or empty
+                            const firstSubcat = accessibleSubcategories[0]?.value || "";
+                            
+                            setFormData({
+                              name: "",
+                              promptContent: "",
+                              instructions: "",
+                              category: category.value,
+                              subcategory: firstSubcat,
+                              targetModel: "universal",
+                              instructionType: "system",
+                              status: "active",
+                            });
+                            setIsFormOpen(true);
+                          }}
+                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                          title={accessibleSubcategories.length === 0 
+                            ? "Create new subcategory and content"
+                            : "Manage content"
+                          }
+                        >
+                          {accessibleSubcategories.length === 0 ? (
+                            <Plus className="w-4 h-4" />
+                          ) : (
+                            <Edit2 className="w-4 h-4" />
+                          )}
+                        </button>
+                        
+                        {/* ✅ Only Admin can delete all */}
+                        {currentUser?.role === 'Admin' && visibleProjects.length > 0 && (
+                          <button
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete all ${visibleProjects.length} files in "${category.label}"?\n\nThis action cannot be undone.`
+                                )
+                              ) {
+                                Promise.all(
+                                  visibleProjects.map((p) =>
+                                    deleteProject(p.filename)
+                                  )
+                                ).then(() => {
+                                  showNotification(
+                                    "success",
+                                    "Deleted!",
+                                    `All files in ${category.label} deleted.`
+                                  );
+                                });
+                              }
+                            }}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete all files"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+                </table>
+              </div>
+
+              {/* Empty State */}
+              {parentCategories.filter((category) => {
+        if (filterCategory !== "all" && filterCategory !== category.value) {
+          return false;
+        }
+        return true;
+      }).length === 0 && (
+        <div className="text-center py-16">
+          <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            No categories found
+          </h3>
+          <p className="text-gray-600">
+            Try adjusting your filters
+          </p>
+        </div>
+      )}
+    </div>
           </>
         )}
 
         {/* ✅ NEW: Subcategories Tab */}
+        {/* Subcategories Tab - Available for ALL roles */}
         {activeTab === "subcategories" && (
           <>
             {/* Subcategories Toolbar */}
@@ -2148,16 +2527,20 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                       className="pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent w-full"
                     />
                   </div>
-                  <button
-                    onClick={handleCreateNewSubcategory}
-                    className="inline-flex items-center space-x-2 bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-900 transition-colors font-medium"
-                  >
-                    <Plus className="w-5 h-5" />
-                    <span>New Subcategory</span>
-                  </button>
+
+                  {/* ✅ Only Admin can create new subcategory */}
+                  {currentUser?.role === "Admin" && (
+                    <button
+                      onClick={handleCreateNewSubcategory}
+                      className="inline-flex items-center space-x-2 bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-900 transition-colors font-medium"
+                    >
+                      <Plus className="w-5 h-5" />
+                      <span>New Subcategory</span>
+                    </button>
+                  )}
                 </div>
 
-                {/* Filters */}
+                {/* Filters + Info */}
                 <div className="flex flex-wrap items-center gap-4">
                   <select
                     value={subcategoryFilterCategory}
@@ -2185,7 +2568,20 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                   </select>
 
                   <div className="text-sm text-gray-500 ml-auto">
-                    {filteredSubcategories.length} subcategories shown
+                    {/* ✅ Show filtered count + user role info */}
+                    {currentUser?.role === "Admin" ? (
+                      <span>
+                        Viewing all {filteredSubcategories.length} subcategories
+                      </span>
+                    ) : (
+                      <span>
+                        Viewing {filteredSubcategories.length} subcategories
+                        <span className="text-gray-400">
+                          {" "}
+                          (filtered for {currentUser?.role})
+                        </span>
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2202,7 +2598,10 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        <th className="w-12"></th> {/* Drag handle column */}
+                        {/* ✅ Only show drag handle for Admin */}
+                        {currentUser?.role === "Admin" && (
+                          <th className="w-12"></th>
+                        )}
                         <th className="text-left py-4 px-6 font-semibold text-gray-900">
                           Subcategory
                         </th>
@@ -2212,6 +2611,12 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                         <th className="text-left py-4 px-6 font-semibold text-gray-900">
                           Status
                         </th>
+                        {/* ✅ Show access info for non-admin */}
+                        {currentUser?.role !== "Admin" && (
+                          <th className="text-left py-4 px-6 font-semibold text-gray-900">
+                            Access
+                          </th>
+                        )}
                         <th className="text-left py-4 px-6 font-semibold text-gray-900">
                           Updated
                         </th>
@@ -2226,9 +2631,10 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                         strategy={verticalListSortingStrategy}
                       >
                         {filteredSubcategories.map((subcategory) => (
-                          <SortableSubcategoryRow
+                          <SubcategoryRow
                             key={subcategory.id}
                             subcategory={subcategory}
+                            currentUser={currentUser}
                             parentCategories={parentCategories}
                             onEdit={handleEditSubcategory}
                             onDelete={handleDeleteSubcategory}
@@ -2245,7 +2651,7 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                 </DndContext>
               </div>
 
-              {/* Empty State for Subcategories */}
+              {/* Empty State */}
               {filteredSubcategories.length === 0 && (
                 <div className="text-center py-16">
                   <Tags className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -2253,12 +2659,12 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                     No subcategories found
                   </h3>
                   <p className="text-gray-600 mb-6">
-                    {subcategorySearchTerm ||
-                    subcategoryFilterCategory !== "all"
-                      ? "Try adjusting your search criteria or filters"
-                      : "Get started by creating your first subcategory"}
+                    {currentUser?.role === "Admin"
+                      ? "Get started by creating your first subcategory"
+                      : "You don't have access to any subcategories yet. Contact an administrator."}
                   </p>
-                  {!subcategorySearchTerm &&
+                  {currentUser?.role === "Admin" &&
+                    !subcategorySearchTerm &&
                     subcategoryFilterCategory === "all" && (
                       <button
                         onClick={handleCreateNewSubcategory}
@@ -2272,6 +2678,189 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
               )}
             </div>
           </>
+        )}
+
+        {/* Roles Tab */}
+        {/* Roles Tab - Only show manageable roles */}
+        {activeTab === "roles" && currentUser?.role === "Admin" && (
+          <>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Role Management
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Manage subcategory access for different user roles
+                  </p>
+                </div>
+                <div className="text-sm text-gray-500">
+                  {roles.length} manageable roles
+                </div>
+              </div>
+            </div>
+
+            {/* Roles Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {roles.map((role) => {
+                const roleSubcats = subcategories.filter(
+                  (sub) =>
+                    sub.allowedRoles?.includes(role) ||
+                    sub.createdBy?.role === role
+                );
+
+                return (
+                  <div
+                    key={role}
+                    className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => {
+                      setSelectedRole(role);
+                      fetchRoleSubcategories(role);
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="p-3 bg-blue-50 rounded-lg">
+                          <Users className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-gray-900">
+                            {role}
+                          </h4>
+                          <p className="text-sm text-gray-500">
+                            {roleSubcats.length} subcategories
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </div>
+
+                    {/* Quick preview */}
+                    <div className="space-y-2">
+                      {roleSubcats.slice(0, 3).map((sub) => (
+                        <div
+                          key={sub.id}
+                          className="text-sm text-gray-600 flex items-center space-x-2"
+                        >
+                          <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                          <span className="truncate">{sub.label}</span>
+                        </div>
+                      ))}
+                      {roleSubcats.length > 3 && (
+                        <div className="text-xs text-gray-500">
+                          +{roleSubcats.length - 3} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {selectedRole && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-6 border-b">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    Manage {selectedRole} Access
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Select which subcategories this role can access
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedRole(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6">
+                {/* Subcategories by Category */}
+                {parentCategories.map((category) => {
+                  const categorySubcats = subcategories.filter(
+                    (sub) => sub.category === category.value
+                  );
+
+                  if (categorySubcats.length === 0) return null;
+
+                  return (
+                    <div key={category.value} className="mb-6">
+                      <h3 className="font-semibold text-gray-900 mb-3 flex items-center space-x-2">
+                        {React.createElement(category.icon, {
+                          className: "w-5 h-5",
+                        })}
+                        <span>{category.label}</span>
+                        <span className="text-sm text-gray-500 font-normal">
+                          ({categorySubcats.length} total)
+                        </span>
+                      </h3>
+
+                      <div className="space-y-2">
+                        {categorySubcats.map((sub) => {
+                          const hasAccess =
+                            sub.allowedRoles?.includes(selectedRole);
+                          const isOwner = sub.createdBy?.role === selectedRole;
+
+                          // ✅ Don't show Admin-owned subcategories in role management
+                          if (sub.createdBy?.role === "Admin") {
+                            return null;
+                          }
+
+                          return (
+                            <label
+                              key={sub.id}
+                              className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent hover:border-gray-200 transition-all"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={hasAccess || isOwner}
+                                disabled={isOwner}
+                                onChange={(e) =>
+                                  handleToggleRoleAccess(
+                                    selectedRole,
+                                    sub.id,
+                                    e.target.checked
+                                  )
+                                }
+                                className="w-5 h-5 text-blue-600 rounded"
+                              />
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900">
+                                  {sub.label}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {sub.value}
+                                </div>
+                              </div>
+                              {isOwner && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                  Owner
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end space-x-4 p-6 border-t bg-gray-50">
+                <button
+                  onClick={() => setSelectedRole(null)}
+                  className="px-6 py-3 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ✅ Project Form Modal */}

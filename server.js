@@ -8,7 +8,14 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
+
+import authRoutes from './backend/routes/authRoutes.js';
+import { requireAuth, requireAdmin } from './backend/middleware/authMiddleware.js';
+import { SYSTEM_ROLES, isValidRole, hasPermission } from './backend/constants/roles.js';
+
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +46,8 @@ const port = process.env.PORT || 3001;
 const frontendBuildPath = path.join(__dirname, 'dist');
 app.use(express.static(frontendBuildPath));
 
+app.use(cookieParser());
+
 app.use(cors({
   origin: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173', 'https://ai.miseninc.com'],
   credentials: true,
@@ -47,6 +56,7 @@ app.use(cors({
 }));
 
 app.use(bodyParser.json());
+app.use('/api/auth', authRoutes);
 
 const AUTH_CONFIG = {
   JWT_SECRET: process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex'),
@@ -110,22 +120,22 @@ app.use((req, res, next) => {
   next();
 });
 
-const requireAuth = (req, res, next) => {
-  const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
+// const requireAuth = (req, res, next) => {
+//   const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
 
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
+//   if (!token) {
+//     return res.status(401).json({ error: 'Authentication required' });
+//   }
 
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
+//   const decoded = verifyToken(token);
+//   if (!decoded) {
+//     res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
+//     return res.status(401).json({ error: 'Invalid or expired token' });
+//   }
 
-  req.user = decoded;
-  next();
-};
+//   req.user = decoded;
+//   next();
+// };
 
 app.post('/api/image-generation/submit', requireAuth, async (req, res) => {
   try {
@@ -980,13 +990,14 @@ app.post('/api/auth/login', async (req, res) => {
 
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: false,  // ✅ CRITICAL: Set to false for localhost
+      sameSite: 'lax',  // ✅ CRITICAL: Use 'lax' not 'strict'
       maxAge: AUTH_CONFIG.COOKIE_MAX_AGE,
       path: '/'
     };
 
     res.cookie(AUTH_CONFIG.COOKIE_NAME, token, cookieOptions);
+
 
     console.log(`✅ Login successful: ${validCredentials.email} (${userRole})`);
 
@@ -1028,36 +1039,37 @@ app.get('/api/auth/verify', (req, res) => {
   res.json({
     success: true,
     user: {
+      id: decoded.id,           // ✅ Add this
       email: decoded.email,
-      role: decoded.role || 'user', // ← Return role (fallback to 'user')
+      role: decoded.role || 'user',
       loginTime: decoded.loginTime
     }
   });
 });
 
-const requireAdmin = (req, res, next) => {
-  const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
+// const requireAdmin = (req, res, next) => {
+//   const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
 
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
+//   if (!token) {
+//     return res.status(401).json({ error: 'Authentication required' });
+//   }
 
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
+//   const decoded = verifyToken(token);
+//   if (!decoded) {
+//     res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
+//     return res.status(401).json({ error: 'Invalid or expired token' });
+//   }
 
-  if (decoded.role !== 'admin') {
-    return res.status(403).json({ 
-      error: 'Admin access required',
-      message: 'You need admin privileges to access this resource'
-    });
-  }
+//   if (decoded.role !== 'admin') {
+//     return res.status(403).json({ 
+//       error: 'Admin access required',
+//       message: 'You need admin privileges to access this resource'
+//     });
+//   }
 
-  req.user = decoded;
-  next();
-};
+//   req.user = decoded;
+//   next();
+// };
 
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie(AUTH_CONFIG.COOKIE_NAME);
@@ -1232,7 +1244,7 @@ app.get('/api/health', (req, res) => {
 });
 
 
-app.get('/api/instructions/projects', requireAdmin, (req, res) => {
+app.get('/api/instructions/projects', requireAuth, (req, res) => {
   try {
     const projects = instructionsManager.getAllProjects();
 
@@ -1252,6 +1264,207 @@ app.get('/api/instructions/projects', requireAdmin, (req, res) => {
     });
   }
 });
+
+app.get('/api/subcategories/filtered', requireAuth, async (req, res) => {
+  try {
+    const { role, allowedSubcategories } = req.user;
+    const subcategories = loadSubcategories();
+    
+    if (role === 'Admin') {
+      return res.json({
+        success: true,
+        subcategories: subcategories.filter(sub => sub.status === 'active')
+      });
+    }
+    
+    const filtered = subcategories.filter(sub => 
+      sub.status === 'active' && 
+      (allowedSubcategories.includes(sub.id) || 
+       sub.allowed_roles?.includes(role))
+    );
+    
+    res.json({ success: true, subcategories: filtered });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ PATCH /api/subcategories/:id/roles - Update allowed roles for subcategory
+app.patch('/api/subcategories/:id/roles', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { allowedRoles } = req.body;
+
+    if (!Array.isArray(allowedRoles)) {
+      return res.status(400).json({ 
+        error: 'allowedRoles must be an array' 
+      });
+    }
+
+    // Validate all roles
+    const invalidRoles = allowedRoles.filter(role => !isValidRole(role));
+    if (invalidRoles.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid roles provided',
+        invalidRoles,
+        validRoles: SYSTEM_ROLES
+      });
+    }
+
+    const subcategories = loadSubcategories();
+    const index = subcategories.findIndex(sub => sub.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'Subcategory not found' });
+    }
+
+    subcategories[index].allowedRoles = allowedRoles;
+    subcategories[index].lastModified = new Date().toISOString();
+
+    if (saveSubcategories(subcategories)) {
+      console.log(`✅ Updated roles for subcategory: ${subcategories[index].label}`);
+      
+      res.json({
+        success: true,
+        message: 'Allowed roles updated successfully',
+        subcategory: subcategories[index]
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to save changes' });
+    }
+  } catch (error) {
+    console.error('❌ Failed to update subcategory roles:', error);
+    res.status(500).json({ 
+      error: 'Failed to update subcategory roles',
+      message: error.message 
+    });
+  }
+});
+
+// ✅ GET /api/roles - Return manageable roles only (exclude Admin)
+app.get('/api/roles', requireAuth,  async (req, res) => {
+  try {
+    console.log('📋 Returning manageable system roles (excluding Admin)');
+    
+    // Import from constants
+    const { MANAGEABLE_ROLES } = await import('./backend/constants/roles.js');
+    
+    res.json({
+      success: true,
+      roles: MANAGEABLE_ROLES,
+      total: MANAGEABLE_ROLES.length,
+      source: 'static'
+    });
+  } catch (error) {
+    console.error('❌ Failed to get roles:', error);
+    res.status(500).json({ 
+      error: 'Failed to get roles',
+      message: error.message 
+    });
+  }
+});
+
+// GET /api/roles/:role/subcategories - Get subcategories for specific role
+// ✅ GET /api/roles/:role/subcategories - Get subcategories for specific role
+app.get('/api/roles/:role/subcategories', requireAdmin, (req, res) => {
+  try {
+    const { role } = req.params;
+    
+    // Validate role
+    if (!isValidRole(role)) {
+      return res.status(400).json({
+        error: 'Invalid role',
+        validRoles: SYSTEM_ROLES
+      });
+    }
+
+    const subcategories = loadSubcategories();
+
+    const roleSubcategories = subcategories.filter(sub => 
+      sub.allowedRoles?.includes(role) || sub.createdBy?.role === role
+    );
+
+    console.log(`📊 Found ${roleSubcategories.length} subcategories for role: ${role}`);
+
+    res.json({
+      success: true,
+      role,
+      subcategories: roleSubcategories,
+      total: roleSubcategories.length
+    });
+  } catch (error) {
+    console.error('❌ Failed to get role subcategories:', error);
+    res.status(500).json({ 
+      error: 'Failed to get role subcategories',
+      message: error.message 
+    });
+  }
+});
+
+// ✅ PATCH /api/roles/:role/subcategories - Update subcategories for role
+app.patch('/api/roles/:role/subcategories', requireAdmin, (req, res) => {
+  try {
+    const { role } = req.params;
+    const { subcategoryIds } = req.body;
+
+    // Validate role
+    if (!isValidRole(role)) {
+      return res.status(400).json({
+        error: 'Invalid role',
+        validRoles: SYSTEM_ROLES
+      });
+    }
+
+    if (!Array.isArray(subcategoryIds)) {
+      return res.status(400).json({ 
+        error: 'subcategoryIds must be an array' 
+      });
+    }
+
+    const subcategories = loadSubcategories();
+
+    // Remove role from all subcategories
+    subcategories.forEach(sub => {
+      if (sub.allowedRoles) {
+        sub.allowedRoles = sub.allowedRoles.filter(r => r !== role);
+      }
+    });
+
+    // Add role to specified subcategories
+    let updatedCount = 0;
+    subcategoryIds.forEach(id => {
+      const sub = subcategories.find(s => s.id === id);
+      if (sub) {
+        if (!sub.allowedRoles) sub.allowedRoles = [];
+        if (!sub.allowedRoles.includes(role)) {
+          sub.allowedRoles.push(role);
+        }
+        sub.lastModified = new Date().toISOString();
+        updatedCount++;
+      }
+    });
+
+    if (saveSubcategories(subcategories)) {
+      console.log(`✅ Updated ${updatedCount} subcategories for role: ${role}`);
+      
+      res.json({
+        success: true,
+        message: `Updated subcategories for role: ${role}`,
+        role,
+        updatedCount
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to save changes' });
+    }
+  } catch (error) {
+    console.error('❌ Failed to update role subcategories:', error);
+    res.status(500).json({ 
+      error: 'Failed to update role subcategories',
+      message: error.message 
+    });
+  }
+});
+
 
 // ✅ Get projects by category
 app.get('/api/instructions/projects/category/:category', requireAuth, (req, res) => {
@@ -1354,7 +1567,7 @@ app.post('/api/instructions/load-by-config', requireAuth, async (req, res) => {
 
 // ✅ Create or update instruction project
 // POST /api/instructions/projects - Save content for specific subcategory
-app.post('/api/instructions/projects', requireAdmin, (req, res) => {
+app.post('/api/instructions/projects', requireAuth, (req, res) => {
   try {
     const {
       name, // Project display name (optional, chỉ dùng để hiển thị)
@@ -1474,84 +1687,30 @@ app.post('/api/instructions/projects', requireAdmin, (req, res) => {
 // ✅ NEW: Get filtered subcategories based on user role
 app.get('/api/subcategories/filtered', requireAuth, (req, res) => {
   try {
-    const user = req.user; // Get from JWT token
+    const user = req.user;
     const subcategories = loadSubcategories();
     
-    console.log(`🔍 Filtering subcategories for user: ${user.email}`);
-    
-    // Admin sees all subcategories
-    if (user.email === 'misenadminai') {
-      console.log('👑 Admin user - returning all subcategories');
+    // Admin sees all active
+    if (user.role === 'Admin') {
       return res.json({
         success: true,
         subcategories: subcategories.filter(sub => sub.status === 'active')
       });
     }
     
-    // For non-admin users, filter out subcategories used only by private projects
-    const projects = instructionsManager.getAllProjects();
-    console.log(`📋 Found ${projects.length} total projects`);
+    // Other roles see only allowed subcategories
+    const filtered = subcategories.filter(sub => 
+      sub.status === 'active' && 
+      sub.allowedRoles?.includes(user.role)
+    );
     
-    // Build subcategory usage map
-    const subcategoryUsage = new Map();
-    
-    projects.forEach(project => {
-      const subcategoryKey = `${project.category}-${project.subcategory}`;
-      
-      if (!subcategoryUsage.has(subcategoryKey)) {
-        subcategoryUsage.set(subcategoryKey, []);
-      }
-      
-      subcategoryUsage.get(subcategoryKey).push(project.status);
-    });
-    
-    console.log('🗺️ Subcategory usage:', Array.from(subcategoryUsage.entries()));
-    
-    // Filter subcategories
-    const filteredSubcategories = subcategories.filter(sub => {
-      // Only show active subcategories
-      if (sub.status !== 'active') {
-        return false;
-      }
-      
-      const subcategoryKey = `${sub.category}-${sub.value}`;
-      const usageStatuses = subcategoryUsage.get(subcategoryKey) || [];
-      
-      console.log(`🔍 Subcategory ${sub.label}: used by projects with statuses [${usageStatuses.join(', ')}]`);
-      
-      // If not used by any project, show it
-      if (usageStatuses.length === 0) {
-        return true;
-      }
-      
-      // If used ONLY by private projects, hide it from non-admin
-      const uniqueStatuses = [...new Set(usageStatuses)];
-      const isUsedOnlyByPrivate = uniqueStatuses.length === 1 && uniqueStatuses[0] === 'private';
-      
-      if (isUsedOnlyByPrivate) {
-        console.log(`   → Hidden: used only by private projects`);
-        return false;
-      }
-      
-      console.log(`   → Shown: used by non-private projects`);
-      return true;
-    });
-    
-    console.log(`✅ Returning ${filteredSubcategories.length}/${subcategories.length} subcategories`);
-    
-    res.json({
-      success: true,
-      subcategories: filteredSubcategories
-    });
-    
+    res.json({ success: true, subcategories: filtered });
   } catch (error) {
-    console.error('Error filtering subcategories:', error);
-    res.status(500).json({
-      error: 'Failed to filter subcategories',
-      message: error.message
-    });
+    res.status(500).json({ error: error.message });
   }
 });
+
+
 
 // ✅ Get specific project by filename
 app.get('/api/instructions/projects/:filename', requireAuth, (req, res) => {
@@ -2039,19 +2198,48 @@ const generateSubcategoryId = (subcategories) => {
 };
 
 // GET /api/subcategories - Get all subcategories
+// ✅ GET /api/subcategories - Admin sees all, others see filtered
 app.get('/api/subcategories', requireAuth, (req, res) => {
   try {
-    const subcategories = loadSubcategories();
-
-    // ✅ FIX: Sort by order before returning
+    const userRole = req.user.role;
+    const userId = req.user.id;
+    
+    let subcategories = loadSubcategories();
     const sorted = subcategories.sort((a, b) => (a.order || 0) - (b.order || 0));
 
-    console.log(`📊 Retrieved ${sorted.length} subcategories (sorted by order)`);
+    // ✅ Admin sees ALL subcategories
+    if (userRole === 'Admin') {
+      console.log(`👑 Admin viewing all ${sorted.length} subcategories`);
+      
+      return res.json({
+        success: true,
+        subcategories: sorted,
+        total: sorted.length,
+        filtered: false,
+        userRole,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // ✅ Other roles see only allowed or created by them
+    const filtered = sorted.filter(sub => {
+      // Created by this user
+      if (sub.createdBy?.userId === userId) return true;
+      
+      // Allowed for this role
+      if (sub.allowedRoles?.includes(userRole)) return true;
+      
+      return false;
+    });
+
+    console.log(`🔒 ${userRole} viewing ${filtered.length}/${sorted.length} subcategories`);
 
     res.json({
       success: true,
-      subcategories: sorted, // ✅ Return sorted
-      total: sorted.length,
+      subcategories: filtered,
+      total: filtered.length,
+      filtered: true,
+      userRole,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -2095,27 +2283,28 @@ app.get('/api/subcategories/category/:category', requireAuth, (req, res) => {
   }
 });
 
-// ✅ POST /api/subcategories - Create or update subcategory
 // POST /api/subcategories - Create or update subcategory
-app.post('/api/subcategories', requireAdmin, (req, res) => {
+app.post('/api/subcategories', requireAuth, (req, res) => {
   try {
     const {
       id, // For updates
       value,
       label,
       category,
-      status = 'active'
+      status = 'active',
+      allowedRoles = [] // Array of role names
     } = req.body;
 
-    console.log(`🔧 ${id ? 'Updating' : 'Creating'} subcategory:`, {
+    console.log(`📧 ${id ? 'Updating' : 'Creating'} subcategory:`, {
       id,
       value,
       label,
       category,
-      status
+      status,
+      allowedRoles
     });
 
-    // Validate required fields
+    // ✅ Validate required fields
     if (!value || !label || !category) {
       return res.status(400).json({
         error: 'Missing required fields',
@@ -2124,7 +2313,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       });
     }
 
-    // Validate category
+    // ✅ Validate category
     const validCategories = ['google-ads', 'facebook-ads', 'website-content', 'social', 'instructions'];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
@@ -2134,7 +2323,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       });
     }
 
-    // Validate status
+    // ✅ Validate status
     const validStatuses = ['active', 'inactive'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -2144,7 +2333,7 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       });
     }
 
-    // Validate value format
+    // ✅ Validate value format (slug)
     const valuePattern = /^[a-z0-9-]+$/;
     if (!valuePattern.test(value)) {
       return res.status(400).json({
@@ -2154,9 +2343,28 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
       });
     }
 
+    // ✅ Validate allowedRoles (only valid system roles)
+    if (allowedRoles && allowedRoles.length > 0) {
+      if (!Array.isArray(allowedRoles)) {
+        return res.status(400).json({
+          error: 'allowedRoles must be an array',
+          received: typeof allowedRoles
+        });
+      }
+
+      const invalidRoles = allowedRoles.filter(role => !isValidRole(role));
+      if (invalidRoles.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid roles in allowedRoles',
+          invalidRoles,
+          validRoles: SYSTEM_ROLES
+        });
+      }
+    }
+
     const subcategories = loadSubcategories();
 
-    // Check for conflicts (duplicate value within same category)
+    // ✅ Check for conflicts (duplicate value within same category)
     const existingIndex = subcategories.findIndex(sub =>
       sub.value === value &&
       sub.category === category &&
@@ -2184,21 +2392,29 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
         });
       }
 
+      // Preserve existing data
+      const existing = subcategories[updateIndex];
+
       subcategories[updateIndex] = {
-        ...subcategories[updateIndex], // Keep existing fields including order
+        ...existing,
         value,
         label,
         category,
         status,
+        allowedRoles, // Update allowed roles
         lastModified: now
+        // Keep: id, order, createdBy, createdAt
       };
 
-      console.log(`✅ Updated subcategory: ${id}`);
+      console.log(`✅ Updated subcategory: ${id}`, {
+        value,
+        allowedRoles
+      });
     } else {
       // ✅ CREATE new subcategory
       const newId = generateSubcategoryId(subcategories);
 
-      // ✅ FIX: Calculate next order for this category
+      // Calculate next order for this category
       const categorySubcategories = subcategories.filter(
         sub => sub.category === category
       );
@@ -2213,25 +2429,39 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
         label,
         category,
         status,
-        order: nextOrder, // ✅ FIX: Add order field
+        allowedRoles, // Set allowed roles
+        createdBy: { // Track creator
+          userId: req.user.id,
+          email: req.user.email,
+          role: req.user.role
+        },
+        order: nextOrder,
         createdAt: now,
         lastModified: now
       };
 
       subcategories.push(newSubcategory);
-      console.log(`✅ Created subcategory: ${newId} with order: ${nextOrder}`);
+      
+      console.log(`✅ Created subcategory: ${newId} with order: ${nextOrder}`, {
+        value,
+        allowedRoles,
+        createdBy: req.user.role
+      });
     }
 
-    // Save to file
+    // ✅ Save to file
     if (saveSubcategories(subcategories)) {
+      const action = id ? 'updated' : 'created';
+      
       res.json({
         success: true,
-        message: id ? 'Subcategory updated successfully' : 'Subcategory created successfully',
+        message: `Subcategory ${action} successfully`,
         subcategory: {
           value,
           label,
           category,
-          status
+          status,
+          allowedRoles
         }
       });
     } else {
@@ -2242,13 +2472,14 @@ app.post('/api/subcategories', requireAdmin, (req, res) => {
     }
 
   } catch (error) {
-    console.error('Failed to create/update subcategory:', error);
+    console.error('❌ Failed to create/update subcategory:', error);
     res.status(500).json({
       error: 'Failed to create/update subcategory',
       message: error.message
     });
   }
 });
+
 // ✅ GET /api/subcategories/:id - Get specific subcategory
 app.get('/api/subcategories/:id', requireAuth, (req, res) => {
   try {
@@ -2332,7 +2563,7 @@ app.patch('/api/subcategories/:id/status', requireAuth, (req, res) => {
 });
 
 // DELETE /api/subcategories/:id - Delete subcategory
-app.delete('/api/subcategories/:id', requireAdmin, (req, res) => {
+app.delete('/api/subcategories/:id', requireAuth, (req, res) => {
   try {
     const { id } = req.params;
 
