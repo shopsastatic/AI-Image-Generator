@@ -276,6 +276,21 @@ export const ElementDefaultScreen = (): JSX.Element => {
     };
   };
 
+  // Format JSON prompt for better readability
+  const formatPrompt = (prompt) => {
+    if (!prompt) return "No prompt available";
+    
+    try {
+      // Try to parse as JSON
+      const parsed = JSON.parse(prompt);
+      // If successful, format with indentation
+      return `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 13px; line-height: 1.6; background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto;">${JSON.stringify(parsed, null, 2)}</pre>`;
+    } catch (e) {
+      // Not JSON, return as-is
+      return prompt;
+    }
+  };
+
   const generateImageSizesString = (): string => {
     const totalSelected = getTotalSelectedImages();
     const totalNeeded = numberOfImages;
@@ -3466,24 +3481,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       <ImageInfoDropdown
                         title="Describe"
                         copyContent={(() => {
-                          // FIX: Enhanced debug and logic to get describe
-                          console.log(
-                            "🔍 DEBUG Describe - Getting copyContent"
-                          );
-                          console.log("🔍 currentSessionId:", currentSessionId);
-                          console.log(
-                            "🔍 currentViewImageIndex:",
-                            currentViewImageIndex
-                          );
-                          console.log(
-                            "🔍 selectedSessions length:",
-                            selectedSessions.length
-                          );
-                          console.log(
-                            "🔍 selectedImages length:",
-                            selectedImages.length
-                          );
-
+                        
                           let describeText = "No description available";
 
                           // Method 1: Get from currentSessionId
@@ -3693,8 +3691,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             <div
                               className="prompt-text html-content main-prompt"
                               dangerouslySetInnerHTML={{
-                                __html:
-                                  currentImagePrompt || "No prompt available",
+                                __html: formatPrompt(currentImagePrompt) 
                               }}
                             />
                           );
