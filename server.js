@@ -1790,7 +1790,7 @@ app.post('/api/instructions/backup', requireAuth, (req, res) => {
   }
 });
 
-app.post('/api/subcategories/reorder', requireAuth, (req, res) => {
+app.post('/api/subcategories/reorder', (req, res) => {
   try {
     const { subcategories: reorderedItems } = req.body;
     
