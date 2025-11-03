@@ -1047,6 +1047,58 @@ app.get('/api/auth/verify', (req, res) => {
   });
 });
 
+// GET /api/history - Lấy history với role filter
+app.get('/api/history', requireAuth, async (req, res) => {
+  try {
+    const { roleFilter } = req.query;
+    const currentUser = req.user;
+    
+    console.log(`📊 History request - User: ${currentUser.role}, Filter: ${roleFilter || 'none'}`);
+    
+    // Gọi N8N để lấy data
+    const n8nResponse = await fetch('https://n8n.misencorp.com/webhook/get-history', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!n8nResponse.ok) {
+      throw new Error(`N8N API error: ${n8nResponse.status}`);
+    }
+    
+    let data = await n8nResponse.json();
+    
+    // Filter theo role
+    if (currentUser.role === 'Admin') {
+      // Admin: filter theo roleFilter (multi-select)
+      if (roleFilter) {
+        const selectedRoles = roleFilter.split(',').filter(r => r.trim());
+        
+        if (selectedRoles.length > 0) {
+          data = data.filter(item => {
+            const itemRole = item.data?.role;
+            return itemRole && selectedRoles.includes(itemRole);
+          });
+        }
+      }
+      // Không có filter = không show gì (để admin chọn)
+    } else {
+      // User thường: chỉ show ảnh của role mình (phải có giá trị role)
+      data = data.filter(item => item.data?.role === currentUser.role);
+    }
+    
+    console.log(`✅ Filtered history: ${data.length} items`);
+    
+    res.json(data);
+    
+  } catch (error) {
+    console.error('Failed to fetch history:', error);
+    res.status(500).json({
+      error: 'Failed to fetch history',
+      message: error.message
+    });
+  }
+});
+
 // const requireAdmin = (req, res, next) => {
 //   const token = req.cookies?.[AUTH_CONFIG.COOKIE_NAME];
 
@@ -2384,16 +2436,20 @@ app.post('/api/subcategories', requireAuth, (req, res) => {
     if (id) {
       // ✅ UPDATE existing subcategory
       const updateIndex = subcategories.findIndex(sub => sub.id === id);
-
+      
       if (updateIndex === -1) {
-        return res.status(404).json({
-          error: 'Subcategory not found',
-          id: id
-        });
+        return res.status(404).json({ error: 'Subcategory not found', id });
       }
 
-      // Preserve existing data
       const existing = subcategories[updateIndex];
+      
+      // ✅ CHECK: Chỉ Admin hoặc creator mới được update
+      if (req.user.role !== 'Admin' && existing.createdBy?.userId !== req.user.id) {
+        return res.status(403).json({ 
+          error: 'Permission denied',
+          message: 'You can only edit subcategories you created' 
+        });
+      }
 
       subcategories[updateIndex] = {
         ...existing,
@@ -2566,20 +2622,22 @@ app.patch('/api/subcategories/:id/status', requireAuth, (req, res) => {
 app.delete('/api/subcategories/:id', requireAuth, (req, res) => {
   try {
     const { id } = req.params;
-
-    console.log(`🗑️ Deleting subcategory: ${id}`);
-
     const subcategories = loadSubcategories();
     const deleteIndex = subcategories.findIndex(sub => sub.id === id);
 
     if (deleteIndex === -1) {
-      return res.status(404).json({
-        error: 'Subcategory not found',
-        id: id
-      });
+      return res.status(404).json({ error: 'Subcategory not found', id });
     }
 
     const subcategoryToDelete = subcategories[deleteIndex];
+
+    // ✅ THÊM CHECK QUYỀN
+    if (req.user.role !== 'Admin' && subcategoryToDelete.createdBy?.userId !== req.user.id) {
+      return res.status(403).json({ 
+        error: 'Permission denied',
+        message: 'You can only delete subcategories you created' 
+      });
+    }
 
     // Find and delete all related projects
     const projects = instructionsManager.getAllProjects();

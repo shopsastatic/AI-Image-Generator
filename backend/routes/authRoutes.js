@@ -1,6 +1,8 @@
 import express from 'express';
 import { authService } from '../services/authService.js';
 import {supabase} from '../config/supabase.js'
+import { requireAdmin } from '../middleware/authMiddleware.js';
+
 
 const router = express.Router();
 
@@ -28,6 +30,58 @@ router.post('/register', async (req, res) => {
     const user = await authService.register(username, password);
     res.json({ success: true, message: 'Registration successful' });
   } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/register-by-admin', requireAdmin, async (req, res) => {
+  try {
+    const { username, password, role = 'User' } = req.body;
+    
+    // ✅ Defensive check
+    if (!req.user || !req.user.email) {
+      console.error('❌ req.user not set by middleware:', req.user);
+      return res.status(500).json({ 
+        error: 'Authentication middleware failed',
+        debug: 'req.user is not properly set'
+      });
+    }
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Validate role
+    const validRoles = ['Admin', 'Marketing', 'Designer', 'Video Editor', 'Content', 'User'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ 
+        error: 'Invalid role',
+        validRoles 
+      });
+    }
+
+    // ✅ Tạo user mới
+    const user = await authService.registerByAdmin(username, password, role);
+
+    // ✅ Safe log với optional chaining
+    console.log(`✅ Admin ${req.user?.email || 'UNKNOWN'} created user: ${username} (${role})`);
+
+    res.json({
+      success: true,
+      message: 'User created successfully',
+      user: {
+        id: user.id,
+        username: user.email,
+        role: user.role
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Register by admin error:', error.message);
     res.status(400).json({ error: error.message });
   }
 });

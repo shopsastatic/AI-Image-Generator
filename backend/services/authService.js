@@ -71,5 +71,36 @@ export const authService = {
     } catch {
       return null;
     }
+  },
+
+  async registerByAdmin(username, password, role = 'Content') {
+    // Check if username exists
+    const { data: existing } = await supabase
+      .from('ms_image_users')
+      .select('id')
+      .eq('email', username.toLowerCase().trim())
+      .single();
+
+    if (existing) {
+      throw new Error('Username already exists');
+    }
+
+    const salt = crypto.randomBytes(32).toString('hex');
+    const passwordHash = hashPassword(password, salt);
+
+    const { data, error } = await supabase
+      .from('ms_image_users')
+      .insert({
+        email: username.toLowerCase().trim(),
+        password_hash: `${salt}:${passwordHash}`,
+        full_name: username,
+        role: role, // ✅ Sử dụng role được truyền vào
+        status: 'active'
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
   }
 };

@@ -555,6 +555,8 @@ const ProjectManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<
     "projects" | "subcategories" | "roles"
   >("projects");
+  const [selectedSubcategoryData, setSelectedSubcategoryData] = 
+  useState<SubcategoryOption | null>(null);
 
   const [subcategorySearchTerm, setSubcategorySearchTerm] =
     useState<string>("");
@@ -590,6 +592,23 @@ const ProjectManagement: React.FC = () => {
     role: string;
     id?: string;
   } | null>(null);
+
+  const canEditSubcategory = (subcategory: SubcategoryOption | null): boolean => {
+    if (!currentUser || !subcategory) return false;
+    
+    if (currentUser.role === 'Admin') return true;
+    
+    // User chỉ edit được subcategory do mình tạo
+    return subcategory.createdBy?.userId === currentUser.id;
+  };
+
+  const getCurrentSubcategory = (): SubcategoryOption | null => {
+    if (!formData.category || !formData.subcategory) return null;
+    
+    return subcategories.find(
+      sub => sub.category === formData.category && sub.value === formData.subcategory
+    ) || null;
+  };
 
   const [configDrafts, setConfigDrafts] = useState<
     Map<
@@ -1896,17 +1915,21 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
       ...formData,
       subcategory: newSubcategory,
     });
-    // Content sẽ được load tự động bởi useEffect
+    
+    // ✅ THÊM: Track subcategory data để check quyền
+    const subcatData = subcategories.find(
+      sub => sub.category === formData.category && sub.value === newSubcategory
+    );
+    setSelectedSubcategoryData(subcatData || null);
   };
 
-  // Add new handler for model change
-  const handleModelChange = (newModel: string) => {
-    setFormData({
-      ...formData,
-      targetModel: newModel,
-    });
-    // Content sẽ được load tự động bởi useEffect
+  // ✅ THÊM: Helper function check quyền
+  const canEditCurrentSubcategory = () => {
+    if (!selectedSubcategoryData) return false;
+    if (currentUser?.role === 'Admin') return true;
+    return selectedSubcategoryData.createdBy?.userId === currentUser?.id;
   };
+
 
   // Add new handler for instruction type change
   const handleInstructionTypeChange = (newType: string) => {
@@ -3016,8 +3039,17 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                           {formData.subcategory && (
                             <button
                               onClick={() => handleDeleteSelectedSubcategory()}
-                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                              title="Delete this subcategory"
+                              disabled={!canEditCurrentSubcategory()} // ✅ THÊM disable
+                              className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
+                                canEditCurrentSubcategory()
+                                  ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                                  : 'text-gray-300 cursor-not-allowed opacity-50'
+                              }`}
+                              title={
+                                canEditCurrentSubcategory() 
+                                  ? "Delete this subcategory"
+                                  : "You don't have permission to delete this subcategory"
+                              }
                             >
                               <Trash2 className="w-5 h-5" />
                             </button>
@@ -3205,6 +3237,9 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-3">
                     Prompt Content
+                    {!canEditCurrentSubcategory() && (
+                      <span className="ml-2 text-xs text-orange-600">(Read Only)</span>
+                    )}
                   </label>
                   <textarea
                     value={formData.promptContent}
@@ -3214,14 +3249,16 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                         promptContent: e.target.value,
                       })
                     }
-                    placeholder="Enter optional prompt content here (e.g., context, variables, examples)..."
+                    placeholder="Enter optional prompt content here..."
                     rows={6}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-vertical font-mono text-sm leading-relaxed"
+                    disabled={!canEditCurrentSubcategory()} // ✅ THÊM disable
+                    className={`w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-vertical font-mono text-sm leading-relaxed ${
+                      !canEditCurrentSubcategory() ? 'bg-gray-50 cursor-not-allowed' : ''
+                    }`}
                   />
                   <div className="flex items-center justify-between mt-2">
                     <div className="text-xs text-gray-500">
-                      Optional: Additional context or content to prepend before
-                      instructions
+                      Optional: Additional context or content to prepend before instructions
                     </div>
                     <div className="text-xs text-gray-500">
                       {formData.promptContent.length} characters
@@ -3233,6 +3270,9 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-3">
                     Instruction Content *
+                    {!canEditCurrentSubcategory() && (
+                      <span className="ml-2 text-xs text-orange-600">(Read Only)</span>
+                    )}
                   </label>
                   <textarea
                     value={formData.instructions}
@@ -3241,12 +3281,14 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                     }
                     placeholder="Enter the instruction prompt content here..."
                     rows={16}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-vertical font-mono text-sm leading-relaxed"
+                    disabled={!canEditCurrentSubcategory()} // ✅ THÊM disable
+                    className={`w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-vertical font-mono text-sm leading-relaxed ${
+                      !canEditCurrentSubcategory() ? 'bg-gray-50 cursor-not-allowed' : ''
+                    }`}
                   />
                   <div className="flex items-center justify-between mt-2">
                     <div className="text-xs text-gray-500">
-                      This content will be used as the instruction prompt for AI
-                      generation
+                      This content will be used as the instruction prompt for AI generation
                     </div>
                     <div className="text-xs text-gray-500">
                       {formData.instructions.length} characters
@@ -3304,7 +3346,8 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                     !formData.subcategory ||
                     !formData.instructions.trim() ||
                     saving ||
-                    isLoadingContent
+                    isLoadingContent ||
+                    !canEditCurrentSubcategory()
                   }
                   className="inline-flex items-center space-x-2 px-6 py-3 bg-gray-800 text-white rounded-xl hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >

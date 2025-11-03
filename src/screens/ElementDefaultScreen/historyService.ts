@@ -7,6 +7,7 @@ interface N8NHistoryItem {
     sub_category: string;
     prompt: string[];
     describe: string;
+    role?: string; // ✅ THÊM role
   };
   created_at: string;
 }
@@ -29,6 +30,7 @@ interface HistorySession {
   images: HistoryImage[];
   timestamp: string;
   createdAt: string;
+  role?: string; // ✅ THÊM role
 }
 
 interface HistoryDateGroup {
@@ -45,91 +47,108 @@ interface HistoryDateGroup {
 }
 
 class HistoryService {
-  private readonly apiUrl = 'https://n8n.misencorp.com/webhook/get-history';
-  private cache: HistorySession[] | null = null;
-  private lastCacheTime: number = 0;
+  // ✅ THAY ĐỔI: Đổi sang backend endpoint thay vì N8N trực tiếp
+  private readonly apiUrl = '/api/history';
+  
+  // ✅ THAY ĐỔI: Cache theo role
+  private cacheMap: Map<string, { data: HistorySession[]; timestamp: number }> = new Map();
   private readonly cacheDuration = 30000; // 30 seconds
 
   /**
-   * Fetch history từ N8N API
-   */
-  async fetchHistory(): Promise<HistorySession[]> {
-    try {
-      // Kiểm tra cache
-      if (this.cache && (Date.now() - this.lastCacheTime < this.cacheDuration)) {
-        console.log('📦 Returning cached history data');
-        return this.cache;
-      }
-
-      const response = await fetch(this.apiUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data: N8NHistoryItem[] = await response.json();
-      console.log('✅ Received history data:', data.length, 'items');
-
-      // Transform data
-      const sessions = this.transformN8NData(data);
-      
-      // Cache kết quả
-      this.cache = sessions;
-      this.lastCacheTime = Date.now();
-
-      return sessions;
-    } catch (error) {
-      console.error('❌ Failed to fetch history:', error);
-      throw error;
+ * ✅ SỬA: Hỗ trợ multi-role filter
+ */
+async fetchHistory(roleFilters?: string[]): Promise<HistorySession[]> {
+  try {
+    // ✅ Cache key dựa trên roleFilters
+    const cacheKey = roleFilters?.length ? roleFilters.sort().join(',') : 'none';
+    const cached = this.cacheMap.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp < this.cacheDuration)) {
+      console.log(`📦 Returning cached history data for roles: ${cacheKey}`);
+      return cached.data;
     }
+
+    // ✅ Build URL với query parameters
+    const url = new URL(this.apiUrl, window.location.origin);
+    if (roleFilters && roleFilters.length > 0) {
+      url.searchParams.append('roleFilter', roleFilters.join(','));
+    }
+
+    console.log(`🔄 Fetching history from: ${url.toString()}`);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data: N8NHistoryItem[] = await response.json();
+    console.log('✅ Received history data:', data.length, 'items');
+
+    // Transform data
+    const sessions = this.transformN8NData(data);
+    
+    // Cache theo roles
+    this.cacheMap.set(cacheKey, {
+      data: sessions,
+      timestamp: Date.now()
+    });
+
+    return sessions;
+  } catch (error) {
+    console.error('❌ Failed to fetch history:', error);
+    throw error;
   }
+}
 
   /**
    * Transform N8N data sang format component cần
    */
   private transformN8NData(data: N8NHistoryItem[]): HistorySession[] {
-  const sessions = data.map(item => {
-    const images: HistoryImage[] = [];
-    
-    const urlCount = item.data.url?.length || 0;
-    const promptCount = item.data.prompt?.length || 0;
-    const maxCount = Math.max(urlCount, promptCount);
+    const sessions = data.map(item => {
+      const images: HistoryImage[] = [];
+      
+      const urlCount = item.data.url?.length || 0;
+      const promptCount = item.data.prompt?.length || 0;
+      const maxCount = Math.max(urlCount, promptCount);
 
-    for (let i = 0; i < maxCount; i++) {
-      images.push({
-        imageUrl: item.data.url?.[i] || '',
-        prompt: item.data.prompt?.[i] || item.data.describe || '',
+      for (let i = 0; i < maxCount; i++) {
+        images.push({
+          imageUrl: item.data.url?.[i] || '',
+          prompt: item.data.prompt?.[i] || item.data.describe || '',
+          category: item.data.category || '',
+          subCategory: item.data.sub_category || '',
+          platform: item.data.platform || '',
+          timestamp: item.created_at || new Date().toISOString(),
+        });
+      }
+
+      return {
+        sessionId: item.id,
+        describe: item.data.describe || '',
         category: item.data.category || '',
         subCategory: item.data.sub_category || '',
         platform: item.data.platform || '',
+        role: item.data.role, // ✅ THÊM role
+        images: images,
         timestamp: item.created_at || new Date().toISOString(),
-      });
-    }
+        createdAt: item.created_at || new Date().toISOString(),
+      };
+    });
 
-    return {
-      sessionId: item.id,
-      describe: item.data.describe || '',
-      category: item.data.category || '',
-      subCategory: item.data.sub_category || '',
-      platform: item.data.platform || '',
-      images: images,
-      timestamp: item.created_at || new Date().toISOString(),
-      createdAt: item.created_at || new Date().toISOString(),
-    };
-  });
-
-  // ✅ THÊM: Sắp xếp theo thời gian mới nhất trước
-  return sessions.sort((a, b) => {
-    const timeA = new Date(a.timestamp || a.createdAt).getTime();
-    const timeB = new Date(b.timestamp || b.createdAt).getTime();
-    return timeB - timeA; // Mới nhất trước
-  });
-}
+    // Sắp xếp theo thời gian mới nhất trước
+    return sessions.sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.createdAt).getTime();
+      const timeB = new Date(b.timestamp || b.createdAt).getTime();
+      return timeB - timeA;
+    });
+  }
 
   /**
    * Nhóm sessions theo ngày cho sidebar
@@ -139,7 +158,6 @@ class HistoryService {
     const dateMap = new Map<string, HistoryDateGroup>();
 
     for (const session of sessions) {
-      // Bỏ qua session không có ảnh
       if (!session.images || session.images.length === 0) {
         continue;
       }
@@ -153,7 +171,6 @@ class HistoryService {
           })
         : 'Unknown Date';
 
-      // Lấy hoặc tạo nhóm cho ngày này
       let group = dateMap.get(date);
       if (!group) {
         group = { date, items: [] };
@@ -161,7 +178,6 @@ class HistoryService {
         groups.push(group);
       }
 
-      // Thêm vào nhóm
       group.items.push({
         id: session.sessionId,
         describe: session.describe || '',
@@ -173,7 +189,6 @@ class HistoryService {
       });
     }
 
-    // Sắp xếp nhóm theo ngày (mới nhất trước)
     groups.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
@@ -197,12 +212,16 @@ class HistoryService {
   }
 
   /**
-   * Xóa cache để force refresh
+   * ✅ SỬA: Xóa cache theo role hoặc tất cả
    */
-  clearCache(): void {
-    this.cache = null;
-    this.lastCacheTime = 0;
-    console.log('🗑️ History cache cleared');
+  clearCache(roleFilter?: string): void {
+    if (roleFilter) {
+      this.cacheMap.delete(roleFilter);
+      console.log(`🗑️ History cache cleared for role: ${roleFilter}`);
+    } else {
+      this.cacheMap.clear();
+      console.log('🗑️ All history cache cleared');
+    }
   }
 
   /**

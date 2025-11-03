@@ -6,6 +6,8 @@ import HistorySidebar from "./HistorySideBar";
 import ImageInfoDropdown from "./ImageInfoDropdown";
 import ImageSizeSelector from "./ImageSizeSelector";
 import { historyService } from "./historyService";
+import RegisterModal from "./RegisterModal";
+
 
 interface LoadingSession {
   sessionId: string;
@@ -87,6 +89,8 @@ export const ElementDefaultScreen = (): JSX.Element => {
     user_prompt: null,
     system_prompt: null,
   });
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+
 
   const [selectedSessions, setSelectedSessions] = useState<
     Array<{
@@ -793,417 +797,44 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
   const handleFormSubmit = async () => {
-    if (!promptText.trim()) {
-      return;
-    }
+  if (!promptText.trim()) {
+    return;
+  }
 
-    const sessionId = `session-${Date.now()}-${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    const currentPromptText = promptText.trim();
+  const sessionId = `session-${Date.now()}-${Math.random()
+    .toString(36)
+    .substr(2, 9)}`;
+  
+  let finalPrompt = promptText.trim();
+  let shouldClearInput = true; // ✅ Flag để quyết định có clear input không
 
-    // Create loading session
-    const newLoadingSession = {
-      sessionId,
-      prompt: currentPromptText,
-      startTime: Date.now(),
-      jobId: null,
-      countdown: 0,
-    };
-
-    setLoadingSessions((prev) => [newLoadingSession, ...prev]);
-    setCurrentLoadingPrompt(currentPromptText);
-    startSessionCountdown(sessionId);
-
-    // Clear input
-    setPromptText("");
-    if (textareaRef.current) {
-      textareaRef.current.value = "";
-      textareaRef.current.style.height = "auto";
-      adjustHeight();
-    }
-    // setUploadedImages([]);
-
+  // ✅ BƯỚC 1: Optimize prompt NẾU CÓ instructionsSubcategory
+  if (instructionsSubcategory) {
+    shouldClearInput = false; // ✅ KHÔNG clear input khi có optimize
+    
     try {
-      let uploadedImageUrls: string[] = [];
-
-      if (uploadedImages.length > 0) {
-        console.log(
-          `📤 Uploading ${uploadedImages.length} reference images...`
-        );
-
-        const uploadPromises = uploadedImages.map(
-          async (base64Image, index) => {
-            try {
-              const blob = await fetch(base64Image).then((r) => r.blob());
-
-              // Prepare form data
-              const formData = new FormData();
-              formData.append("filename", blob, `reference-image-${index}.png`);
-
-              // Upload to CDN
-              const response = await fetch(
-                "https://prod.api.market/api/v1/magicapi/image-upload/upload",
-                {
-                  method: "POST",
-                  headers: {
-                    "x-magicapi-key": "cmfxojr010001jo04ld19izzv",
-                  },
-                  body: formData,
-                }
-              );
-
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error(
-                  `❌ Upload failed for image ${index}:`,
-                  errorText
-                );
-                return null;
-              }
-
-              const data = await response.json();
-              return data.url;
-            } catch (error) {
-              return null;
-            }
-          }
-        );
-
-        const results = await Promise.all(uploadPromises);
-        uploadedImageUrls = results.filter((url) => url !== null) as string[];
-
-        if (uploadedImageUrls.length === 0) {
-          throw new Error("All image uploads failed");
-        }
-      }
-
-      const instructionResponse = await fetch("/api/instructions/resolve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: selectedCategory.category,
-          subcategory: selectedCategory.subcategory || "",
-          selectedModel: selectedApis[0] || "claude-sonnet",
-        }),
-      });
-
-      if (!instructionResponse.ok) {
-        throw new Error("Failed to load instructions");
-      }
-
-      const instructionData = await instructionResponse.json();
-
-      const generateResponse = await fetch(
-        "https://n8n.misencorp.com/webhook/ms-image-generator",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            userPrompt: currentPromptText,
-            userPromptInstruction: parseContent(instructionData.user_prompt).promptContent,
-            systemPromptInstruction: parseContent(instructionData.system_prompt).instructions,
-            uploadedImageUrls,
-            numberOfImages,
-            imageSizesString: generateImageSizesString(),
-            selectedQuality,
-            selectedCategory: {
-              category: selectedCategory.category,
-              subcategory: selectedCategory.subcategory || "",
-            },
-            // ✅ GỬI INSTRUCTIONS CONTENT
-            selectedInstructions: {
-              category: "instructions",
-              subcategory: instructionsSubcategory || "",
-              user_prompt: instructionsApiData.user_prompt,
-              system_prompt: instructionsApiData.system_prompt,
-            },
-            selectedApis,
-            selectedAspectRatio,
-          }),
-        }
-      );
-
-      if (!generateResponse.ok) {
-        throw new Error(`N8N webhook failed: ${generateResponse.status}`);
-      }
-
-      const generateData = await generateResponse.json();
-      const jobId = generateData[0]?.job_id;
-
-      if (!jobId) {
-        throw new Error("No jobId received from N8N");
-      }
-
-      // Update loading session with jobId
-      setLoadingSessions((prev) =>
-        prev.map((session) =>
-          session.sessionId === sessionId ? { ...session, jobId } : session
-        )
-      );
-
-      let pollAttempts = 0;
-      const maxPollAttempts = 120; // 120 attempts × 5s = 10 minutes max
-      let generateImagePool: NodeJS.Timeout;
-
-      const pollForResults = async () => {
-        try {
-          pollAttempts++;
-
-          const response = await fetch(
-            `https://n8n.misencorp.com/webhook/get_image_queue?job_id=${jobId}`,
-            {
-              method: "GET",
-              headers: { "Content-Type": "application/json" },
-            }
-          );
-
-          if (!response.ok) {
-            throw new Error(`Poll request failed: ${response.status}`);
-          }
-
-          const data = await response.json();
-
-          if (!data[0].job_id) {
-            clearInterval(generateImagePool);
-            removeLoadingSession(sessionId);
-            showNotification(
-              "error",
-              "Server Busy!",
-              "The server is currently busy. Please try again in a few moments."
-            );
-            return;
-          }
-
-          // Check if results are ready
-          if (data && data[0] && data[0].data != null) {
-            clearInterval(generateImagePool);
-
-            const imagesData = data[0].data;
-
-            let allImages: any[] = [];
-
-            if (Array.isArray(imagesData)) {
-              // Old format: array of platform data objects
-              allImages = imagesData.flatMap((platformData: any) =>
-                (platformData.images || []).map((img: any) => ({
-                  imageUrl: img.url || "",
-                  prompt: img.prompt || currentPromptText,
-                  category: selectedCategory.category,
-                  subCategory: selectedCategory.subcategory || "",
-                  size: img.size || "Square",
-                  quality: selectedQuality,
-                  timestamp: new Date().toISOString(),
-                  claudeResponse: img.claudeResponse || "",
-                  AdCreativeA: img.AdCreativeA || "",
-                  AdCreativeB: img.AdCreativeB || "",
-                  targeting: img.targeting || "",
-                  imageName: img.imageName || "",
-                }))
-              );
-            } else if (imagesData && typeof imagesData === "object") {
-              const urls = Array.isArray(imagesData.url) ? imagesData.url : [];
-              const prompts = Array.isArray(imagesData.prompt)
-                ? imagesData.prompt
-                : [];
-              const maxLength = Math.max(urls.length, prompts.length);
-
-              allImages = Array.from({ length: maxLength }, (_, index) => ({
-                imageUrl: urls[index] || "",
-                prompt: prompts[index] || currentPromptText,
-                category: imagesData.category || selectedCategory.category,
-                subCategory:
-                  imagesData.sub_category || selectedCategory.subcategory || "",
-                platform: imagesData.platform || "",
-                size: "Square",
-                quality: selectedQuality,
-                timestamp: new Date().toISOString(),
-                claudeResponse: "",
-                AdCreativeA: "",
-                AdCreativeB: "",
-                targeting: "",
-                imageName: "",
-              }));
-            } else {
-              console.error("❌ Unknown data format:", imagesData);
-            }
-
-            // Filter valid images
-            const validImages = allImages.filter(
-              (img: any) =>
-                img.imageUrl &&
-                !img.imageUrl.includes(
-                  "PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM"
-                ) &&
-                img.imageUrl !==
-                  "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg=="
-            );
-
-            if (validImages.length === 0) {
-              showNotification(
-                "error",
-                "Generation Failed!",
-                "Failed to process generated images. Please try again."
-              );
-              removeLoadingSession(sessionId);
-              return;
-            }
-
-            const sortedValidImages = sortImagesByPromptGroups(validImages);
-            const newSession = {
-              sessionId: sessionId,
-              clickedAt: Date.now(),
-              currentImageIndex: 0,
-              describe: currentPromptText,
-              category: selectedCategory.category,
-              subCategory: selectedCategory.subcategory || "",
-              platform: sortedValidImages[0]?.platform || "",
-              list: sortedValidImages, // ✅ URLs trực tiếp, không blob
-            };
-
-            setSelectedSessions((prevSessions) => {
-              const existingIndex = prevSessions.findIndex(
-                (s) => s.sessionId === sessionId
-              );
-
-              if (existingIndex !== -1) {
-                const updatedSessions = [...prevSessions];
-                updatedSessions[existingIndex] = newSession;
-                return updatedSessions;
-              }
-
-              return [newSession, ...prevSessions];
-            });
-
-            if (sortedValidImages.length > 0) {
-              setSelectedImages((prevImages) => {
-                const firstImageObj = {
-                  imageUrl: sortedValidImages[0].imageUrl, // ✅ URL trực tiếp
-                  clickedAt: Date.now(),
-                  prompt: sortedValidImages[0].prompt,
-                  category: sortedValidImages[0].category,
-                  subCategory: sortedValidImages[0].subCategory,
-                  size: sortedValidImages[0].size,
-                  quality: sortedValidImages[0].quality,
-                  sessionId: sessionId,
-                  imageIndex: 0,
-                  claudeResponse: sortedValidImages[0].claudeResponse,
-                  AdCreativeA: sortedValidImages[0].AdCreativeA,
-                  AdCreativeB: sortedValidImages[0].AdCreativeB,
-                  targeting: sortedValidImages[0].targeting,
-                  imageName: sortedValidImages[0].imageName,
-                };
-
-                // Remove any existing images from this session
-                const filteredImages = prevImages.filter(
-                  (img) => img.sessionId !== sessionId
-                );
-
-                // Separate loading items from regular items
-                const loadingItems = filteredImages.filter((img) =>
-                  loadingSessions.some(
-                    (session) => session.sessionId === img.sessionId
-                  )
-                );
-
-                const regularItems = filteredImages.filter(
-                  (img) =>
-                    !loadingSessions.some(
-                      (session) => session.sessionId === img.sessionId
-                    )
-                );
-
-                // Add new image and limit to gridItemCount
-                const updatedImages = [
-                  ...loadingItems,
-                  firstImageObj,
-                  ...regularItems,
-                ].slice(0, gridItemCount);
-
-                return updatedImages;
-              });
-            }
-            removeLoadingSession(sessionId);
-
-            showNotification(
-              "success",
-              "Images Generated!",
-              `Successfully generated ${sortedValidImages.length} image${
-                sortedValidImages.length > 1 ? "s" : ""
-              }`
-            );
-          } else if (pollAttempts >= maxPollAttempts) {
-            // Timeout after max attempts
-            clearInterval(generateImagePool);
-
-            showNotification(
-              "error",
-              "Generation Timeout!",
-              "Image generation took too long. Please try again."
-            );
-
-            removeLoadingSession(sessionId);
-          } else {
-            // Results not ready yet, continue polling
-            console.log("⏳ Results not ready yet, continuing polling...");
-          }
-        } catch (error) {
-          clearInterval(generateImagePool);
-
-          showNotification(
-            "error",
-            "Generation Failed!",
-            "An error occurred while generating images. Please try again."
-          );
-
-          removeLoadingSession(sessionId);
-        }
+      console.log("🔄 Step 1: Optimizing prompt with instructions...");
+      
+      // Show optimizing status
+      const optimizingSession = {
+        sessionId: `optimizing-${sessionId}`,
+        prompt: "Optimizing your prompt...",
+        category: selectedCategory.category,
+        subCategory: selectedCategory.subcategory,
+        startTime: Date.now(),
+        jobId: null,
+        countdown: 0,
       };
+      setLoadingSessions((prev) => [optimizingSession, ...prev]);
+      startSessionCountdown(optimizingSession.sessionId);
 
-      // Start polling every 5 seconds
-      generateImagePool = setInterval(pollForResults, 5000);
-
-      // Call immediately for first check
-      pollForResults();
-    } catch (error: any) {
-      // Remove loading session on error
-      setLoadingSessions((prev) =>
-        prev.filter((session) => session.sessionId !== sessionId)
-      );
-
-      // Show error notification
-      showNotification(
-        "error",
-        "Submission Failed!",
-        error.message || "Failed to start image generation. Please try again."
-      );
-    }
-  };
-
-  const handleOptimizePrompt = async () => {
-    if (!promptText.trim()) {
-      showNotification(
-        "warning",
-        "No Prompt",
-        "Please enter a prompt to optimize"
-      );
-      return;
-    }
-
-    setIsOptimizing(true);
-
-    try {
-      console.log("🔄 Optimizing prompt with instructions...");
-
-      const response = await fetch(
+      const optimizeResponse = await fetch(
         "https://n8n.misencorp.com/webhook/optimize-prompt",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: promptText.trim(),
-            // ✅ GỬI THÊM INSTRUCTIONS DATA
+            prompt: finalPrompt,
             instructions: {
               category: "instructions",
               subcategory: instructionsSubcategory || "",
@@ -1214,41 +845,418 @@ export const ElementDefaultScreen = (): JSX.Element => {
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`API failed: ${response.status}`);
+      if (!optimizeResponse.ok) {
+        throw new Error(`Optimize API failed: ${optimizeResponse.status}`);
       }
 
-      const data = await response.json();
-      console.log("✅ Optimize response:", data);
+      const optimizeData = await optimizeResponse.json();
 
-      if (data && data[0] && data[0].message && data[0].message.content) {
-        const optimizedContent = data[0].message.content;
-
+      if (optimizeData && optimizeData[0]?.message?.content) {
+        finalPrompt = optimizeData[0].message.content;
+        console.log("✅ Step 1 Complete: Prompt optimized");
+        
+        // ✅ Update textarea với optimized prompt và GIỮ LẠI
         if (textareaRef.current) {
-          textareaRef.current.value = optimizedContent;
-          setPromptText(optimizedContent);
+          textareaRef.current.value = finalPrompt;
+          setPromptText(finalPrompt);
           adjustHeight();
         }
 
         showNotification(
           "success",
           "Prompt Optimized!",
-          "Your prompt has been improved"
+          "Your prompt has been improved and will be used for generation."
         );
-      } else {
-        throw new Error("Invalid response format");
       }
-    } catch (error: any) {
-      console.error("Error optimizing prompt:", error);
+
+      // Remove optimizing session
+      removeLoadingSession(optimizingSession.sessionId);
+
+    } catch (error) {
+      console.error("⚠️ Optimize failed, using original prompt:", error);
+      removeLoadingSession(`optimizing-${sessionId}`);
+      
       showNotification(
-        "error",
-        "Optimization Failed",
-        error.message || "Please try again"
+        "warning",
+        "Optimization Skipped",
+        "Using your original prompt to generate images."
       );
-    } finally {
-      setIsOptimizing(false);
     }
+  }
+
+  // ✅ BƯỚC 2: Generate image với finalPrompt
+  console.log("🚀 Step 2: Generating images with prompt:", finalPrompt);
+
+  const currentPromptText = finalPrompt;
+
+  // Create loading session
+  const newLoadingSession = {
+    sessionId,
+    prompt: currentPromptText,
+    category: selectedCategory.category,
+    subCategory: selectedCategory.subcategory,
+    startTime: Date.now(),
+    jobId: null,
+    countdown: 0,
   };
+
+  setLoadingSessions((prev) => [newLoadingSession, ...prev]);
+  setCurrentLoadingPrompt(currentPromptText);
+  startSessionCountdown(sessionId);
+
+  // ✅ CHỈ CLEAR input khi KHÔNG có instructionsSubcategory
+  if (shouldClearInput) {
+    console.log("🗑️ Clearing input (no instructions subcategory)");
+    setPromptText("");
+    if (textareaRef.current) {
+      textareaRef.current.value = "";
+      textareaRef.current.style.height = "auto";
+      adjustHeight();
+    }
+  } else {
+    console.log("📌 Keeping optimized prompt in input");
+  }
+
+  try {
+    let uploadedImageUrls: string[] = [];
+
+    if (uploadedImages.length > 0) {
+      console.log(
+        `📤 Uploading ${uploadedImages.length} reference images...`
+      );
+
+      const uploadPromises = uploadedImages.map(
+        async (base64Image, index) => {
+          try {
+            const blob = await fetch(base64Image).then((r) => r.blob());
+
+            const formData = new FormData();
+            formData.append("filename", blob, `reference-image-${index}.png`);
+
+            const response = await fetch(
+              "https://prod.api.market/api/v1/magicapi/image-upload/upload",
+              {
+                method: "POST",
+                headers: {
+                  "x-magicapi-key": "cmfxojr010001jo04ld19izzv",
+                },
+                body: formData,
+              }
+            );
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(
+                `❌ Upload failed for image ${index}:`,
+                errorText
+              );
+              return null;
+            }
+
+            const data = await response.json();
+            return data.url;
+          } catch (error) {
+            return null;
+          }
+        }
+      );
+
+      const results = await Promise.all(uploadPromises);
+      uploadedImageUrls = results.filter((url) => url !== null) as string[];
+
+      if (uploadedImageUrls.length === 0) {
+        throw new Error("All image uploads failed");
+      }
+    }
+
+    const instructionResponse = await fetch("/api/instructions/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: selectedCategory.category,
+        subcategory: selectedCategory.subcategory || "",
+        selectedModel: selectedApis[0] || "claude-sonnet",
+      }),
+    });
+
+    if (!instructionResponse.ok) {
+      throw new Error("Failed to load instructions");
+    }
+
+    const instructionData = await instructionResponse.json();
+
+    const generateResponse = await fetch(
+      "https://n8n.misencorp.com/webhook/ms-image-generator",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          userPrompt: currentPromptText,
+          userPromptInstruction: parseContent(instructionData.user_prompt).promptContent,
+          systemPromptInstruction: parseContent(instructionData.system_prompt).instructions,
+          uploadedImageUrls,
+          numberOfImages,
+          imageSizesString: generateImageSizesString(),
+          selectedQuality,
+          selectedCategory: {
+            category: selectedCategory.category,
+            subcategory: selectedCategory.subcategory || "",
+          },
+          selectedInstructions: {
+            category: "instructions",
+            subcategory: instructionsSubcategory || "",
+            user_prompt: instructionsApiData.user_prompt,
+            system_prompt: instructionsApiData.system_prompt,
+          },
+          selectedApis,
+          selectedAspectRatio,
+          userRole: currentUser?.role || 'content',
+        }),
+      }
+    );
+
+    if (!generateResponse.ok) {
+      throw new Error(`N8N webhook failed: ${generateResponse.status}`);
+    }
+
+    const generateData = await generateResponse.json();
+    const jobId = generateData[0]?.job_id;
+
+    if (!jobId) {
+      throw new Error("No jobId received from N8N");
+    }
+
+    setLoadingSessions((prev) =>
+      prev.map((session) =>
+        session.sessionId === sessionId ? { ...session, jobId } : session
+      )
+    );
+
+    let pollAttempts = 0;
+    const maxPollAttempts = 120;
+    let generateImagePool: NodeJS.Timeout;
+
+    const pollForResults = async () => {
+      try {
+        pollAttempts++;
+
+        const response = await fetch(
+          `https://n8n.misencorp.com/webhook/get_image_queue?job_id=${jobId}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Poll request failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data[0].job_id) {
+          clearInterval(generateImagePool);
+          removeLoadingSession(sessionId);
+          showNotification(
+            "error",
+            "Server Busy!",
+            "The server is currently busy. Please try again in a few moments."
+          );
+          return;
+        }
+
+        if (data && data[0] && data[0].data != null) {
+          clearInterval(generateImagePool);
+
+          const imagesData = data[0].data;
+
+          let allImages: any[] = [];
+
+          if (Array.isArray(imagesData)) {
+            allImages = imagesData.flatMap((platformData: any) =>
+              (platformData.images || []).map((img: any) => ({
+                imageUrl: img.url || "",
+                prompt: img.prompt || currentPromptText,
+                category: selectedCategory.category,
+                subCategory: selectedCategory.subcategory || "",
+                size: img.size || "Square",
+                quality: selectedQuality,
+                timestamp: new Date().toISOString(),
+                claudeResponse: img.claudeResponse || "",
+                AdCreativeA: img.AdCreativeA || "",
+                AdCreativeB: img.AdCreativeB || "",
+                targeting: img.targeting || "",
+                imageName: img.imageName || "",
+              }))
+            );
+          } else if (imagesData && typeof imagesData === "object") {
+            const urls = Array.isArray(imagesData.url) ? imagesData.url : [];
+            const prompts = Array.isArray(imagesData.prompt)
+              ? imagesData.prompt
+              : [];
+            const maxLength = Math.max(urls.length, prompts.length);
+
+            allImages = Array.from({ length: maxLength }, (_, index) => ({
+              imageUrl: urls[index] || "",
+              prompt: prompts[index] || currentPromptText,
+              category: imagesData.category || selectedCategory.category,
+              subCategory:
+                imagesData.sub_category || selectedCategory.subcategory || "",
+              platform: imagesData.platform || "",
+              size: "Square",
+              quality: selectedQuality,
+              timestamp: new Date().toISOString(),
+              claudeResponse: "",
+              AdCreativeA: "",
+              AdCreativeB: "",
+              targeting: "",
+              imageName: "",
+            }));
+          } else {
+            console.error("❌ Unknown data format:", imagesData);
+          }
+
+          const validImages = allImages.filter(
+            (img: any) =>
+              img.imageUrl &&
+              !img.imageUrl.includes(
+                "PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIueG1sbnM"
+              ) &&
+              img.imageUrl !==
+                "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM5OTkiPkVycm9yPC90ZXh0Pjwvc3ZnPg=="
+          );
+
+          if (validImages.length === 0) {
+            showNotification(
+              "error",
+              "Generation Failed!",
+              "Failed to process generated images. Please try again."
+            );
+            removeLoadingSession(sessionId);
+            return;
+          }
+
+          const sortedValidImages = sortImagesByPromptGroups(validImages);
+          const newSession = {
+            sessionId: sessionId,
+            clickedAt: Date.now(),
+            currentImageIndex: 0,
+            describe: currentPromptText,
+            category: selectedCategory.category,
+            subCategory: selectedCategory.subcategory || "",
+            platform: sortedValidImages[0]?.platform || "",
+            list: sortedValidImages,
+          };
+
+          setSelectedSessions((prevSessions) => {
+            const existingIndex = prevSessions.findIndex(
+              (s) => s.sessionId === sessionId
+            );
+
+            if (existingIndex !== -1) {
+              const updatedSessions = [...prevSessions];
+              updatedSessions[existingIndex] = newSession;
+              return updatedSessions;
+            }
+
+            return [newSession, ...prevSessions];
+          });
+
+          if (sortedValidImages.length > 0) {
+            setSelectedImages((prevImages) => {
+              const firstImageObj = {
+                imageUrl: sortedValidImages[0].imageUrl,
+                clickedAt: Date.now(),
+                prompt: sortedValidImages[0].prompt,
+                category: sortedValidImages[0].category,
+                subCategory: sortedValidImages[0].subCategory,
+                size: sortedValidImages[0].size,
+                quality: sortedValidImages[0].quality,
+                sessionId: sessionId,
+                imageIndex: 0,
+                claudeResponse: sortedValidImages[0].claudeResponse,
+                AdCreativeA: sortedValidImages[0].AdCreativeA,
+                AdCreativeB: sortedValidImages[0].AdCreativeB,
+                targeting: sortedValidImages[0].targeting,
+                imageName: sortedValidImages[0].imageName,
+              };
+
+              const filteredImages = prevImages.filter(
+                (img) => img.sessionId !== sessionId
+              );
+
+              const loadingItems = filteredImages.filter((img) =>
+                loadingSessions.some(
+                  (session) => session.sessionId === img.sessionId
+                )
+              );
+
+              const regularItems = filteredImages.filter(
+                (img) =>
+                  !loadingSessions.some(
+                    (session) => session.sessionId === img.sessionId
+                  )
+              );
+
+              const updatedImages = [
+                ...loadingItems,
+                firstImageObj,
+                ...regularItems,
+              ].slice(0, gridItemCount);
+
+              return updatedImages;
+            });
+          }
+          removeLoadingSession(sessionId);
+
+          showNotification(
+            "success",
+            "Images Generated!",
+            `Successfully generated ${sortedValidImages.length} image${
+              sortedValidImages.length > 1 ? "s" : ""
+            }`
+          );
+        } else if (pollAttempts >= maxPollAttempts) {
+          clearInterval(generateImagePool);
+
+          showNotification(
+            "error",
+            "Generation Timeout!",
+            "Image generation took too long. Please try again."
+          );
+
+          removeLoadingSession(sessionId);
+        } else {
+          console.log("⏳ Results not ready yet, continuing polling...");
+        }
+      } catch (error) {
+        clearInterval(generateImagePool);
+
+        showNotification(
+          "error",
+          "Generation Failed!",
+          "An error occurred while generating images. Please try again."
+        );
+
+        removeLoadingSession(sessionId);
+      }
+    };
+
+    generateImagePool = setInterval(pollForResults, 5000);
+    pollForResults();
+  } catch (error: any) {
+    setLoadingSessions((prev) =>
+      prev.filter((session) => session.sessionId !== sessionId)
+    );
+
+    showNotification(
+      "error",
+      "Submission Failed!",
+      error.message || "Failed to start image generation. Please try again."
+    );
+  }
+};
 
   // ✅ CODE MỚI
   useEffect(() => {
@@ -2413,6 +2421,20 @@ export const ElementDefaultScreen = (): JSX.Element => {
             </div>
           </div>
 
+            {showRegisterModal && currentUser?.role === 'Admin' && (
+              <RegisterModal
+                onClose={() => setShowRegisterModal(false)}
+                onSuccess={() => {
+                  setShowRegisterModal(false);
+                  showNotification(
+                    "success",
+                    "User Created!",
+                    "New user has been registered successfully."
+                  );
+                }}
+              />
+            )}
+
           <div
             className={`container-wrapper ${
               showHistorySidebar ? "shifted" : ""
@@ -3035,42 +3057,6 @@ export const ElementDefaultScreen = (): JSX.Element => {
                       </div>
 
                       <div className="flex gap-2">
-                      {instructionsSubcategory && (
-                        <div
-                          className={`button-7 ${
-                            promptText.trim() && !isOptimizing ? "active" : ""
-                          }`}
-                          onClick={
-                            promptText.trim() && !isOptimizing
-                              ? handleOptimizePrompt
-                              : undefined
-                          }
-                          style={{
-                            cursor:
-                              !promptText.trim() || isOptimizing
-                                ? "not-allowed"
-                                : "pointer",
-                            opacity:
-                              !promptText.trim() || isOptimizing ? 0.7 : 1,
-                          }}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="20"
-                            height="20"
-                            fill="#fff"
-                            viewBox="0 0 24 24"
-                            style={{
-                              animation: isOptimizing
-                                ? "spin 1s linear infinite"
-                                : "none",
-                            }}
-                          >
-                            <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 22l-.394-1.433a2.25 2.25 0 0 0-1.423-1.423L13.25 18.75l1.433-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.433.394 1.433a2.25 2.25 0 0 0 1.423 1.423l1.433.394-1.433.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-                          </svg>
-                        </div>
-                      )}
-
                       <div
                         className={`button-7 ${
                           promptText.trim() ? "active" : ""
@@ -3116,6 +3102,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                     )
                   );
                 }}
+                currentUser={currentUser} 
               />
             </div>
           </div>
@@ -3229,6 +3216,17 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
                     <div className="dropdown-menu-items">
                       <button className="dropdown-item">Your profile</button>
+                      {currentUser?.role === 'Admin' && (
+                        <button 
+                          className="dropdown-item"
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            setShowRegisterModal(true);
+                          }}
+                        >
+                          Register User
+                        </button>
+                      )}
                       <button className="dropdown-item">
                         Terms & policies
                       </button>

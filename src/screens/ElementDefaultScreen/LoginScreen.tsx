@@ -248,22 +248,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onShowRegiste
               )}
             </button>
 
-            {/* Register Link */}
-            {onShowRegister && (
-              <button
-                type="button"
-                onClick={onShowRegister}
-                className="text-sm text-blue-600 hover:text-blue-700 mt-4"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "8px 0"
-                }}
-              >
-                Don't have an account? Register here
-              </button>
-            )}
           </div>
         </form>
       </div>
