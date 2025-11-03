@@ -2857,11 +2857,6 @@ ${conflictData.suggestions.map((s: string) => `• ${s}`).join("\n")}
                             sub.allowedRoles?.includes(selectedRole);
                           const isOwner = sub.createdBy?.role === selectedRole;
 
-                          // ✅ Don't show Admin-owned subcategories in role management
-                          if (sub.createdBy?.role === "Admin") {
-                            return null;
-                          }
-
                           return (
                             <label
                               key={sub.id}
