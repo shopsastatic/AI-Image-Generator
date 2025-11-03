@@ -1067,6 +1067,7 @@ app.get('/api/history', requireAuth, async (req, res) => {
     
     let data = await n8nResponse.json();
     
+    console.log(currentUser)
     // Filter theo role
     if (currentUser.role === 'Admin') {
       // Admin: filter theo roleFilter (multi-select)
@@ -1075,15 +1076,27 @@ app.get('/api/history', requireAuth, async (req, res) => {
         
         if (selectedRoles.length > 0) {
           data = data.filter(item => {
-            const itemRole = item.data?.role;
+            const itemRole = item.role;  // ✅ Đổi từ item.data?.role thành item.role
             return itemRole && selectedRoles.includes(itemRole);
           });
         }
       }
+      console.log(456)
       // Không có filter = không show gì (để admin chọn)
     } else {
-      // User thường: chỉ show ảnh của role mình (phải có giá trị role)
-      data = data.filter(item => item.data?.role === currentUser.role);
+      console.log('🔍 User role:', currentUser.role);
+      console.log('🔍 First item role:', data[0]?.role); // Đổi từ data.role thành item.role
+      
+      // Sửa từ item.data?.role thành item.role
+      data = data.filter(item => {
+        const itemRole = item.role?.trim();  // ✅ Đổi thành item.role
+        const userRole = currentUser.role?.trim();
+        
+        console.log(`Comparing: "${itemRole}" == "${userRole}"`);
+        return itemRole && userRole && itemRole === userRole;
+      });
+      
+      console.log(`✅ Filtered history: ${data.length} items`);
     }
     
     console.log(`✅ Filtered history: ${data.length} items`);
