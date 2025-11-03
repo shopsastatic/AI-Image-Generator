@@ -2967,7 +2967,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                         ref={textareaRef}
                         className="input-prompt"
                         placeholder="Describe what you want to see..."
-                        maxLength={3000}
+                        maxLength={2000}
                         onInput={(e) =>
                           setPromptText((e.target as HTMLTextAreaElement).value)
                         }
@@ -2984,7 +2984,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
                           color: promptText.length > 2800 ? '#ef4444' : '#999',
                           pointerEvents: 'none'
                         }}>
-                          {promptText.length}/3000
+                          {promptText.length}/2000
                         </div>
                       )}
                     </div>
