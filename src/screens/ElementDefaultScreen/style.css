@@ -3316,3 +3316,40 @@ tbody tr.dragging {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+.button-enhance {
+  position: absolute;
+  right: 40px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #666;
+}
+
+.button-enhance:hover {
+  color: #1877f2;
+  transform: scale(1.1);
+}
+
+.button-enhance.enhanced {
+  color: #486de1;
+}
+
+.button-enhance.enhanced:hover {
+  color: #385cca;
+}
+
+/* Loading state */
+.button-enhance.enhancing {
+  animation: spin 1s linear infinite;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

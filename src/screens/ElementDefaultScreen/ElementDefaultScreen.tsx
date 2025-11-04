@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import "./default.css";
 import "./style.css";
@@ -7,6 +7,7 @@ import ImageInfoDropdown from "./ImageInfoDropdown";
 import ImageSizeSelector from "./ImageSizeSelector";
 import { historyService } from "./historyService";
 import RegisterModal from "./RegisterModal";
+
 
 
 interface LoadingSession {
@@ -57,7 +58,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const [instructionsContent, setInstructionsContent] = useState("");
 
-  const [numberOfImages, setNumberOfImages] = useState<number>(1);
+  const [numberOfImages, setNumberOfImages] = useState<number>(5);
   const [selectedQuality, setSelectedQuality] = useState<string>("Low");
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
@@ -79,6 +80,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
   const [loadingSessions, setLoadingSessions] = useState<LoadingSession[]>([]);
 
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+  const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
 
   const [instructionsSubcategory, setInstructionsSubcategory] =
     useState<string>(""); // ✅ THÊM DÒNG NÀY
@@ -148,6 +150,125 @@ export const ElementDefaultScreen = (): JSX.Element => {
       setInstructionsSubcategory(subcategory);
     }
   };
+
+const handleEnhanceImage = async () => {
+  if (isEnhancing || currentViewImageIndex === null) return;
+
+  setIsEnhancing(true);
+
+  try {
+    const currentImage = selectedImages[currentViewImageIndex];
+    let imageUrl = currentImage?.imageUrl || "";
+    let sessionId = currentSessionId || currentImage?.sessionId || "";
+    let imageIndex = 0;
+
+    if (currentSessionId) {
+      const session = selectedSessions.find(
+        (s) => s.sessionId === currentSessionId
+      );
+      if (session && session.list[currentSessionImageIndex]) {
+        imageUrl = session.list[currentSessionImageIndex].imageUrl;
+        imageIndex = currentSessionImageIndex;
+      }
+    } else if (currentImage?.imageIndex !== undefined) {
+      imageIndex = currentImage.imageIndex;
+    }
+
+    if (!imageUrl) {
+      throw new Error("No image URL found");
+    }
+
+    console.log("📤 Sending enhance request:", { 
+      imageUrl, 
+      sessionId, 
+      imageIndex 
+    });
+
+    const response = await fetch("https://n8n.misencorp.com/webhook/enhance-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imageUrl: imageUrl,
+        sessionId: sessionId,
+        imageIndex: imageIndex,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Enhance failed: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    console.log("✅ Enhance response:", responseData);
+
+    // ✅ Parse response - n8n trả về array
+    if (!responseData || !Array.isArray(responseData) || responseData.length === 0) {
+      throw new Error("Invalid response format");
+    }
+
+    const updatedSession = responseData[0];
+    
+    // Validate structure
+    if (!updatedSession.data || !updatedSession.data.url || !Array.isArray(updatedSession.data.url)) {
+      throw new Error("Invalid data structure in response");
+    }
+
+    // Lấy URL mới tại vị trí imageIndex
+    const enhancedUrl = updatedSession.data.url[imageIndex];
+    console.log("🎨 Enhanced URL at index", imageIndex, ":", enhancedUrl);
+
+    // ✅ Update selectedSessions - thay ảnh cũ bằng ảnh mới
+    setSelectedSessions((prevSessions) => 
+      prevSessions.map((session) => {
+        if (session.sessionId === sessionId) {
+          const updatedList = [...session.list];
+          if (updatedList[imageIndex]) {
+            updatedList[imageIndex] = {
+              ...updatedList[imageIndex],
+              imageUrl: enhancedUrl, // ✅ Thay URL mới
+            };
+          }
+          return {
+            ...session,
+            list: updatedList,
+          };
+        }
+        return session;
+      })
+    );
+
+    // ✅ Update selectedImages - nếu ảnh đang được view thì cũng update
+    setSelectedImages((prevImages) =>
+      prevImages.map((img) => {
+        if (
+          img.sessionId === sessionId && 
+          img.imageIndex === imageIndex
+        ) {
+          return {
+            ...img,
+            imageUrl: enhancedUrl, // ✅ Thay URL mới
+          };
+        }
+        return img;
+      })
+    );
+
+    showNotification(
+      "success",
+      "Image Enhanced!",
+      "Your image has been enhanced successfully."
+    );
+  } catch (error) {
+    console.error("❌ Enhance error:", error);
+    showNotification(
+      "error",
+      "Enhancement Failed!",
+      error.message || "Failed to enhance image. Please try again."
+    );
+  } finally {
+    setIsEnhancing(false);
+  }
+};
 
   const handleNavigateToProjectManagement = () => {
     navigate("/project-management");
@@ -1782,20 +1903,47 @@ export const ElementDefaultScreen = (): JSX.Element => {
     }
   };
 
-  const downloadImage = async (
-    imageUrl,
-    claudeResponse,
-    imageIndex,
-    imageName
-  ) => {
-    try {
-      let fileName = imageName?.trim()
-        ? cleanFileName(imageName)
-        : extractImageNameFromClaudeResponse(claudeResponse, imageIndex || 0);
-
-      if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        fileName = `${fileName}.png`;
+  const generateRandomFilename = (): string => {
+    // Generate random hex string (a-f, 0-9)
+    const randomHex = (length: number): string => {
+      let result = '';
+      const characters = '0123456789abcdef';
+      for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
       }
+      return result;
+    };
+
+    // Format: 6-4-4-4-6 (e.g., 1a91a4-fc96-4d75-8d91-7a0fc2)
+    const segments = [
+      randomHex(6),
+      randomHex(4),
+      randomHex(4),
+      randomHex(4),
+      randomHex(6)
+    ];
+
+    return segments.join('-');
+  };
+
+  const downloadImage = async (imageUrl, claudeResponse, imageIndex, imageName) => {
+    try {
+      // ✅ Luôn dùng tên random thay vì parse từ claudeResponse
+      const randomName = generateRandomFilename();
+      
+      // Detect file extension from URL
+      let extension = '.png'; // default
+      if (imageUrl.includes('.webp')) {
+        extension = '.webp';
+      } else if (imageUrl.includes('.jpg') || imageUrl.includes('.jpeg')) {
+        extension = '.jpg';
+      } else if (imageUrl.includes('.gif')) {
+        extension = '.gif';
+      }
+
+      const fileName = `${randomName}${extension}`;
+      
+      console.log('📥 Downloading with random name:', fileName);
 
       // Base64 - direct download
       if (imageUrl.startsWith("data:")) {
@@ -1826,9 +1974,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
       } catch (directError) {
         // Fallback to proxy
         console.log("Direct fetch failed, trying proxy...");
-        const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(
-          imageUrl
-        )}`;
+        const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(imageUrl)}`;
         const proxyResponse = await fetch(proxyUrl);
 
         if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
@@ -2392,6 +2538,29 @@ export const ElementDefaultScreen = (): JSX.Element => {
       </div>
     );
   };
+
+  // ✅ Calculate isEnhanced dynamically when image changes
+  const isCurrentImageEnhanced = useMemo(() => {
+    if (currentViewImageIndex === null) return false;
+    
+    let imageUrl = "";
+    
+    if (currentSessionId) {
+      const session = selectedSessions.find(
+        (s) => s.sessionId === currentSessionId
+      );
+      if (session && session.list[currentSessionImageIndex]) {
+        imageUrl = session.list[currentSessionImageIndex].imageUrl || "";
+      }
+    } else if (selectedImages[currentViewImageIndex]) {
+      imageUrl = selectedImages[currentViewImageIndex].imageUrl || "";
+    }
+    
+    const isEnhanced = imageUrl.includes("img.artguru.ai");
+    console.log("🔍 Check enhanced:", { imageUrl, isEnhanced });
+    
+    return isEnhanced;
+  }, [currentSessionId, currentSessionImageIndex, currentViewImageIndex, selectedSessions, selectedImages]);
 
   return (
     <div
@@ -3425,6 +3594,23 @@ export const ElementDefaultScreen = (): JSX.Element => {
                             ) : null;
                           })()}
                       </div>
+
+                      <svg 
+                        className={`button-enhance ${isEnhancing ? 'enhancing' : ''} ${isCurrentImageEnhanced ? 'enhanced' : ''}`}
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="1em"
+                        height="1em"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                        onClick={handleEnhanceImage}
+                        style={{ 
+                          cursor: isEnhancing ? 'not-allowed' : 'pointer',
+                          pointerEvents: isEnhancing ? 'none' : 'auto'
+                        }}
+                        title={isCurrentImageEnhanced ? "Already enhanced" : "Enhance image"}
+                      >
+                        <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 22.5l-.394-1.933a2.25 2.25 0 00-1.423-1.423L12.75 18.75l1.933-.394a2.25 2.25 0 001.423-1.423l.394-1.933.394 1.933a2.25 2.25 0 001.423 1.423l1.933.394-1.933.394a2.25 2.25 0 00-1.423 1.423z"/>
+                      </svg>
 
                       <button
                         className="image-viewer-download"
