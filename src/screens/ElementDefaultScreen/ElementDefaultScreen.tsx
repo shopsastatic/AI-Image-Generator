@@ -1929,73 +1929,136 @@ const handleEnhanceImage = async () => {
   };
 
   const downloadImage = async (imageUrl, claudeResponse = "", imageIndex = "", imageName = "") => {
-    try {
-      // ✅ Luôn dùng tên random thay vì parse từ claudeResponse
-      const randomName = generateRandomFilename();
-      
-      // Detect file extension from URL
-      let extension = '.png'; // default
-      if (imageUrl.includes('.webp')) {
-        extension = '.png';
-      } else if (imageUrl.includes('.jpg') || imageUrl.includes('.jpeg')) {
-        extension = '.jpg';
-      } else if (imageUrl.includes('.gif')) {
-        extension = '.gif';
-      }
+  try {
+    const randomName = generateRandomFilename();
+    
+    // Detect if image is webp
+    const isWebp = imageUrl.includes('.webp') || imageUrl.includes('artguru');
+    
+    // Always use PNG extension for webp images
+    const extension = isWebp ? '.png' : 
+                     imageUrl.includes('.jpg') || imageUrl.includes('.jpeg') ? '.jpg' : 
+                     imageUrl.includes('.gif') ? '.gif' : '.png';
+    
+    const fileName = `${randomName}${extension}`;
+    
+    console.log('📥 Downloading:', { fileName, isWebp, imageUrl });
 
-      const fileName = `${randomName}${extension}`;
-      
-      console.log('📥 Downloading with random name:', fileName);
-
-      // Base64 - direct download
-      if (imageUrl.startsWith("data:")) {
-        const link = document.createElement("a");
-        link.href = imageUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        return;
-      }
-
-      // Try direct fetch first
-      try {
-        const response = await fetch(imageUrl, { mode: "cors" });
-        if (!response.ok) throw new Error("Direct fetch failed");
-
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
-        return;
-      } catch (directError) {
-        // Fallback to proxy
-        console.log("Direct fetch failed, trying proxy...");
-        const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(imageUrl)}`;
-        const proxyResponse = await fetch(proxyUrl);
-
-        if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
-
-        const blob = await proxyResponse.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
-      }
-    } catch (error) {
-      console.error("All download methods failed:", error);
-      window.open(imageUrl, "_blank"); // Last resort
+    // Base64 - direct download
+    if (imageUrl.startsWith("data:")) {
+      const link = document.createElement("a");
+      link.href = imageUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
     }
-  };
+
+    // ✅ NEW: Convert webp to PNG using canvas
+    if (isWebp) {
+      try {
+        console.log('🔄 Converting webp to PNG...');
+        const pngBlob = await convertWebpToPng(imageUrl);
+        const blobUrl = URL.createObjectURL(pngBlob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+        console.log('✅ Webp converted to PNG successfully');
+        return;
+      } catch (conversionError) {
+        console.error('❌ Webp conversion failed, trying fallback:', conversionError);
+        // Fallback to proxy if conversion fails
+      }
+    }
+
+    // Try direct fetch for non-webp images
+    try {
+      const response = await fetch(imageUrl, { mode: "cors" });
+      if (!response.ok) throw new Error("Direct fetch failed");
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      return;
+    } catch (directError) {
+      // Fallback to proxy
+      console.log("Direct fetch failed, trying proxy...");
+      const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(imageUrl)}`;
+      const proxyResponse = await fetch(proxyUrl);
+
+      if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
+
+      const blob = await proxyResponse.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    }
+  } catch (error) {
+    console.error("All download methods failed:", error);
+    window.open(imageUrl, "_blank");
+  }
+};
+
+// ✅ ADD THIS NEW FUNCTION
+const convertWebpToPng = async (imageUrl) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      try {
+        // Create canvas with image dimensions
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        
+        // Draw image on canvas
+        ctx.drawImage(img, 0, 0);
+        
+        // Convert to PNG blob with maximum quality
+        canvas.toBlob((blob) => {
+          if (blob) {
+            console.log(`✅ Converted to PNG: ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to convert to PNG blob'));
+          }
+        }, 'image/png', 1.0); // 1.0 = maximum quality
+      } catch (error) {
+        reject(error);
+      }
+    };
+    
+    img.onerror = (error) => {
+      reject(new Error('Failed to load image for conversion'));
+    };
+    
+    // Handle CORS issues
+    img.src = imageUrl;
+  });
+};
 
   const toggleSuggestions = () => {
     setShowSuggestions(!showSuggestions);
