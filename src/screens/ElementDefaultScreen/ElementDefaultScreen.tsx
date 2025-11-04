@@ -217,6 +217,8 @@ const handleEnhanceImage = async () => {
     const enhancedUrl = updatedSession.data.url[imageIndex];
     console.log("🎨 Enhanced URL at index", imageIndex, ":", enhancedUrl);
 
+    downloadImage(enhancedUrl)
+
     // ✅ Update selectedSessions - thay ảnh cũ bằng ảnh mới
     setSelectedSessions((prevSessions) => 
       prevSessions.map((session) => {
@@ -1926,7 +1928,7 @@ const handleEnhanceImage = async () => {
     return segments.join('-');
   };
 
-  const downloadImage = async (imageUrl, claudeResponse, imageIndex, imageName) => {
+  const downloadImage = async (imageUrl, claudeResponse = "", imageIndex = "", imageName = "") => {
     try {
       // ✅ Luôn dùng tên random thay vì parse từ claudeResponse
       const randomName = generateRandomFilename();
@@ -1934,7 +1936,7 @@ const handleEnhanceImage = async () => {
       // Detect file extension from URL
       let extension = '.png'; // default
       if (imageUrl.includes('.webp')) {
-        extension = '.webp';
+        extension = '.png';
       } else if (imageUrl.includes('.jpg') || imageUrl.includes('.jpeg')) {
         extension = '.jpg';
       } else if (imageUrl.includes('.gif')) {
