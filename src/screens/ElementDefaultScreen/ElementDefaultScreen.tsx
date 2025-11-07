@@ -1959,7 +1959,9 @@ const handleEnhanceImage = async () => {
     if (isWebp) {
       try {
         console.log('🔄 Converting webp to PNG...');
-        const pngBlob = await convertWebpToPng(imageUrl);
+        const isArtguru = imageUrl.includes('artguru');
+        const scale = isArtguru ? 0.25 : 1; // ✅ Resize to 1/4 if artguru
+        const pngBlob = await convertWebpToPng(imageUrl, scale);
         const blobUrl = URL.createObjectURL(pngBlob);
         const link = document.createElement("a");
         link.href = blobUrl;
@@ -1972,7 +1974,6 @@ const handleEnhanceImage = async () => {
         return;
       } catch (conversionError) {
         console.error('❌ Webp conversion failed, trying fallback:', conversionError);
-        // Fallback to proxy if conversion fails
       }
     }
 
@@ -2016,17 +2017,21 @@ const handleEnhanceImage = async () => {
 };
 
 // ✅ ADD THIS NEW FUNCTION
-const convertWebpToPng = async (imageUrl) => {
+// ✅ ADD scale parameter (default = 1)
+const convertWebpToPng = async (imageUrl, scale = 1) => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     
     img.onload = () => {
       try {
-        // Create canvas with image dimensions
+        const originalWidth = img.naturalWidth || img.width;
+        const originalHeight = img.naturalHeight || img.height;
+        
+        // ✅ Apply scale to dimensions
         const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
+        canvas.width = Math.round(originalWidth * scale);
+        canvas.height = Math.round(originalHeight * scale);
         
         const ctx = canvas.getContext('2d');
         if (!ctx) {
@@ -2034,18 +2039,21 @@ const convertWebpToPng = async (imageUrl) => {
           return;
         }
         
-        // Draw image on canvas
-        ctx.drawImage(img, 0, 0);
+        // ✅ Use high-quality image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         
-        // Convert to PNG blob with maximum quality
+        // Draw scaled image
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
         canvas.toBlob((blob) => {
           if (blob) {
-            console.log(`✅ Converted to PNG: ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
+            console.log(`✅ Converted to PNG (${canvas.width}x${canvas.height}): ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
             resolve(blob);
           } else {
             reject(new Error('Failed to convert to PNG blob'));
           }
-        }, 'image/png', 1.0); // 1.0 = maximum quality
+        }, 'image/png', 1.0);
       } catch (error) {
         reject(error);
       }
@@ -2055,7 +2063,6 @@ const convertWebpToPng = async (imageUrl) => {
       reject(new Error('Failed to load image for conversion'));
     };
     
-    // Handle CORS issues
     img.src = imageUrl;
   });
 };
