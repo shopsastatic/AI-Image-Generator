@@ -90,6 +90,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const errorShownRef = useRef<boolean>(false);
   const listRef = useRef<any>(null);
   const filterRef = useRef<HTMLDivElement>(null);
+  const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
 
   // ✅ FIX: Close dropdown when click outside - ĐẶT NGOÀI loadHistoryData
   useEffect(() => {
@@ -235,6 +236,21 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   );
 
   const handleItemClick = async (item: HistoryItem) => {
+    {loadingItemId && (
+      <div className="history-item-loading-overlay">
+        <div className="loading-spinner-container">
+          <div className="loading-spinner"></div>
+          <p className="loading-text">Loading images...</p>
+        </div>
+      </div>
+    )}
+
+    {/* Existing loading overlay for refresh */}
+    {isLoading && allHistoryItems.length > 0 && (
+      <div className="history-loading-overlay">
+        <div className="loading-spinner"></div>
+      </div>
+    )}
     if (isItemSelected(item)) {
       console.log("🔄 Item already selected, skipping:", item.id);
       return;
@@ -355,53 +371,62 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   };
 
   const Row = useCallback(
-    ({ index, style }: { index: number; style: React.CSSProperties }) => {
-      const ITEMS_PER_ROW = 3;
-      const startIdx = index * ITEMS_PER_ROW;
-      const itemsInRow = allHistoryItems.slice(
-        startIdx,
-        startIdx + ITEMS_PER_ROW
-      );
+  ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const ITEMS_PER_ROW = 3;
+    const startIdx = index * ITEMS_PER_ROW;
+    const itemsInRow = allHistoryItems.slice(
+      startIdx,
+      startIdx + ITEMS_PER_ROW
+    );
 
-      if (itemsInRow.length === 0) return null;
+    if (itemsInRow.length === 0) return null;
 
-      return (
-        <div style={style}>
-          <div className="history-row-grid">
-            {itemsInRow.map((item) => {
-              const isItemDisabled = isItemSelected(item);
+    return (
+      <div style={style}>
+        <div className="history-row-grid">
+          {itemsInRow.map((item) => {
+            const isItemDisabled = isItemSelected(item);
+            const isLoading = loadingItemId === item.id; // ✅ THÊM
 
-              return (
-                <div
-                  key={item.id}
-                  className={`history-item ${isItemDisabled ? "disabled" : ""}`}
-                  onClick={() => !isItemDisabled && handleItemClick(item)}
-                  style={{
-                    opacity: isItemDisabled ? 0.5 : 1,
-                    cursor: isItemDisabled ? "default" : "pointer",
-                  }}
-                >
-                  <SafeHistoryImage
-                    src={item.thumbnail || ""}
-                    alt={item.describe || "Generated image"}
-                    id={item.id}
-                    count={item.imageCount || 0}
-                    category={item.category}
-                    subCategory={item.subCategory}
-                    platform={item.platform}
-                  />
-                  {(item.imageCount || 0) > 1 && (
-                    <div className="history-item-count">{item.imageCount}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+            return (
+              <div
+                key={item.id}
+                className={`history-item ${isItemDisabled ? "disabled" : ""} ${isLoading ? "loading" : ""}`} // ✅ THÊM class
+                onClick={() => !isItemDisabled && !isLoading && handleItemClick(item)} // ✅ THÊM check loading
+                style={{
+                  opacity: isItemDisabled ? 0.5 : 1,
+                  cursor: isItemDisabled || isLoading ? "default" : "pointer",
+                  position: "relative", // ✅ THÊM
+                }}
+              >
+                {/* ✅ THÊM: Loading overlay trên item */}
+                {isLoading && (
+                  <div className="history-item-loading">
+                    <div className="loading-spinner"></div>
+                  </div>
+                )}
+
+                <SafeHistoryImage
+                  src={item.thumbnail || ""}
+                  alt={item.describe || "Generated image"}
+                  id={item.id}
+                  count={item.imageCount || 0}
+                  category={item.category}
+                  subCategory={item.subCategory}
+                  platform={item.platform}
+                />
+                {(item.imageCount || 0) > 1 && (
+                  <div className="history-item-count">{item.imageCount}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      );
-    },
-    [allHistoryItems, isItemSelected, handleItemClick]
-  );
+      </div>
+    );
+  },
+  [allHistoryItems, isItemSelected, handleItemClick, loadingItemId] // ✅ THÊM dependency
+);
 
   const ITEMS_PER_ROW = 3;
   const rowCount = Math.ceil(allHistoryItems.length / ITEMS_PER_ROW);

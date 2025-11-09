@@ -7,7 +7,8 @@ interface N8NHistoryItem {
     sub_category: string;
     prompt: string[];
     describe: string;
-    role?: string; // ✅ THÊM role
+    role?: string;
+    platform?: string | string[];
   };
   created_at: string;
 }
@@ -112,6 +113,14 @@ async fetchHistory(roleFilters?: string[]): Promise<HistorySession[]> {
    */
   private transformN8NData(data: N8NHistoryItem[]): HistorySession[] {
     const sessions = data.map(item => {
+      // ✅ DEBUG: Check platform data
+      console.log('🔍 Platform data:', {
+        sessionId: item.id,
+        platform: item.data.platform,
+        isArray: Array.isArray(item.data.platform),
+        type: typeof item.data.platform
+      });
+
       const images: HistoryImage[] = [];
       
       const urlCount = item.data.url?.length || 0;
@@ -119,12 +128,20 @@ async fetchHistory(roleFilters?: string[]): Promise<HistorySession[]> {
       const maxCount = Math.max(urlCount, promptCount);
 
       for (let i = 0; i < maxCount; i++) {
+        // ✅ SỬA: Xử lý platform - array thì lấy theo index, string thì dùng chung
+        const platformValue = Array.isArray(item.data.platform)
+          ? (item.data.platform[i] || '')
+          : (item.data.platform || '');
+        
+        // ✅ DEBUG: Check từng image
+        console.log(`  Image ${i}: platform="${platformValue}"`);
+          
         images.push({
           imageUrl: item.data.url?.[i] || '',
           prompt: item.data.prompt?.[i] || item.data.describe || '',
           category: item.data.category || '',
           subCategory: item.data.sub_category || '',
-          platform: item.data.platform || '',
+          platform: platformValue,
           timestamp: item.created_at || new Date().toISOString(),
         });
       }
@@ -134,8 +151,10 @@ async fetchHistory(roleFilters?: string[]): Promise<HistorySession[]> {
         describe: item.data.describe || '',
         category: item.data.category || '',
         subCategory: item.data.sub_category || '',
-        platform: item.data.platform || '',
-        role: item.data.role, // ✅ THÊM role
+        platform: Array.isArray(item.data.platform) 
+          ? (item.data.platform[0] || '') 
+          : (item.data.platform || ''),
+        role: item.data.role,
         images: images,
         timestamp: item.created_at || new Date().toISOString(),
         createdAt: item.created_at || new Date().toISOString(),

@@ -404,19 +404,48 @@ const handleEnhanceImage = async () => {
   };
 
   // Format JSON prompt for better readability
-  const formatPrompt = (prompt) => {
-    if (!prompt) return "No prompt available";
-    
-    try {
-      // Try to parse as JSON
-      const parsed = JSON.parse(prompt);
-      // If successful, format with indentation
-      return `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: 'Inter'; font-size: 15px; line-height: 1.5; background: #f7f7f7; padding: 12px; border-radius: 6px; overflow-x: auto;">${JSON.stringify(parsed, null, 2)}</pre>`;
-    } catch (e) {
-      // Not JSON, return as-is
-      return prompt;
+ const formatPrompt = (prompt) => {
+  if (!prompt) return "No prompt available";
+  
+  try {
+    // ✅ XỬ LÝ: JSON bị escape như "{\"Concept\":..."
+    let cleanPrompt = prompt;
+    if (typeof prompt === 'string' && prompt.startsWith('"{')) {
+      // Remove leading/trailing quotes và unescape
+      cleanPrompt = JSON.parse(prompt);
     }
-  };
+    
+    // Try to parse as JSON
+    const parsed = JSON.parse(cleanPrompt);
+    
+    // ✅ FORMAT ĐẸP: JSON với indentation
+    const formatted = JSON.stringify(parsed, null, 2);
+    
+    return `<pre style="
+      white-space: pre-wrap; 
+      word-wrap: break-word; 
+      font-family: 'Consolas', 'Monaco', monospace; 
+      font-size: 14px; 
+      line-height: 1.6; 
+      background: #f8f9fa; 
+      padding: 16px; 
+      border-radius: 8px; 
+      border: 1px solid #e9ecef;
+      overflow-x: auto;
+      color: #495057;
+    ">${formatted}</pre>`;
+  } catch (e) {
+    // Not JSON, return as-is
+    return `<div style="
+      white-space: pre-wrap; 
+      word-wrap: break-word;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      color: #333;
+    ">${prompt}</div>`;
+  }
+};
 
   const generateImageSizesString = (): string => {
     const totalSelected = getTotalSelectedImages();
@@ -1201,6 +1230,7 @@ const handleEnhanceImage = async () => {
               (platformData.images || []).map((img: any) => ({
                 imageUrl: img.url || "",
                 prompt: img.prompt || currentPromptText,
+                platform: img.platform || platformData.platform || "",
                 category: selectedCategory.category,
                 subCategory: selectedCategory.subcategory || "",
                 size: img.size || "Square",
@@ -1226,7 +1256,9 @@ const handleEnhanceImage = async () => {
               category: imagesData.category || selectedCategory.category,
               subCategory:
                 imagesData.sub_category || selectedCategory.subcategory || "",
-              platform: imagesData.platform || "",
+              platform: Array.isArray(imagesData.platform)  // ✅ FIX: Xử lý platform array
+                ? (imagesData.platform[index] || "")
+                : (imagesData.platform || ""),
               size: "Square",
               quality: selectedQuality,
               timestamp: new Date().toISOString(),
@@ -1628,15 +1660,15 @@ const handleEnhanceImage = async () => {
       clickedAt: Date.now(),
       currentImageIndex: 0,
       describe: item.describe || "Image session",
-      category: item.category || "", // ✅ THÊM category
-      subCategory: item.subCategory || "", // ✅ THÊM subCategory
+      category: item.category || "",
+      subCategory: item.subCategory || "",
       platform: item.platform || "",
       list: sortedList.map((img: any) => ({
-        imageUrl: img.imageUrl || "", // ✅ DÙNG imageUrl, không phải imageBase64
+        imageUrl: img.imageUrl || "",
         prompt: img.prompt || "",
-        category: img.category || item.category || "", // ✅ THAY platform
-        subCategory: img.subCategory || item.subCategory || "", // ✅ THÊM
-        platform: item.platform || "",
+        category: img.category || item.category || "",
+        subCategory: img.subCategory || item.subCategory || "",
+        platform: img.platform || item.platform || "", // ✅ FIX: Ưu tiên platform riêng của từng image
         claudeResponse: img.claudeResponse || "",
         timestamp: img.timestamp || new Date().toISOString(),
         size: img.size || "Square",
