@@ -561,6 +561,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           <ClearHistoryOverlay
             onCancel={handleCancelClear}
             onConfirm={handleConfirmClear}
+            
           />
         ) : isLoading && allHistoryItems.length === 0 ? (
           <div className="history-empty">
