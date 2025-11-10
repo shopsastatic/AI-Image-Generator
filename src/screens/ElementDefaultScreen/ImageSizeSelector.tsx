@@ -292,7 +292,7 @@ const fetchSubcategories = async () => {
       0,
       Math.min(1, (clientX - rect.left) / rect.width)
     );
-    return Math.max(1, Math.min(10, Math.round(percentage * 9) + 1)); // ✅ max 10
+    return Math.max(1, Math.min(20, Math.round(percentage * 19) + 1)); // ✅ max 10
   };
 
  const handleMouseDown = (e: React.MouseEvent) => {
@@ -305,7 +305,7 @@ const fetchSubcategories = async () => {
   setIsDragging(true);
 
   const clickX = e.clientX;
-  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 9; // ✅ chia 9
+  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 19; // ✅ chia 9
   const thumbWidth = 20;
 
   if (Math.abs(clickX - thumbPosition) > thumbWidth) {
@@ -322,11 +322,11 @@ const fetchSubcategories = async () => {
       const rect = sliderRef.current.getBoundingClientRect();
       const deltaX = e.clientX - dragStartX;
       const deltaPercentage = deltaX / rect.width;
-      const deltaValue = deltaPercentage * 9; // ✅ nhân 9
+      const deltaValue = deltaPercentage * 19; // ✅ nhân 9
 
       const newValue = Math.max(
         1,
-        Math.min(10, Math.round(dragStartValue + deltaValue)) // ✅ max 10
+        Math.min(20, Math.round(dragStartValue + deltaValue)) // ✅ max 10
       );
       setNumberOfImages(newValue);
     };
@@ -364,7 +364,7 @@ const fetchSubcategories = async () => {
   }, []);
 
   // ✅ UPDATED: Slider percentage for max 5
-  const sliderPercentage = ((numberOfImages - 1) / 9) * 100;
+  const sliderPercentage = ((numberOfImages - 1) / 19) * 100;
 
   // ✅ NEW: Get API status text
   const getApiStatusText = () => {
