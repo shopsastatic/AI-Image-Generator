@@ -231,6 +231,27 @@ async fetchHistory(roleFilters?: string[]): Promise<HistorySession[]> {
   }
 
   /**
+   * Xóa session
+   */
+  async deleteSession(sessionId: string): Promise<boolean> {
+    try {
+      const response = await fetch('https://n8n.misencorp.com/webhook/ms-delete-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      
+      if (response.ok) {
+        this.clearCache();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      return false;
+    }
+  }
+  /**
    * ✅ SỬA: Xóa cache theo role hoặc tất cả
    */
   clearCache(roleFilter?: string): void {

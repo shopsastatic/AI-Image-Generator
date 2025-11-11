@@ -3375,7 +3375,12 @@ const convertWebpToPng = async (imageUrl, scale = 1) => {
                     )
                   );
                 }}
-                currentUser={currentUser} 
+                currentUser={currentUser}
+                onDeleteSession={(sessionId) => {
+                  // Xóa images của session này khỏi grid
+                  setSelectedImages(prev => prev.filter(img => img.sessionId !== sessionId));
+                  setSelectedSessions(prev => prev.filter(s => s.sessionId !== sessionId));
+                }}
               />
             </div>
           </div>

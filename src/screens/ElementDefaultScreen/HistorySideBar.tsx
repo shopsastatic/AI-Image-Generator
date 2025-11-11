@@ -38,6 +38,7 @@ interface HistorySidebarProps {
   onSelectAll?: (unselectedCount: number) => void;
   maxGridItems?: number;
   currentUser?: { email: string; role: string } | null;
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 const ClearHistoryOverlay: React.FC<{
@@ -75,6 +76,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   selectedImages,
   onSelectAll,
   currentUser,
+  onDeleteSession,
 }) => {
   const [allHistoryItems, setAllHistoryItems] = useState<HistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -370,6 +372,17 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     }
   };
 
+const handleDelete = useCallback((sessionId: string) => {
+  // Xóa khỏi history sidebar
+  setAllHistoryItems(prev => prev.filter(item => item.id !== sessionId));
+  
+  // Xóa khỏi image grid (gọi callback từ parent)
+  if (onDeleteSession) {
+    onDeleteSession(sessionId);
+  }
+}, [onDeleteSession]);
+
+
   const Row = useCallback(
   ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const ITEMS_PER_ROW = 3;
@@ -414,6 +427,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   category={item.category}
                   subCategory={item.subCategory}
                   platform={item.platform}
+                  onDelete={handleDelete}
                 />
                 {(item.imageCount || 0) > 1 && (
                   <div className="history-item-count">{item.imageCount}</div>
@@ -602,7 +616,8 @@ const SafeHistoryImage: React.FC<{
   category?: string;
   subCategory?: string;
   platform?: string;
-}> = ({ src, alt, count, category, subCategory }) => {
+  onDelete?: (id: string) => void;
+}> = ({ src, alt, id, count, category, subCategory, onDelete }) => {
   const [hasError, setHasError] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -621,6 +636,23 @@ const SafeHistoryImage: React.FC<{
           <div className="loading-spinner"></div>
         </div>
       )}
+
+      <div 
+        className="history-delete-icon"
+        onClick={async (e) => {
+          e.stopPropagation();
+          if (window.confirm('Do you want to delete this session?')) {
+            const success = await historyService.deleteSession(id);
+            if (success && onDelete) {
+              onDelete(id);
+            }
+          }
+        }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+          <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+        </svg>
+      </div>
 
       <img
         src={src}
@@ -664,6 +696,7 @@ const SafeHistoryImage: React.FC<{
     </div>
   );
 };
+
 
 function showNotification(
   type: "success" | "error" | "warning",
