@@ -7,6 +7,7 @@ import ImageInfoDropdown from "./ImageInfoDropdown";
 import ImageSizeSelector from "./ImageSizeSelector";
 import { historyService } from "./historyService";
 import RegisterModal from "./RegisterModal";
+import pica from 'pica';
 
 
 
@@ -2049,54 +2050,106 @@ const handleEnhanceImage = async () => {
 };
 
 // ✅ ADD THIS NEW FUNCTION
-// ✅ ADD scale parameter (default = 1)
-const convertWebpToPng = async (imageUrl, scale = 1) => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
+const TINYPNG_API_KEY = '4bQC33vHJ7RWmtY8GcMD3LNbYlFS8mTy'; // ⚠️ THAY BẰNG API KEY THẬT
+
+// Version 1: Convert sang PNG (như yêu cầu)
+const convertWebpToPng = async (imageUrl: string, scale = 1) => {
+  try {
+    const targetSize = Math.round(1024 * scale);
     
-    img.onload = () => {
-      try {
-        const originalWidth = img.naturalWidth || img.width;
-        const originalHeight = img.naturalHeight || img.height;
-        
-        // ✅ Apply scale to dimensions
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(originalWidth * scale);
-        canvas.height = Math.round(originalHeight * scale);
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
-        
-        // ✅ Use high-quality image smoothing
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        
-        // Draw scaled image
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            console.log(`✅ Converted to PNG (${canvas.width}x${canvas.height}): ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
-            resolve(blob);
-          } else {
-            reject(new Error('Failed to convert to PNG blob'));
-          }
-        }, 'image/png', 1.0);
-      } catch (error) {
-        reject(error);
-      }
-    };
+    console.log('📤 TinyPNG: Converting to PNG, size:', targetSize);
     
-    img.onerror = (error) => {
-      reject(new Error('Failed to load image for conversion'));
-    };
+    // Upload
+    const uploadResponse = await fetch('https://api.tinify.com/shrink', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`api:${TINYPNG_API_KEY}`),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ source: { url: imageUrl } }),
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload failed: ${uploadResponse.status}`);
+    }
+
+    const outputUrl = uploadResponse.headers.get('Location');
+    if (!outputUrl) throw new Error('No output URL');
+
+    // Transform: Resize + Convert PNG
+    const transformResponse = await fetch(outputUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`api:${TINYPNG_API_KEY}`),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        resize: { method: 'scale', width: targetSize },
+        convert: { type: 'image/png' }
+      }),
+    });
+
+    if (!transformResponse.ok) {
+      throw new Error(`Transform failed: ${transformResponse.status}`);
+    }
+
+    const blob = await transformResponse.blob();
+    console.log('✅ PNG created:', (blob.size/1024/1024).toFixed(2), 'MB');
     
-    img.src = imageUrl;
-  });
+    return blob;
+  } catch (error) {
+    console.error('❌ TinyPNG error:', error);
+    throw error;
+  }
+};
+
+// Version 2: Convert sang WebP (giảm kích thước 25-35% so với PNG)
+const convertToWebp = async (imageUrl: string, scale = 1) => {
+  try {
+    const targetSize = Math.round(1024 * scale);
+    
+    console.log('📤 TinyPNG: Converting to WebP, size:', targetSize);
+    
+    const uploadResponse = await fetch('https://api.tinify.com/shrink', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`api:${TINYPNG_API_KEY}`),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ source: { url: imageUrl } }),
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload failed: ${uploadResponse.status}`);
+    }
+
+    const outputUrl = uploadResponse.headers.get('Location');
+    if (!outputUrl) throw new Error('No output URL');
+
+    const transformResponse = await fetch(outputUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`api:${TINYPNG_API_KEY}`),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        resize: { method: 'scale', width: targetSize },
+        convert: { type: 'image/webp' }  // ⭐ WebP thay vì PNG
+      }),
+    });
+
+    if (!transformResponse.ok) {
+      throw new Error(`Transform failed: ${transformResponse.status}`);
+    }
+
+    const blob = await transformResponse.blob();
+    console.log('✅ WebP created:', (blob.size/1024/1024).toFixed(2), 'MB');
+    
+    return blob;
+  } catch (error) {
+    console.error('❌ TinyPNG error:', error);
+    throw error;
+  }
 };
 
   const toggleSuggestions = () => {

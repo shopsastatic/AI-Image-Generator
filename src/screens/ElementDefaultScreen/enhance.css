@@ -1,0 +1,530 @@
+/* Enhance Screen Styles */
+.enhance-screen {
+  background-color: var(--bg-secondary);
+}
+
+.enhance-container {
+  padding: var(--space-6);
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: calc(100vh - var(--header-height) - 48px);
+}
+
+/* Upload Area - Căn giữa */
+.upload-area {
+  background: white;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 80px 40px;
+  text-align: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.upload-area:hover {
+  border-color: var(--primary-color);
+  background-color: #f9fafb;
+}
+
+.upload-area.dragging {
+  border-color: var(--primary-color);
+  background-color: #f0f9ff;
+  border-style: solid;
+  transform: scale(1.01);
+}
+
+.upload-icon {
+  margin: 0 auto 24px;
+  display: flex;
+  justify-content: center;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.upload-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 32px 0;
+}
+
+.select-photos-btn {
+  background: #4169E1;
+  color: white;
+  border: none;
+  padding: 16px 80px;
+  border-radius: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(65, 105, 225, 0.2);
+}
+
+.select-photos-btn:hover {
+  background: #365ccc;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(65, 105, 225, 0.3);
+}
+
+.select-photos-btn:active {
+  transform: translateY(0);
+}
+
+/* Sessions Container */
+.sessions-container {
+  margin-top: 48px;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.sessions-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 24px 0;
+}
+
+.sessions-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 20px;
+}
+
+/* Session Card - Giống History Item */
+.session-card {
+  position: relative;
+  width: 120px;
+  height: 140px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: var(--radius-md);
+  overflow: visible;
+}
+
+.session-card:hover {
+  transform: translateY(-4px);
+}
+
+.session-card:hover .session-stack .session-image-wrapper {
+  transform: rotate(0deg) translateY(0px) scale(1.05);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Delete Icon - Giống History */
+.session-delete-icon {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+}
+
+.session-card:hover .session-delete-icon {
+  opacity: 1;
+}
+
+.session-delete-icon:hover {
+  background-color: rgba(239, 68, 68, 0.9);
+}
+
+.session-delete-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Enhance Icon - Center on hover */
+.session-enhance-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  z-index: 101;
+  opacity: 0;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.session-card:hover .session-enhance-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.session-enhance-icon:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.session-enhance-icon:active {
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.session-enhance-icon svg {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+/* Download Icon - Center on hover for enhanced sessions */
+.session-download-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(16, 163, 127, 0.9);
+  color: white;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  z-index: 101;
+  opacity: 0;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(16, 163, 127, 0.4);
+}
+
+.session-card.enhanced:hover .session-download-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.session-download-icon:hover {
+  background-color: rgba(16, 163, 127, 1);
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+.session-download-icon:active {
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+/* Loading Overlay */
+.session-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 102;
+  border-radius: var(--radius-md);
+}
+
+.session-card.enhancing {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Circular Progress Spinner */
+.session-loading-spinner {
+  width: 60px;
+  height: 60px;
+  transform: rotate(-90deg);
+}
+
+.session-loading-circle-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 3;
+}
+
+.session-loading-circle {
+  fill: none;
+  stroke: #4169E1;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 125.6;
+  stroke-dashoffset: 125.6;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.session-loading-text {
+  position: absolute;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Enhanced Badge */
+.session-card.enhanced .session-info .session-count {
+  color: var(--primary-color);
+}
+
+/* Header Info */
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.session-counter {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  background: white;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+}
+
+/* Session Stack - Xòe quạt */
+.session-stack {
+  position: relative;
+  width: 100%;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-image-wrapper {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-secondary);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border: 2px solid white;
+}
+
+.session-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Hiệu ứng shimmer khi hover - Giống History */
+.session-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: 0.5s;
+  pointer-events: none;
+  border-radius: var(--radius-md);
+}
+
+.session-card:hover::after {
+  left: 100%;
+}
+
+/* Session Info */
+.session-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 8px;
+  gap: 2px;
+}
+
+.session-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.session-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* Loading State */
+.session-image-wrapper.loading {
+  background: var(--bg-secondary);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Header Title */
+.header-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Aside Icon */
+.aside-icon {
+  width: 40px;
+  height: 40px;
+  background: white;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-tertiary);
+}
+
+.aside-icon:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: scale(1.05);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .sessions-list {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+  
+  .session-card {
+    width: 100px;
+    height: 120px;
+  }
+  
+  .session-stack {
+    height: 80px;
+  }
+  
+  .session-image-wrapper {
+    width: 80px;
+    height: 80px;
+  }
+}
+
+@media (max-width: 768px) {
+  .upload-area {
+    padding: 60px 20px;
+  }
+
+  .upload-icon svg {
+    width: 60px;
+    height: 60px;
+  }
+
+  .upload-title {
+    font-size: 18px;
+  }
+
+  .select-photos-btn {
+    padding: 14px 60px;
+    font-size: 15px;
+  }
+
+  .sessions-list {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 16px;
+  }
+  
+  .session-card {
+    width: 90px;
+    height: 110px;
+  }
+  
+  .session-stack {
+    height: 70px;
+  }
+  
+  .session-image-wrapper {
+    width: 70px;
+    height: 70px;
+  }
+}
+
+@media (max-width: 480px) {
+  .enhance-container {
+    padding: var(--space-4);
+  }
+
+  .upload-area {
+    padding: 40px 16px;
+  }
+
+  .select-photos-btn {
+    width: 100%;
+    padding: 14px 20px;
+  }
+  
+  .sessions-list {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 12px;
+  }
+  
+  .session-card {
+    width: 80px;
+    height: 100px;
+  }
+  
+  .session-stack {
+    height: 60px;
+  }
+  
+  .session-image-wrapper {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .session-count {
+    font-size: 11px;
+  }
+  
+  .session-time {
+    font-size: 10px;
+  }
+}

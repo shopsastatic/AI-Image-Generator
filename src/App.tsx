@@ -8,6 +8,7 @@ import { ElementWDefaultWrapper } from "./screens/ElementWDefaultWrapper";
 import ProjectManagement from "./screens/ElementDefaultScreen/ProjectManagement";
 import LoginScreen from "./screens/ElementDefaultScreen/LoginScreen";
 import RegisterScreen from "./screens/ElementDefaultScreen/RegisterScreen";
+import EnhanceScreen from "./screens/ElementDefaultScreen/EnhanceScreen";
 import { API_ENDPOINTS } from "./utils/apiConfig";
 
 // ✅ User interface matching backend roles
@@ -168,6 +169,14 @@ const createRouterWithUser = (user: User | null) =>
       element: (
         <ProtectedRoute user={user}>
           <ElementWDefaultWrapper />
+        </ProtectedRoute>
+      ),
+    },
+    {
+      path: "/enhance",
+      element: (
+        <ProtectedRoute user={user}>
+          <EnhanceScreen />
         </ProtectedRoute>
       ),
     },
