@@ -153,7 +153,19 @@ export const ElementDefaultScreen = (): JSX.Element => {
   };
 
 const handleEnhanceImage = async () => {
-  if (isEnhancing || currentViewImageIndex === null) return;
+  if (isEnhancing) return;
+
+  // ✅ Nếu đã enhanced → download luôn
+  if (isCurrentImageEnhanced) {
+    const imgElement = document.querySelector('.image-viewer-img');
+    if (imgElement) {
+      await downloadImage(imgElement.src);
+    }
+    return;
+  }
+
+  // ✅ Nếu chưa enhanced → enhance + auto download
+  if (currentViewImageIndex === null) return;
 
   setIsEnhancing(true);
 
@@ -179,20 +191,12 @@ const handleEnhanceImage = async () => {
       throw new Error("No image URL found");
     }
 
-    console.log("📤 Sending enhance request:", { 
-      imageUrl, 
-      sessionId, 
-      imageIndex 
-    });
+    console.log("📤 Sending enhance request:", { imageUrl, sessionId, imageIndex });
 
     const response = await fetch("https://n8n.misencorp.com/webhook/enhance-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        imageUrl: imageUrl,
-        sessionId: sessionId,
-        imageIndex: imageIndex,
-      }),
+      body: JSON.stringify({ imageUrl, sessionId, imageIndex }),
     });
 
     if (!response.ok) {
@@ -200,27 +204,19 @@ const handleEnhanceImage = async () => {
     }
 
     const responseData = await response.json();
-    console.log("✅ Enhance response:", responseData);
-
-    // ✅ Parse response - n8n trả về array
-    if (!responseData || !Array.isArray(responseData) || responseData.length === 0) {
-      throw new Error("Invalid response format");
-    }
-
     const updatedSession = responseData[0];
     
-    // Validate structure
     if (!updatedSession.data || !updatedSession.data.url || !Array.isArray(updatedSession.data.url)) {
       throw new Error("Invalid data structure in response");
     }
 
-    // Lấy URL mới tại vị trí imageIndex
     const enhancedUrl = updatedSession.data.url[imageIndex];
-    console.log("🎨 Enhanced URL at index", imageIndex, ":", enhancedUrl);
+    console.log("🎨 Enhanced URL:", enhancedUrl);
 
-    downloadImage(enhancedUrl)
+    // ✅ Download luôn sau khi enhance xong
+    await downloadImage(enhancedUrl);
 
-    // ✅ Update selectedSessions - thay ảnh cũ bằng ảnh mới
+    // Update states
     setSelectedSessions((prevSessions) => 
       prevSessions.map((session) => {
         if (session.sessionId === sessionId) {
@@ -228,46 +224,28 @@ const handleEnhanceImage = async () => {
           if (updatedList[imageIndex]) {
             updatedList[imageIndex] = {
               ...updatedList[imageIndex],
-              imageUrl: enhancedUrl, // ✅ Thay URL mới
+              imageUrl: enhancedUrl,
             };
           }
-          return {
-            ...session,
-            list: updatedList,
-          };
+          return { ...session, list: updatedList };
         }
         return session;
       })
     );
 
-    // ✅ Update selectedImages - nếu ảnh đang được view thì cũng update
     setSelectedImages((prevImages) =>
       prevImages.map((img) => {
-        if (
-          img.sessionId === sessionId && 
-          img.imageIndex === imageIndex
-        ) {
-          return {
-            ...img,
-            imageUrl: enhancedUrl, // ✅ Thay URL mới
-          };
+        if (img.sessionId === sessionId && img.imageIndex === imageIndex) {
+          return { ...img, imageUrl: enhancedUrl };
         }
         return img;
       })
     );
 
-    showNotification(
-      "success",
-      "Image Enhanced!",
-      "Your image has been enhanced successfully."
-    );
+    showNotification("success", "Image Enhanced!", "Your image has been enhanced and downloaded successfully.");
   } catch (error) {
     console.error("❌ Enhance error:", error);
-    showNotification(
-      "error",
-      "Enhancement Failed!",
-      error.message || "Failed to enhance image. Please try again."
-    );
+    showNotification("error", "Enhancement Failed!", error.message || "Failed to enhance image.");
   } finally {
     setIsEnhancing(false);
   }
@@ -1961,6 +1939,75 @@ const handleEnhanceImage = async () => {
     return segments.join('-');
   };
 
+  const downloadImageDirect = async (imageUrl) => {
+  try {
+    const randomName = generateRandomFilename();
+    
+    // Detect extension from URL
+    let extension = '.png'; // default
+    if (imageUrl.includes('.webp')) extension = '.webp';
+    else if (imageUrl.includes('.jpg') || imageUrl.includes('.jpeg')) extension = '.jpg';
+    else if (imageUrl.includes('.gif')) extension = '.gif';
+    
+    const fileName = `${randomName}${extension}`;
+    
+    console.log('📥 Downloading directly:', { fileName, imageUrl });
+
+    // Base64 - direct download
+    if (imageUrl.startsWith("data:")) {
+      const link = document.createElement("a");
+      link.href = imageUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    // Try direct fetch first
+    try {
+      const response = await fetch(imageUrl, { mode: "cors" });
+      if (!response.ok) throw new Error("Direct fetch failed");
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      
+      console.log('✅ Downloaded directly:', fileName);
+      return;
+    } catch (directError) {
+      // Fallback to proxy
+      console.log("Direct fetch failed, trying proxy...");
+      const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(imageUrl)}`;
+      const proxyResponse = await fetch(proxyUrl);
+
+      if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
+
+      const blob = await proxyResponse.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      
+      console.log('✅ Downloaded via proxy:', fileName);
+    }
+  } catch (error) {
+    console.error("Download failed:", error);
+    showNotification("error", "Download Failed!", "Could not download image. Opening in new tab...");
+    window.open(imageUrl, "_blank");
+  }
+};
+
   const downloadImage = async (imageUrl, claudeResponse = "", imageIndex = "", imageName = "") => {
   try {
     const randomName = generateRandomFilename();
@@ -2053,52 +2100,32 @@ const handleEnhanceImage = async () => {
 const TINYPNG_API_KEY = '4bQC33vHJ7RWmtY8GcMD3LNbYlFS8mTy'; // ⚠️ THAY BẰNG API KEY THẬT
 
 // Version 1: Convert sang PNG (như yêu cầu)
-const convertWebpToPng = async (imageUrl: string, scale = 1) => {
+// client-side code
+// client-side code
+const convertWebpToPng = async (imageUrl: string) => {
   try {
-    const targetSize = Math.round(1024 * scale);
+    console.log('📤 Converting to PNG with 1/4 original size');
     
-    console.log('📤 TinyPNG: Converting to PNG, size:', targetSize);
-    
-    // Upload
-    const uploadResponse = await fetch('https://api.tinify.com/shrink', {
+    // Gọi lên server
+    const response = await fetch('/api/convert-image', {
       method: 'POST',
       headers: {
-        'Authorization': 'Basic ' + btoa(`api:${TINYPNG_API_KEY}`),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ source: { url: imageUrl } }),
+      body: JSON.stringify({ imageUrl }),
     });
-
-    if (!uploadResponse.ok) {
-      throw new Error(`Upload failed: ${uploadResponse.status}`);
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || `Server error: ${response.status}`);
     }
-
-    const outputUrl = uploadResponse.headers.get('Location');
-    if (!outputUrl) throw new Error('No output URL');
-
-    // Transform: Resize + Convert PNG
-    const transformResponse = await fetch(outputUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + btoa(`api:${TINYPNG_API_KEY}`),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        resize: { method: 'scale', width: targetSize },
-        convert: { type: 'image/png' }
-      }),
-    });
-
-    if (!transformResponse.ok) {
-      throw new Error(`Transform failed: ${transformResponse.status}`);
-    }
-
-    const blob = await transformResponse.blob();
+    
+    const blob = await response.blob();
     console.log('✅ PNG created:', (blob.size/1024/1024).toFixed(2), 'MB');
     
     return blob;
   } catch (error) {
-    console.error('❌ TinyPNG error:', error);
+    console.error('❌ Conversion error:', error);
     throw error;
   }
 };
@@ -3769,44 +3796,19 @@ const convertToWebp = async (imageUrl: string, scale = 1) => {
                           cursor: isEnhancing ? 'not-allowed' : 'pointer',
                           pointerEvents: isEnhancing ? 'none' : 'auto'
                         }}
-                        title={isCurrentImageEnhanced ? "Already enhanced" : "Enhance image"}
+                        title={isCurrentImageEnhanced ? "Download enhanced image" : "Enhance image"}
                       >
                         <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 22.5l-.394-1.933a2.25 2.25 0 00-1.423-1.423L12.75 18.75l1.933-.394a2.25 2.25 0 001.423-1.423l.394-1.933.394 1.933a2.25 2.25 0 001.423 1.423l1.933.394-1.933.394a2.25 2.25 0 00-1.423 1.423z"/>
                       </svg>
 
                       <button
                         className="image-viewer-download"
-                        onClick={() => {
-                          if (
-                            currentSessionId &&
-                            currentViewImageIndex !== null
-                          ) {
-                            const session = selectedSessions.find(
-                              (s) => s.sessionId === currentSessionId
-                            );
-
-                            if (
-                              session &&
-                              session.list[currentSessionImageIndex]
-                            ) {
-                              const imageData =
-                                session.list[currentSessionImageIndex];
-                              downloadImage(
-                                imageData.imageUrl, // ✅ ĐỔI TỪ imageBase64 THÀNH imageUrl
-                                imageData.claudeResponse,
-                                currentSessionImageIndex,
-                                imageData.imageName
-                              );
-                            } else if (selectedImages[currentViewImageIndex]) {
-                              const imageData =
-                                selectedImages[currentViewImageIndex];
-                              downloadImage(
-                                imageData.imageUrl,
-                                imageData.claudeResponse,
-                                imageData.imageIndex || 0,
-                                imageData.imageName
-                              );
-                            }
+                        onClick={async () => {
+                          const imgElement = document.querySelector('.image-viewer-img');
+                          if (imgElement && imgElement.src) {
+                            await downloadImageDirect(imgElement.src);
+                          } else {
+                            showNotification("error", "Download Failed!", "No image found");
                           }
                         }}
                         title="Download image"

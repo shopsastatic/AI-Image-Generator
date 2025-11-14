@@ -65,6 +65,136 @@ const AUTH_CONFIG = {
   COOKIE_MAX_AGE: 7 * 24 * 60 * 60 * 1000,
 };
 
+const TINYPNG_API_KEY = "4bQC33vHJ7RWmtY8GcMD3LNbYlFS8mTy";
+
+
+app.post('/api/convert-image', async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+    
+    if (!imageUrl) {
+      return res.status(400).json({ 
+        error: 'Bad Request',
+        message: 'imageUrl is required' 
+      });
+    }
+    
+    const authHeader = 'Basic ' + Buffer.from(`api:${TINYPNG_API_KEY}`).toString('base64');
+    
+    // Step 1: Upload image to TinyPNG
+    console.log('📤 Uploading to TinyPNG...');
+    const uploadResponse = await fetch('https://api.tinify.com/shrink', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ source: { url: imageUrl } }),
+    });
+    
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json();
+      console.error('❌ TinyPNG upload failed:', errorData);
+      return res.status(uploadResponse.status).json({
+        error: 'TinyPNG Error',
+        message: errorData.message || 'Upload failed'
+      });
+    }
+    
+    const outputUrl = uploadResponse.headers.get('location');
+    if (!outputUrl) {
+      return res.status(500).json({
+        error: 'Server Error',
+        message: 'No output URL from TinyPNG'
+      });
+    }
+    
+    // Step 2: Get original dimensions by fetching the compressed image
+    console.log('📏 Getting original dimensions...');
+    const dimensionsResponse = await fetch(outputUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+      },
+    });
+    
+    if (!dimensionsResponse.ok) {
+      return res.status(500).json({
+        error: 'Server Error',
+        message: 'Failed to get image dimensions'
+      });
+    }
+    
+    // Lấy dimensions từ response headers
+    const originalWidth = parseInt(dimensionsResponse.headers.get('image-width') || '0');
+    const originalHeight = parseInt(dimensionsResponse.headers.get('image-height') || '0');
+    
+    if (!originalWidth || !originalHeight) {
+      return res.status(500).json({
+        error: 'Server Error',
+        message: 'Could not determine image dimensions'
+      });
+    }
+    
+    console.log(`📐 Original size: ${originalWidth}x${originalHeight}`);
+    
+    // Tính toán kích thước mới (chia 4)
+    const newWidth = Math.round(originalWidth / 4);
+    const newHeight = Math.round(originalHeight / 4);
+    
+    console.log(`🎯 Target size: ${newWidth}x${newHeight} (1/4 of original)`);
+    
+    // Step 3: Resize + Convert to PNG
+    const transformResponse = await fetch(outputUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        resize: { 
+          method: 'fit',  // hoặc 'scale' nếu chỉ muốn resize theo 1 chiều
+          width: newWidth,
+          height: newHeight
+        },
+        convert: { type: 'image/png' }
+      }),
+    });
+    
+    if (!transformResponse.ok) {
+      const errorData = await transformResponse.json();
+      console.error('❌ TinyPNG transform failed:', errorData);
+      return res.status(transformResponse.status).json({
+        error: 'TinyPNG Error',
+        message: errorData.message || 'Transform failed'
+      });
+    }
+    
+    const compressionCount = transformResponse.headers.get('compression-count');
+    console.log('📊 Compression count:', compressionCount);
+    
+    // Step 4: Return image
+    const imageBuffer = await transformResponse.buffer();
+    const imageSize = (imageBuffer.length / 1024 / 1024).toFixed(2);
+    console.log('✅ PNG created:', imageSize, 'MB');
+    
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Length', imageBuffer.length);
+    res.setHeader('X-Compression-Count', compressionCount || '0');
+    res.setHeader('X-Original-Size', `${originalWidth}x${originalHeight}`);
+    res.setHeader('X-New-Size', `${newWidth}x${newHeight}`);
+    
+    res.send(imageBuffer);
+    
+  } catch (error) {
+    console.error('❌ Server error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message
+    });
+  }
+});
+
 const hashPassword = (password, salt) => {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
 };
