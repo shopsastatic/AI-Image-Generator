@@ -2134,6 +2134,96 @@ const convertWebpToPng = async (imageUrl: string) => {
   }
 };
 
+const convertWebPToPNGDirect = async (blob) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) {
+          resolve(pngBlob);
+        } else {
+          reject(new Error('Failed to convert to PNG'));
+        }
+      }, 'image/png', 1.0);
+    };
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image'));
+    };
+    
+    img.src = url;
+  });
+};
+
+const downloadImageFullQuality = async (imageUrl) => {
+  try {
+    const randomName = generateRandomFilename();
+    const isWebp = imageUrl.includes('.webp') || imageUrl.includes('artguru');
+    const extension = isWebp ? '.png' : 
+                     imageUrl.includes('.jpg') || imageUrl.includes('.jpeg') ? '.jpg' : '.png';
+    const fileName = `${randomName}${extension}`;
+
+    console.log('📥 Downloading:', { fileName, isWebp, imageUrl });
+
+    // Base64 - download trực tiếp
+    if (imageUrl.startsWith("data:")) {
+      const link = document.createElement("a");
+      link.href = imageUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    // Fetch image
+    const response = await fetch(imageUrl, { mode: "cors" });
+    if (!response.ok) throw new Error("Failed to fetch image");
+    
+    const blob = await response.blob();
+
+    // ✅ Convert webp sang PNG bằng canvas (full quality)
+    let finalBlob = blob;
+    if (isWebp) {
+      console.log('🔄 Converting webp to PNG (canvas, full quality)...');
+      finalBlob = await convertWebPToPNGDirect(blob);
+      console.log('✅ PNG created:', (finalBlob.size/1024/1024).toFixed(2), 'MB');
+    }
+
+    // Download
+    const blobUrl = URL.createObjectURL(finalBlob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+    
+  } catch (error) {
+    console.error("Download failed:", error);
+    showNotification("error", "Download Failed!", "Could not download image");
+    window.open(imageUrl, "_blank");
+  }
+};
+
+
 // Version 2: Convert sang WebP (giảm kích thước 25-35% so với PNG)
 const convertToWebp = async (imageUrl: string, scale = 1) => {
   try {
@@ -3813,7 +3903,7 @@ const convertToWebp = async (imageUrl: string, scale = 1) => {
                         onClick={async () => {
                           const imgElement = document.querySelector('.image-viewer-img');
                           if (imgElement && imgElement.src) {
-                            await downloadImageDirect(imgElement.src);
+                            await downloadImageFullQuality(imgElement.src);
                           } else {
                             showNotification("error", "Download Failed!", "No image found");
                           }

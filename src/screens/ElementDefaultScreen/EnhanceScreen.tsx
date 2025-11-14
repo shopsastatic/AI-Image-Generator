@@ -31,6 +31,44 @@ const generateRandomFilename = (): string => {
   return `${segment()}${segment().slice(0, 2)}-${segment()}-${segment()}-${segment()}-${segment()}${segment().slice(0, 2)}`;
 };
 
+// Convert WebP to PNG with maximum quality
+const convertWebPToPNG = async (blob: Blob): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) {
+          resolve(pngBlob);
+        } else {
+          reject(new Error('Failed to convert to PNG'));
+        }
+      }, 'image/png', 1.0);
+    };
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image'));
+    };
+    
+    img.src = url;
+  });
+};
+
 // Format time display
 const formatSessionTime = (timestamp: number): string => {
   const now = new Date();
@@ -245,7 +283,7 @@ export const EnhanceScreen: React.FC = () => {
 
     try {
       const randomName = generateRandomFilename();
-      const extension = type === 'resized' ? 'png' : 'webp';
+      const extension = type === 'resized' ? 'png' : 'png'; // Always use PNG for quality
       const filename = `${randomName}.${extension}`;
       
       let blobUrl: string | null = null;
@@ -332,7 +370,14 @@ export const EnhanceScreen: React.FC = () => {
           throw new Error(`Failed to fetch image: ${response.status}`);
         }
         
-        const blob = await response.blob();
+        let blob = await response.blob();
+        
+        // Convert WebP to PNG for maximum quality
+        if (blob.type === 'image/webp' || url.toLowerCase().includes('.webp')) {
+          console.log('🔄 Converting WebP to PNG...');
+          blob = await convertWebPToPNG(blob);
+        }
+        
         blobUrl = URL.createObjectURL(blob);
       }
       
@@ -841,7 +886,7 @@ export const EnhanceScreen: React.FC = () => {
         const url = session.enhancedUrls[i];
         let blobUrl: string | null = null;
         const randomName = generateRandomFilename();
-        const extension = type === 'resized' ? 'png' : 'webp';
+        const extension = 'png'; // Always use PNG for quality
         const filename = `${randomName}.${extension}`;
         
         try {
@@ -911,7 +956,14 @@ export const EnhanceScreen: React.FC = () => {
               throw new Error(`Failed to fetch image: ${response.status}`);
             }
             
-            const blob = await response.blob();
+            let blob = await response.blob();
+            
+            // Convert WebP to PNG for maximum quality
+            if (blob.type === 'image/webp' || url.toLowerCase().includes('.webp')) {
+              console.log(`🔄 Converting WebP to PNG for image ${i + 1}...`);
+              blob = await convertWebPToPNG(blob);
+            }
+            
             blobUrl = URL.createObjectURL(blob);
             
             console.log(`✅ Fetched original image ${i + 1}/${session.enhancedUrls.length}`);
@@ -1191,7 +1243,7 @@ export const EnhanceScreen: React.FC = () => {
                 {/* Sessions List */}
                 {sessions.length > 0 && (
                   <div className="sessions-container">
-                    <h3 className="sessions-title">Media Library</h3>
+                    <h3 className="sessions-title">Upload Sessions</h3>
                     <div className="sessions-list">
                       {sessions.map((session) => (
                         <div
@@ -1330,7 +1382,10 @@ export const EnhanceScreen: React.FC = () => {
                                     <polyline points="9,13 12,16 15,13"/>
                                   </svg>
                                 ) : (
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none"></circle><line x1="12" y1="8" x2="12" y2="16"></line><polyline points="9,13 12,16 15,13"></polyline></svg>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" fill="none"/>
+                                    <path d="M15 9l-6 6M9 9l6 6"/>
+                                  </svg>
                                 )}
                               </button>
                             </>
