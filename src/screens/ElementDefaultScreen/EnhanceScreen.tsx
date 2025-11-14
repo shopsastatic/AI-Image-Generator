@@ -1191,7 +1191,7 @@ export const EnhanceScreen: React.FC = () => {
                 {/* Sessions List */}
                 {sessions.length > 0 && (
                   <div className="sessions-container">
-                    <h3 className="sessions-title">Upload Sessions</h3>
+                    <h3 className="sessions-title">Media Library</h3>
                     <div className="sessions-list">
                       {sessions.map((session) => (
                         <div
