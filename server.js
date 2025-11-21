@@ -195,6 +195,88 @@ app.post('/api/convert-image', async (req, res) => {
   }
 });
 
+app.get('/api/public/designer-subcategories', async (req, res) => {
+  try {
+    console.log('📍 Fetching Designer subcategories...');
+    
+    // Đọc subcategories.json
+    const subcategoriesPath = path.join(process.cwd(), 'static', 'subcategories.json');
+    
+    if (!fs.existsSync(subcategoriesPath)) {
+      return res.json({
+        success: true,
+        role: 'designer',
+        category: 'website-content',
+        subcategories: {},
+        message: 'Subcategories file not found'
+      });
+    }
+    
+    const subcategoriesArray = JSON.parse(fs.readFileSync(subcategoriesPath, 'utf8'));
+    
+    const designerSubcategories = subcategoriesArray.filter(sub => {
+      if (sub.category !== 'website-content' || sub.status !== 'active') {
+        return false;
+      }
+      
+      // Check quyền
+      if (sub.allowedRoles && sub.allowedRoles.includes('Designer')) {
+        return true;
+      }
+      
+      if (sub.createdBy && sub.createdBy.role === 'Designer') {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    console.log(`📋 Found ${designerSubcategories.length} subcategories for Designer`);
+    
+    const result = {};
+    
+    for (const sub of designerSubcategories) {
+      try {
+        const userFilename = instructionsManager.findInstructionFile(
+          'website-content',
+          sub.value,
+          'universal'
+        );
+        
+        const userContent = await instructionsManager.loadInstructionContent(userFilename);
+        
+        result[sub.value] = {
+          user_prompt: userContent.promptContent || '',
+          system_prompt: userContent.instructions || ''
+        };
+        
+      } catch (err) {
+        console.log(`⚠️ Could not load content for ${sub.value}:`, err.message);
+        result[sub.value] = {
+          user_prompt: '',
+          system_prompt: ''
+        };
+      }
+    }
+    
+    return res.json({
+      success: true,
+      role: 'designer',
+      category: 'website-content',
+      total: Object.keys(result).length,
+      subcategories: result
+    });
+    
+  } catch (error) {
+    console.error('❌ Error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+
 const hashPassword = (password, salt) => {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
 };
