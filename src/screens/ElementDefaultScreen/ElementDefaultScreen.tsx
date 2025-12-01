@@ -53,13 +53,13 @@ export const ElementDefaultScreen = (): JSX.Element => {
   });
 
   // FIX: Add states for model and HD mode
-  const [selectedApis, setSelectedApis] = useState<string[]>(["nano", "seed"]);
+  const [selectedApis, setSelectedApis] = useState<string[]>(["nano2"]);
   const [selectedAspectRatio, setSelectedAspectRatio] =
     useState<string>("Square HD");
 
   const [instructionsContent, setInstructionsContent] = useState("");
 
-  const [numberOfImages, setNumberOfImages] = useState<number>(5);
+  const [numberOfImages, setNumberOfImages] = useState<number>(10);
   const [selectedQuality, setSelectedQuality] = useState<string>("Low");
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);

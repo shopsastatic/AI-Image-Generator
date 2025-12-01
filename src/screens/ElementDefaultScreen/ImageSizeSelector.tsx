@@ -63,7 +63,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   
   // ✅ NEW: API selection states (default both selected)
-  const [useNano, setUseNano] = useState(true);
+  const [useNano2, setUseNano2] = useState(true);
+  const [useNano, setUseNano] = useState(false);
   const [useSeed, setUseSeed] = useState(false);
   const [useOpenAI, setUseOpenAI] = useState(false);
 
@@ -147,8 +148,9 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     
     // If all unselected, use seed as default
     if (!useNano && !useSeed && !useOpenAI) {
-      selectedApis.push("seed");
+      selectedApis.push("nano2");
     } else {
+      if (useNano2) selectedApis.push("nano2");
       if (useNano) selectedApis.push("nano");
       if (useSeed) selectedApis.push("seed");
       if (useOpenAI) selectedApis.push("openai"); // ✅ THÊM
@@ -157,7 +159,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     if (onApiChange) {
       onApiChange(selectedApis);
     }
-  }, [useNano, useSeed, useOpenAI]); // Removed onApiChange from deps
+  }, [useNano2, useNano, useSeed, useOpenAI]); // Removed onApiChange from deps
 
   // ✅ ADDED: Notify parent when aspect ratio changes
   useEffect(() => {
@@ -256,6 +258,10 @@ const fetchSubcategories = async () => {
     }
   }, [parentCategory, subcategories]);
 
+  const toggleNano2 = () => {
+    setUseNano2((prev) => !prev);
+  };
+
   // ✅ NEW: Toggle Nano API
   const toggleNano = () => {
     setUseNano((prev) => !prev);
@@ -292,7 +298,7 @@ const fetchSubcategories = async () => {
       0,
       Math.min(1, (clientX - rect.left) / rect.width)
     );
-    return Math.max(1, Math.min(20, Math.round(percentage * 19) + 1)); // ✅ max 10
+    return Math.max(1, Math.min(10, Math.round(percentage * 9) + 1));
   };
 
  const handleMouseDown = (e: React.MouseEvent) => {
@@ -305,7 +311,7 @@ const fetchSubcategories = async () => {
   setIsDragging(true);
 
   const clickX = e.clientX;
-  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 19; // ✅ chia 9
+  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 9;
   const thumbWidth = 20;
 
   if (Math.abs(clickX - thumbPosition) > thumbWidth) {
@@ -322,11 +328,11 @@ const fetchSubcategories = async () => {
       const rect = sliderRef.current.getBoundingClientRect();
       const deltaX = e.clientX - dragStartX;
       const deltaPercentage = deltaX / rect.width;
-      const deltaValue = deltaPercentage * 19; // ✅ nhân 9
+      const deltaValue = deltaPercentage * 9;
 
       const newValue = Math.max(
         1,
-        Math.min(20, Math.round(dragStartValue + deltaValue)) // ✅ max 10
+        Math.min(10, Math.round(dragStartValue + deltaValue))
       );
       setNumberOfImages(newValue);
     };
@@ -364,16 +370,17 @@ const fetchSubcategories = async () => {
   }, []);
 
   // ✅ UPDATED: Slider percentage for max 5
-  const sliderPercentage = ((numberOfImages - 1) / 19) * 100;
+  const sliderPercentage = ((numberOfImages - 1) / 9) * 100;
 
   // ✅ NEW: Get API status text
   const getApiStatusText = () => {
     const selected = [];
+    if (useNano2) selected.push("Nano2"); // ✅ THÊM DÒNG NÀY
     if (useNano) selected.push("Nano");
     if (useSeed) selected.push("SeeD");
-    if (useOpenAI) selected.push("OpenAI");
+    if (useOpenAI) selected.push("GPT");
     
-    if (selected.length === 0) return "SeeD";
+    if (selected.length === 0) return "Nano2"; // ✅ ĐỔI THÀNH Nano2
     return selected.join(" • ");
   };
 
@@ -408,6 +415,16 @@ const fetchSubcategories = async () => {
 
                 {/* API Toggles */}
                 <div className="flex items-center space-x-1">
+                  <button
+                    onClick={toggleNano2}
+                    className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      useNano2
+                        ? "bg-purple-100 text-purple-700"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    <span>Nano2</span>
+                  </button>
                   <button
                     onClick={toggleNano}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
