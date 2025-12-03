@@ -324,7 +324,7 @@ app.post('/api/resize-image', async (req, res) => {
     }
     
     // ✅ TẠO TÊN FILE NGẪU NHIÊN (13 chữ số giống định dạng timestamp)
-    const randomFilename = Date.now().toString() + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const randomFilename = generateRandomFilename()
     const filename = `${randomFilename}.${format}`;
     
     console.log(`✅ Resized image ready: ${filename}, ${(imageBuffer.length / 1024).toFixed(2)} KB`);
@@ -357,6 +357,28 @@ app.post('/api/resize-image', async (req, res) => {
     });
   }
 });
+
+const generateRandomFilename = () => {
+    const randomHex = (length) => {
+      let result = '';
+      const characters = '0123456789abcdef';
+      for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
+      return result;
+    };
+
+    // Format: 6-4-4-4-6 (e.g., 1a91a4-fc96-4d75-8d91-7a0fc2)
+    const segments = [
+      randomHex(6),
+      randomHex(4),
+      randomHex(4),
+      randomHex(4),
+      randomHex(6)
+    ];
+
+    return segments.join('-');
+  };
 
 
 app.get('/api/public/designer-subcategories', async (req, res) => {

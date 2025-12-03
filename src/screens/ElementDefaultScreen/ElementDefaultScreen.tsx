@@ -2050,75 +2050,6 @@ const handleEnhanceImage = async () => {
     return segments.join('-');
   };
 
-  const downloadImageDirect = async (imageUrl) => {
-  try {
-    const randomName = generateRandomFilename();
-    
-    // Detect extension from URL
-    let extension = '.png'; // default
-    if (imageUrl.includes('.webp')) extension = '.webp';
-    else if (imageUrl.includes('.jpg') || imageUrl.includes('.jpeg')) extension = '.jpg';
-    else if (imageUrl.includes('.gif')) extension = '.gif';
-    
-    const fileName = `${randomName}${extension}`;
-    
-    console.log('📥 Downloading directly:', { fileName, imageUrl });
-
-    // Base64 - direct download
-    if (imageUrl.startsWith("data:")) {
-      const link = document.createElement("a");
-      link.href = imageUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return;
-    }
-
-    // Try direct fetch first
-    try {
-      const response = await fetch(imageUrl, { mode: "cors" });
-      if (!response.ok) throw new Error("Direct fetch failed");
-
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-      
-      console.log('✅ Downloaded directly:', fileName);
-      return;
-    } catch (directError) {
-      // Fallback to proxy
-      console.log("Direct fetch failed, trying proxy...");
-      const proxyUrl = `/api/proxy-image-direct?url=${encodeURIComponent(imageUrl)}`;
-      const proxyResponse = await fetch(proxyUrl);
-
-      if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
-
-      const blob = await proxyResponse.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-      
-      console.log('✅ Downloaded via proxy:', fileName);
-    }
-  } catch (error) {
-    console.error("Download failed:", error);
-    showNotification("error", "Download Failed!", "Could not download image. Opening in new tab...");
-    window.open(imageUrl, "_blank");
-  }
-};
-
   const downloadImage = async (imageUrl, claudeResponse = "", imageIndex = "", imageName = "") => {
   try {
     const randomName = generateRandomFilename();
@@ -2325,7 +2256,6 @@ const downloadImageFullQuality = async (imageUrl) => {
     
   } catch (error) {
     console.error("Download failed:", error);
-    showNotification("error", "Download Failed!", "Could not download image");
     window.open(imageUrl, "_blank");
   }
 };
@@ -4008,11 +3938,32 @@ const convertToWebp = async (imageUrl: string, scale = 1) => {
                       <button
                         className="image-viewer-download"
                         onClick={async () => {
-                          const imgElement = document.querySelector('.image-viewer-img');
-                          if (imgElement && imgElement.src) {
-                            await downloadImageFullQuality(imgElement.src);
-                          } else {
-                            showNotification("error", "Download Failed!", "No image found");
+                          let imageUrl = "";
+                          let claudeResponse = "";
+                          let imageIndex = 0;
+                          let imageName = "";
+
+                          if (currentSessionId) {
+                            const session = selectedSessions.find(
+                              (s) => s.sessionId === currentSessionId
+                            );
+                            if (session && session.list[currentSessionImageIndex]) {
+                              const img = session.list[currentSessionImageIndex];
+                              imageUrl = img.imageUrl;
+                              claudeResponse = img.claudeResponse || "";
+                              imageIndex = currentSessionImageIndex;
+                              imageName = img.imageName || "";
+                            }
+                          } else if (selectedImages[currentViewImageIndex]) {
+                            const img = selectedImages[currentViewImageIndex];
+                            imageUrl = img.imageUrl;
+                            claudeResponse = img.claudeResponse || "";
+                            imageIndex = img.imageIndex || 0;
+                            imageName = img.imageName || "";
+                          }
+
+                          if (imageUrl) {
+                            await downloadImage(imageUrl, claudeResponse, imageIndex, imageName);
                           }
                         }}
                         title="Download image"
