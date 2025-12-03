@@ -1060,32 +1060,44 @@ const handleEnhanceImage = async () => {
         `📤 Uploading ${uploadedImages.length} reference images...`
       );
 
-      const uploadPromises = uploadedImages.map(async (base64Image, index) => {
-        try {
-          // ✅ THAY ĐỔI: Gọi API backend thay vì trực tiếp
-          const response = await fetch('/api/upload-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              imageData: base64Image,
-              filename: `reference-image-${index}.png`
-            })
-          });
+      const uploadPromises = uploadedImages.map(
+        async (base64Image, index) => {
+          try {
+            const blob = await fetch(base64Image).then((r) => r.blob());
 
-          if (!response.ok) {
-            throw new Error(`Upload failed: ${response.status}`);
+            const formData = new FormData();
+            formData.append("filename", blob, `reference-image-${index}.png`);
+
+            const response = await fetch(
+              "https://prod.api.market/api/v1/magicapi/image-upload/upload",
+              {
+                method: "POST",
+                headers: {
+                  "x-magicapi-key": "cmfxojr010001jo04ld19izzv",
+                },
+                body: formData,
+              }
+            );
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(
+                `❌ Upload failed for image ${index}:`,
+                errorText
+              );
+              return null;
+            }
+
+            const data = await response.json();
+            return data.url;
+          } catch (error) {
+            return null;
           }
-
-          const data = await response.json();
-          return data.url;
-        } catch (error) {
-          console.error(`❌ Upload error for image ${index}:`, error);
-          return null;
         }
-      });
+      );
 
       const results = await Promise.all(uploadPromises);
-      uploadedImageUrls = results.filter(url => url !== null);
+      uploadedImageUrls = results.filter((url) => url !== null) as string[];
 
       if (uploadedImageUrls.length === 0) {
         throw new Error("All image uploads failed");

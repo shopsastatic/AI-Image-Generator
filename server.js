@@ -281,50 +281,6 @@ app.get('/api/public/designer-subcategories', async (req, res) => {
   }
 });
 
-// Thêm vào server.js (sau dòng ~150)
-app.post('/api/upload-image', requireAuth, async (req, res) => {
-  try {
-    const { imageData, filename } = req.body;
-    
-    if (!imageData) {
-      return res.status(400).json({ error: 'Image data required' });
-    }
-
-    // Convert base64 to buffer
-    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    
-    // Create FormData
-    const FormData = (await import('form-data')).default;
-    const formData = new FormData();
-    formData.append('filename', buffer, { filename: filename || 'image.png' });
-    
-    // Upload to Magic API
-    const uploadResponse = await fetch(
-      'https://prod.api.market/api/v1/magicapi/image-upload/upload',
-      {
-        method: 'POST',
-        headers: {
-          'x-magicapi-key': 'cmfxojr010001jo04ld19izzv',
-          ...formData.getHeaders()
-        },
-        body: formData
-      }
-    );
-    
-    if (!uploadResponse.ok) {
-      throw new Error(`Upload failed: ${uploadResponse.status}`);
-    }
-    
-    const data = await uploadResponse.json();
-    res.json({ success: true, url: data.url });
-    
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 
 const hashPassword = (password, salt) => {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
