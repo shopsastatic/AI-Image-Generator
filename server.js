@@ -214,6 +214,7 @@ app.get('/api/public/designer-subcategories', async (req, res) => {
     
     const subcategoriesArray = JSON.parse(fs.readFileSync(subcategoriesPath, 'utf8'));
     
+    // Filter subcategories cho Designer role
     const designerSubcategories = subcategoriesArray.filter(sub => {
       if (sub.category !== 'website-content' || sub.status !== 'active') {
         return false;
@@ -245,14 +246,18 @@ app.get('/api/public/designer-subcategories', async (req, res) => {
         
         const userContent = await instructionsManager.loadInstructionContent(userFilename);
         
+        // ✅ THÊM LABEL VÀO RESPONSE
         result[sub.value] = {
+          label: sub.label,  // ← THÊM LABEL
           user_prompt: userContent.promptContent || '',
           system_prompt: userContent.instructions || ''
         };
         
       } catch (err) {
         console.log(`⚠️ Could not load content for ${sub.value}:`, err.message);
+        // ✅ THÊM LABEL NGAY CẢ KHI LỖI
         result[sub.value] = {
+          label: sub.label,  // ← THÊM LABEL
           user_prompt: '',
           system_prompt: ''
         };
