@@ -139,27 +139,26 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   };
 
   const toggleOpenAI = () => {
-    setUseOpenAI((prev) => !prev);
+    setUseNano2(false);
+    setUseNano(false);
+    setUseSeed(false);
+    setUseOpenAI(true);
   };
 
-  // ✅ NEW: Notify parent component when API selection changes
   useEffect(() => {
     const selectedApis: string[] = [];
     
-    // If all unselected, use seed as default
-    if (!useNano && !useSeed && !useOpenAI) {
-      selectedApis.push("nano2");
-    } else {
-      if (useNano2) selectedApis.push("nano2");
-      if (useNano) selectedApis.push("nano");
-      if (useSeed) selectedApis.push("seed");
-      if (useOpenAI) selectedApis.push("openai"); // ✅ THÊM
-    }
+    // Always have exactly one selected
+    if (useNano2) selectedApis.push("nano2");
+    else if (useNano) selectedApis.push("nano");
+    else if (useSeed) selectedApis.push("seed");
+    else if (useOpenAI) selectedApis.push("openai");
+    else selectedApis.push("nano2"); // fallback default
     
     if (onApiChange) {
       onApiChange(selectedApis);
     }
-  }, [useNano2, useNano, useSeed, useOpenAI]); // Removed onApiChange from deps
+  }, [useNano2, useNano, useSeed, useOpenAI]);
 
   // ✅ ADDED: Notify parent when aspect ratio changes
   useEffect(() => {
@@ -259,17 +258,26 @@ const fetchSubcategories = async () => {
   }, [parentCategory, subcategories]);
 
   const toggleNano2 = () => {
-    setUseNano2((prev) => !prev);
+    setUseNano2(true);
+    setUseNano(false);
+    setUseSeed(false);
+    setUseOpenAI(false);
   };
 
   // ✅ NEW: Toggle Nano API
   const toggleNano = () => {
-    setUseNano((prev) => !prev);
+    setUseNano2(false);
+    setUseNano(true);
+    setUseSeed(false);
+    setUseOpenAI(false);
   };
 
   // ✅ NEW: Toggle SeeD API
   const toggleSeed = () => {
-    setUseSeed((prev) => !prev);
+    setUseNano2(false);
+    setUseNano(false);
+    setUseSeed(true);
+    setUseOpenAI(false);
   };
 
   const handleParentCategoryChange = (newCategory: string) => {

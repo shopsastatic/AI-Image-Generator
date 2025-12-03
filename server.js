@@ -195,6 +195,170 @@ app.post('/api/convert-image', async (req, res) => {
   }
 });
 
+// /api/resize-image
+app.post('/api/resize-image', async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+    
+    if (!imageUrl) {
+      return res.status(400).json({ 
+        error: 'Bad Request',
+        message: 'imageUrl is required' 
+      });
+    }
+    
+    console.log('📥 Resize request for:', imageUrl);
+    
+    const authHeader = 'Basic ' + Buffer.from(`api:${TINYPNG_API_KEY}`).toString('base64');
+    
+    // Step 1: Upload image to TinyPNG
+    console.log('📤 Uploading to TinyPNG...');
+    const uploadResponse = await fetch('https://api.tinify.com/shrink', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ source: { url: imageUrl } }),
+    });
+    
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json();
+      console.error('❌ TinyPNG upload failed:', errorData);
+      return res.status(uploadResponse.status).json({
+        error: 'TinyPNG Error',
+        message: errorData.message || 'Upload failed'
+      });
+    }
+    
+    const outputUrl = uploadResponse.headers.get('location');
+    if (!outputUrl) {
+      return res.status(500).json({
+        error: 'Server Error',
+        message: 'No output URL from TinyPNG'
+      });
+    }
+    
+    // Step 2: Get image info (including dimensions)
+    console.log('📏 Getting image dimensions...');
+    const infoResponse = await fetch(outputUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+      },
+    });
+    
+    if (!infoResponse.ok) {
+      return res.status(500).json({
+        error: 'Server Error',
+        message: 'Failed to get image info'
+      });
+    }
+    
+    // Get original dimensions from response headers
+    const originalWidth = parseInt(infoResponse.headers.get('image-width') || '0');
+    const originalHeight = parseInt(infoResponse.headers.get('image-height') || '0');
+    
+    if (!originalWidth || !originalHeight) {
+      return res.status(500).json({
+        error: 'Server Error',
+        message: 'Could not determine image dimensions'
+      });
+    }
+    
+    console.log(`📐 Original size: ${originalWidth}x${originalHeight}`);
+    
+    // ✅ LOGIC MỚI: Chia 2 mặc định, chia 4 nếu cả 2 chiều > 4000
+    let divisor = 2; // Mặc định chia 2
+    
+    if (originalWidth > 4000 && originalHeight > 4000) {
+      divisor = 4; // Chia 4 nếu cả 2 chiều > 4000
+      console.log('🔢 Both dimensions > 4000, using divisor = 4');
+    } else {
+      console.log('🔢 Using divisor = 2 (default)');
+    }
+    
+    const newWidth = Math.floor(originalWidth / divisor);
+    const newHeight = Math.floor(originalHeight / divisor);
+    
+    console.log(`🎯 Target size: ${newWidth}x${newHeight} (divided by ${divisor})`);
+    
+    // Step 3: Resize with highest quality
+    const resizeResponse = await fetch(outputUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        resize: { 
+          method: 'fit',
+          width: newWidth,
+          height: newHeight
+        }
+      }),
+    });
+    
+    if (!resizeResponse.ok) {
+      const errorData = await resizeResponse.json();
+      console.error('❌ TinyPNG resize failed:', errorData);
+      return res.status(resizeResponse.status).json({
+        error: 'TinyPNG Error',
+        message: errorData.message || 'Resize failed'
+      });
+    }
+    
+    // Get resized image buffer
+    const imageBuffer = await resizeResponse.buffer();
+    
+    // Detect format from URL
+    let format = 'png';
+    let mimeType = 'image/png';
+    
+    if (imageUrl.toLowerCase().includes('.jpg') || imageUrl.toLowerCase().includes('.jpeg')) {
+      format = 'jpg';
+      mimeType = 'image/jpeg';
+    } else if (imageUrl.toLowerCase().includes('.webp')) {
+      format = 'webp';
+      mimeType = 'image/webp';
+    }
+    
+    // ✅ TẠO TÊN FILE NGẪU NHIÊN (13 chữ số giống định dạng timestamp)
+    const randomFilename = Date.now().toString() + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const filename = `${randomFilename}.${format}`;
+    
+    console.log(`✅ Resized image ready: ${filename}, ${(imageBuffer.length / 1024).toFixed(2)} KB`);
+    
+    // Return base64 encoded image
+    const base64Data = imageBuffer.toString('base64');
+    
+    res.json({ 
+      success: true,
+      imageData: base64Data,
+      mimeType: mimeType,
+      format: format,
+      filename: filename,
+      divisor: divisor,
+      originalSize: {
+        width: originalWidth,
+        height: originalHeight
+      },
+      newSize: {
+        width: newWidth,
+        height: newHeight
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Resize error:', error);
+    res.status(500).json({ 
+      error: 'Internal Server Error',
+      message: error.message 
+    });
+  }
+});
+
+
 app.get('/api/public/designer-subcategories', async (req, res) => {
   try {
     console.log('📍 Fetching Designer subcategories...');

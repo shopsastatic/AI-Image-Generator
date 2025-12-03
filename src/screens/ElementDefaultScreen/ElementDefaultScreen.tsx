@@ -155,6 +155,111 @@ export const ElementDefaultScreen = (): JSX.Element => {
 const handleEnhanceImage = async () => {
   if (isEnhancing) return;
 
+  // ========================================
+  // ✅ NEW LOGIC: Direct download with resize via backend
+  // Chia 2 mặc định, chia 4 nếu cả width và height > 4000
+  // ========================================
+  if (currentViewImageIndex === null) return;
+
+  setIsEnhancing(true);
+
+  try {
+    const currentImage = selectedImages[currentViewImageIndex];
+    let imageUrl = currentImage?.imageUrl || "";
+
+    if (currentSessionId) {
+      const session = selectedSessions.find(
+        (s) => s.sessionId === currentSessionId
+      );
+      if (session && session.list[currentSessionImageIndex]) {
+        imageUrl = session.list[currentSessionImageIndex].imageUrl;
+      }
+    }
+
+    if (!imageUrl) {
+      throw new Error("No image URL found");
+    }
+
+    console.log("📥 Sending resize request to backend:", imageUrl);
+
+    // Call backend API to resize
+    const response = await fetch('/api/resize-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Resize failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // ✅ DEBUG: Log toàn bộ response
+    console.log("📦 Full response from backend:", data);
+    console.log("📝 Filename from backend:", data.filename);
+    
+    if (!data.success || !data.imageData) {
+      throw new Error("Invalid response from resize API");
+    }
+
+    console.log("✅ Received resized image:", {
+      filename: data.filename,
+      divisor: data.divisor,
+      originalSize: data.originalSize,
+      newSize: data.newSize
+    });
+
+    // Convert base64 to blob
+    const base64Data = data.imageData;
+    const mimeType = data.mimeType || 'image/png';
+    
+    // ✅ QUAN TRỌNG: Dùng filename từ backend, KHÔNG dùng fallback
+    const filename = data.filename; // Bỏ fallback để bắt lỗi nếu backend không trả về
+    
+    if (!filename) {
+      console.error("❌ No filename from backend!");
+      throw new Error("Backend did not return filename");
+    }
+    
+    console.log("💾 Downloading with filename:", filename);
+    
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
+
+    // Download with filename from backend
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename; // ✅ Dùng filename từ backend
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+
+    console.log("✅ Download completed:", filename);
+
+    showNotification(
+      "success", 
+      "Downloaded!", 
+      `Downloaded: ${filename}`
+    );
+  } catch (error) {
+    console.error("❌ Download error:", error);
+    showNotification("error", "Download Failed!", error.message || "Failed to download and resize image.");
+  } finally {
+    setIsEnhancing(false);
+  }
+
+  /* ========================================
+   * 🔽 OLD LOGIC - COMMENTED OUT (để sau này quay lại)
+   * ========================================
+   
   // ✅ Nếu đã enhanced → download luôn
   if (isCurrentImageEnhanced) {
     const imgElement = document.querySelector('.image-viewer-img');
@@ -249,6 +354,8 @@ const handleEnhanceImage = async () => {
   } finally {
     setIsEnhancing(false);
   }
+  
+  * ======================================== */
 };
 
   const handleNavigateToProjectManagement = () => {
