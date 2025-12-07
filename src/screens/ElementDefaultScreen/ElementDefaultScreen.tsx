@@ -59,7 +59,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
 
   const [instructionsContent, setInstructionsContent] = useState("");
 
-  const [numberOfImages, setNumberOfImages] = useState<number>(10);
+  const [numberOfImages, setNumberOfImages] = useState<number>(2);
   const [selectedQuality, setSelectedQuality] = useState<string>("Low");
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
@@ -3195,21 +3195,34 @@ const convertToWebp = async (imageUrl: string, scale = 1) => {
 
                                     if (promptText) {
                                       let textToCopy = promptText;
-                                      if (
-                                        promptText.includes("<") &&
-                                        promptText.includes(">")
-                                      ) {
-                                        const div =
-                                          document.createElement("div");
-                                        div.innerHTML = promptText
-                                          .replace(
-                                            /<(li|h[1-6]|p|div)>/gi,
-                                            "\n\n<$1>"
-                                          )
-                                          .replace(/<br\s*\/?>/gi, "\n\n");
-                                        textToCopy = div.innerText
-                                          .replace(/\n{2,}/g, "\n\n")
-                                          .replace(/^\n+|\n+$/g, "");
+                                      
+                                      // ✅ THÊM ĐOẠN NÀY
+                                      try {
+                                        // Try parse as JSON first
+                                        let cleanPrompt = promptText;
+                                        if (typeof promptText === 'string' && promptText.startsWith('"{')) {
+                                          cleanPrompt = JSON.parse(promptText);
+                                        }
+                                        const parsed = JSON.parse(cleanPrompt);
+                                        // Format JSON đẹp với indentation
+                                        textToCopy = JSON.stringify(parsed, null, 2);
+                                      } catch (e) {
+                                        // Not JSON, handle HTML/text
+                                        if (
+                                          promptText.includes("<") &&
+                                          promptText.includes(">")
+                                        ) {
+                                          const div = document.createElement("div");
+                                          div.innerHTML = promptText
+                                            .replace(
+                                              /<(li|h[1-6]|p|div)>/gi,
+                                              "\n\n<$1>"
+                                            )
+                                            .replace(/<br\s*\/?>/gi, "\n\n");
+                                          textToCopy = div.innerText
+                                            .replace(/\n{2,}/g, "\n\n")
+                                            .replace(/^\n+|\n+$/g, "");
+                                        }
                                       }
 
                                       navigator.clipboard
@@ -4164,6 +4177,20 @@ const convertToWebp = async (imageUrl: string, scale = 1) => {
                           ) {
                             currentImagePrompt =
                               selectedImages[currentViewImageIndex].prompt;
+                          }
+
+                          if (currentImagePrompt) {
+                            try {
+                              let cleanPrompt = currentImagePrompt;
+                              if (typeof currentImagePrompt === 'string' && currentImagePrompt.startsWith('"{')) {
+                                cleanPrompt = JSON.parse(currentImagePrompt);
+                              }
+                              const parsed = JSON.parse(cleanPrompt);
+                              return JSON.stringify(parsed, null, 2);
+                            } catch (e) {
+                              // Not JSON, return as-is
+                              return currentImagePrompt || "No prompt available";
+                            }
                           }
 
                           return currentImagePrompt || "No prompt available";

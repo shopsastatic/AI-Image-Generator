@@ -151,7 +151,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     // Always have exactly one selected
     if (useNano2) selectedApis.push("nano2");
     else if (useNano) selectedApis.push("nano");
-    else if (useSeed) selectedApis.push("seed");
+    else if (useSeed) selectedApis.push("prompt");
     else if (useOpenAI) selectedApis.push("openai");
     else selectedApis.push("nano2"); // fallback default
     
@@ -306,7 +306,7 @@ const fetchSubcategories = async () => {
       0,
       Math.min(1, (clientX - rect.left) / rect.width)
     );
-    return Math.max(1, Math.min(10, Math.round(percentage * 9) + 1));
+    return Math.max(1, Math.min(5, Math.round(percentage * 4) + 1));
   };
 
  const handleMouseDown = (e: React.MouseEvent) => {
@@ -319,7 +319,7 @@ const fetchSubcategories = async () => {
   setIsDragging(true);
 
   const clickX = e.clientX;
-  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 9;
+  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 4;
   const thumbWidth = 20;
 
   if (Math.abs(clickX - thumbPosition) > thumbWidth) {
@@ -336,11 +336,11 @@ const fetchSubcategories = async () => {
       const rect = sliderRef.current.getBoundingClientRect();
       const deltaX = e.clientX - dragStartX;
       const deltaPercentage = deltaX / rect.width;
-      const deltaValue = deltaPercentage * 9;
+      const deltaValue = deltaPercentage * 4;
 
       const newValue = Math.max(
         1,
-        Math.min(10, Math.round(dragStartValue + deltaValue))
+        Math.min(5, Math.round(dragStartValue + deltaValue))
       );
       setNumberOfImages(newValue);
     };
@@ -378,14 +378,14 @@ const fetchSubcategories = async () => {
   }, []);
 
   // ✅ UPDATED: Slider percentage for max 5
-  const sliderPercentage = ((numberOfImages - 1) / 9) * 100;
+  const sliderPercentage = ((numberOfImages - 1) / 4) * 100;
 
   // ✅ NEW: Get API status text
   const getApiStatusText = () => {
     const selected = [];
     if (useNano2) selected.push("Nano2"); // ✅ THÊM DÒNG NÀY
     if (useNano) selected.push("Nano");
-    if (useSeed) selected.push("SeeD");
+    if (useSeed) selected.push("Prompt");
     if (useOpenAI) selected.push("GPT");
     
     if (selected.length === 0) return "Nano2"; // ✅ ĐỔI THÀNH Nano2
@@ -452,7 +452,7 @@ const fetchSubcategories = async () => {
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
-                    <span>SeeD</span>
+                    <span>Prompt</span>
                   </button>
 
                   <button
