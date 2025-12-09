@@ -91,6 +91,18 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     }
   }, [loadingSubcategories, subcategories]);
 
+  useEffect(() => {
+    if (useSeed) {
+      if (numberOfImages < 5) {
+        setNumberOfImages(5);
+      }
+    } else {
+      if (numberOfImages > 5) {
+        setNumberOfImages(5);
+      }
+    }
+  }, [useSeed]);
+
   // ✅ NEW: Single aspect ratio state (default Square HD)
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("1:1");
 
@@ -302,14 +314,14 @@ const fetchSubcategories = async () => {
     if (!sliderRef.current) return numberOfImages;
 
     const rect = sliderRef.current.getBoundingClientRect();
-    const percentage = Math.max(
-      0,
-      Math.min(1, (clientX - rect.left) / rect.width)
-    );
-    return Math.max(1, Math.min(5, Math.round(percentage * 4) + 1));
+    const percentage = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    
+    // ✅ Dynamic max based on useSeed
+    const maxImages = useSeed ? 20 : 5;
+    return Math.max(1, Math.min(maxImages, Math.round(percentage * (maxImages - 1)) + 1));
   };
 
- const handleMouseDown = (e: React.MouseEvent) => {
+const handleMouseDown = (e: React.MouseEvent) => {
   e.preventDefault();
   const rect = sliderRef.current?.getBoundingClientRect();
   if (!rect) return;
@@ -319,7 +331,8 @@ const fetchSubcategories = async () => {
   setIsDragging(true);
 
   const clickX = e.clientX;
-  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / 4;
+  const maxImages = useSeed ? 20 : 5; // ✅ Dynamic
+  const thumbPosition = rect.left + (rect.width * (numberOfImages - 1)) / (maxImages - 1); // ✅ Dynamic
   const thumbWidth = 20;
 
   if (Math.abs(clickX - thumbPosition) > thumbWidth) {
@@ -336,11 +349,14 @@ const fetchSubcategories = async () => {
       const rect = sliderRef.current.getBoundingClientRect();
       const deltaX = e.clientX - dragStartX;
       const deltaPercentage = deltaX / rect.width;
-      const deltaValue = deltaPercentage * 4;
+      
+      // ✅ Dynamic max based on useSeed
+      const maxImages = useSeed ? 20 : 5;
+      const deltaValue = deltaPercentage * (maxImages - 1);
 
       const newValue = Math.max(
         1,
-        Math.min(5, Math.round(dragStartValue + deltaValue))
+        Math.min(maxImages, Math.round(dragStartValue + deltaValue))
       );
       setNumberOfImages(newValue);
     };
@@ -361,7 +377,7 @@ const fetchSubcategories = async () => {
         document.body.style.userSelect = "";
       };
     }
-  }, [isDragging, dragStartX, dragStartValue]);
+  }, [isDragging, dragStartX, dragStartValue, useSeed]); // ✅ Thêm useSeed vào dependencies
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -378,7 +394,8 @@ const fetchSubcategories = async () => {
   }, []);
 
   // ✅ UPDATED: Slider percentage for max 5
-  const sliderPercentage = ((numberOfImages - 1) / 4) * 100;
+  const maxImages = useSeed ? 20 : 5;
+  const sliderPercentage = ((numberOfImages - 1) / (maxImages - 1)) * 100;
 
   // ✅ NEW: Get API status text
   const getApiStatusText = () => {
