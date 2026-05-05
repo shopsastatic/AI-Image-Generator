@@ -169,8 +169,8 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     if (useNano2) selectedApis.push("nano2");
     else if (useNano) selectedApis.push("nano");
     else if (useSeed) selectedApis.push("prompt");
-    else if (useOpenAI) selectedApis.push("openai");
-    else selectedApis.push("openai"); // fallback default → GPT2
+    else if (useOpenAI) selectedApis.push("gpt2");
+    else selectedApis.push("gpt2"); // fallback default → GPT2
     
     if (onApiChange) {
       onApiChange(selectedApis);

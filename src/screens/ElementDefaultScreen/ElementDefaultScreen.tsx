@@ -53,7 +53,7 @@ export const ElementDefaultScreen = (): JSX.Element => {
   });
 
   // FIX: Add states for model and HD mode
-  const [selectedApis, setSelectedApis] = useState<string[]>(["nano2"]);
+  const [selectedApis, setSelectedApis] = useState<string[]>(["gpt2"]);
   const [selectedAspectRatio, setSelectedAspectRatio] =
     useState<string>("Square HD");
 
