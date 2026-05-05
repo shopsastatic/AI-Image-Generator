@@ -26,6 +26,7 @@ interface ImageSizeSelectorProps {
   // New props for API selection
   onApiChange?: (apis: string[]) => void; // ["nano", "seed"] or ["nano"] or ["seed"]
   onAspectRatioChange?: (aspectRatio: string) => void; // ✅ ADDED
+  onResolutionChange?: (resolution: "1k" | "2k" | "4k") => void; // ✅ NEW: Resolution callback
   currentUser?: { email: string; role: string };
 }
 
@@ -58,15 +59,19 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
   onCategoryChange,
   onApiChange,
   onAspectRatioChange, // ✅ ADDED
+  onResolutionChange, // ✅ NEW
   currentUser,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   
-  // ✅ NEW: API selection states (default both selected)
-  const [useNano2, setUseNano2] = useState(true);
+  // ✅ NEW: API selection states (chỉ còn GPT2)
+  const [useNano2, setUseNano2] = useState(false);
   const [useNano, setUseNano] = useState(false);
   const [useSeed, setUseSeed] = useState(false);
-  const [useOpenAI, setUseOpenAI] = useState(false);
+  const [useOpenAI, setUseOpenAI] = useState(true);
+
+  // ✅ NEW: Resolution state (1k, 2k, 4k)
+  const [selectedResolution, setSelectedResolution] = useState<"1k" | "2k" | "4k">("1k");
 
     // ✅ NEW: States for dynamic subcategories
   const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
@@ -165,7 +170,7 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
     else if (useNano) selectedApis.push("nano");
     else if (useSeed) selectedApis.push("prompt");
     else if (useOpenAI) selectedApis.push("openai");
-    else selectedApis.push("nano2"); // fallback default
+    else selectedApis.push("openai"); // fallback default → GPT2
     
     if (onApiChange) {
       onApiChange(selectedApis);
@@ -174,13 +179,20 @@ const ImageSizeSelector: React.FC<ImageSizeSelectorProps> = ({
 
   // ✅ ADDED: Notify parent when aspect ratio changes
   useEffect(() => {
-    
+
     if (onAspectRatioChange) {
       onAspectRatioChange(selectedAspectRatio);
     } else {
       console.warn("⚠️ onAspectRatioChange callback not provided by parent");
     }
   }, [selectedAspectRatio]); // Only selectedAspectRatio, not onAspectRatioChange
+
+  // ✅ NEW: Notify parent when resolution changes
+  useEffect(() => {
+    if (onResolutionChange) {
+      onResolutionChange(selectedResolution);
+    }
+  }, [selectedResolution]);
 
   // ✅ FIXED: Simplified fetch function
 const fetchSubcategories = async () => {
@@ -400,12 +412,12 @@ const handleMouseDown = (e: React.MouseEvent) => {
   // ✅ NEW: Get API status text
   const getApiStatusText = () => {
     const selected = [];
-    if (useNano2) selected.push("Nano2"); // ✅ THÊM DÒNG NÀY
+    if (useNano2) selected.push("Nano2");
     if (useNano) selected.push("Nano");
     if (useSeed) selected.push("Prompt");
-    if (useOpenAI) selected.push("GPT");
-    
-    if (selected.length === 0) return "Nano2"; // ✅ ĐỔI THÀNH Nano2
+    if (useOpenAI) selected.push("GPT2");
+
+    if (selected.length === 0) return "GPT2";
     return selected.join(" • ");
   };
 
@@ -424,6 +436,7 @@ const handleMouseDown = (e: React.MouseEvent) => {
             {aspectRatioOptions.find(opt => opt.value === selectedAspectRatio)?.label || "Square HD"}
             {` • ${numberOfImages}`}
             {` • ${getApiStatusText()}`}
+            {` • ${selectedResolution.toUpperCase()}`}
           </span>
         </button>
 
@@ -440,7 +453,7 @@ const handleMouseDown = (e: React.MouseEvent) => {
 
                 {/* API Toggles */}
                 <div className="flex items-center space-x-1">
-                  <button
+                  {/* <button
                     onClick={toggleNano2}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                       useNano2
@@ -470,17 +483,17 @@ const handleMouseDown = (e: React.MouseEvent) => {
                     }`}
                   >
                     <span>Prompt</span>
-                  </button>
+                  </button> */}
 
                   <button
                     onClick={toggleOpenAI}
                     className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                       useOpenAI
-                        ? "bg-orange-100 text-orange-700"
+                        ? "bg-blue-100 text-blue-700"
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
                   >
-                    <span>GPT</span>
+                    <span>GPT2</span>
                   </button>
                 </div>
               </div>
@@ -631,8 +644,8 @@ const handleMouseDown = (e: React.MouseEvent) => {
               <label className="block text-xs text-gray-600 mb-2">Aspect Ratio</label>
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 rounded flex items-center justify-center border border-gray-300 bg-white shrink-0">
-                  {React.createElement(getIconForAspectRatio(selectedAspectRatio), { 
-                    className: "w-4 h-4 text-gray-600" 
+                  {React.createElement(getIconForAspectRatio(selectedAspectRatio), {
+                    className: "w-4 h-4 text-gray-600"
                   })}
                 </div>
                 <select
@@ -646,6 +659,28 @@ const handleMouseDown = (e: React.MouseEvent) => {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* ✅ NEW: Resolution Selection */}
+            <div className="p-3 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-gray-600">Resolution</label>
+                <div className="flex items-center space-x-1">
+                  {(["1k", "2k", "4k"] as const).map((res) => (
+                    <button
+                      key={res}
+                      onClick={() => setSelectedResolution(res)}
+                      className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors ${
+                        selectedResolution === res
+                          ? "bg-blue-100 text-blue-700"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      {res.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
