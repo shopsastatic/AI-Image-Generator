@@ -472,17 +472,6 @@ const handleMouseDown = (e: React.MouseEvent) => {
                     }`}
                   >
                     <span>Nano</span>
-                  </button>
-
-                  <button
-                    onClick={toggleSeed}
-                    className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      useSeed
-                        ? "bg-green-100 text-green-700"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    <span>Prompt</span>
                   </button> */}
 
                   <button
@@ -494,6 +483,17 @@ const handleMouseDown = (e: React.MouseEvent) => {
                     }`}
                   >
                     <span>GPT2</span>
+                  </button>
+
+                  <button
+                    onClick={toggleSeed}
+                    className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      useSeed
+                        ? "bg-blue-100 text-blue-700"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    <span>Prompt</span>
                   </button>
                 </div>
               </div>
