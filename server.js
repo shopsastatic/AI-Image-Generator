@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 import authRoutes from './backend/routes/authRoutes.js';
 import { requireAuth, requireAdmin } from './backend/middleware/authMiddleware.js';
 import { SYSTEM_ROLES, isValidRole, hasPermission } from './backend/constants/roles.js';
+import { fetchHistory, deleteHistorySession } from './backend/services/historyService.js';
 
 
 
@@ -1450,67 +1451,43 @@ app.get('/api/auth/verify', (req, res) => {
   });
 });
 
-// GET /api/history - Lấy history với role filter
+// GET /api/history - Lấy history từ Supabase (không qua N8N)
 app.get('/api/history', requireAuth, async (req, res) => {
   try {
-    const { roleFilter } = req.query;
-    const currentUser = req.user;
-    
-    console.log(`📊 History request - User: ${currentUser.role}, Filter: ${roleFilter || 'none'}`);
-    
-    // Gọi N8N để lấy data
-    const n8nResponse = await fetch('https://n8n.misencorp.com/webhook/get-history', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+    const { roleFilter, refresh } = req.query;
+    const data = await fetchHistory(req.user, {
+      roleFilter,
+      refresh: refresh === 'true',
     });
-    
-    if (!n8nResponse.ok) {
-      throw new Error(`N8N API error: ${n8nResponse.status}`);
-    }
-    
-    let data = await n8nResponse.json();
-    
-    console.log(currentUser)
-    // Filter theo role
-    if (currentUser.role === 'Admin') {
-      // Admin: filter theo roleFilter (multi-select)
-      if (roleFilter) {
-        const selectedRoles = roleFilter.split(',').filter(r => r.trim());
-        
-        if (selectedRoles.length > 0) {
-          data = data.filter(item => {
-            const itemRole = item.role;  // ✅ Đổi từ item.data?.role thành item.role
-            return itemRole && selectedRoles.includes(itemRole);
-          });
-        }
-      }
-      console.log(456)
-      // Không có filter = không show gì (để admin chọn)
-    } else {
-      console.log('🔍 User role:', currentUser.role);
-      console.log('🔍 First item role:', data[0]?.role); // Đổi từ data.role thành item.role
-      
-      // Sửa từ item.data?.role thành item.role
-      data = data.filter(item => {
-        const itemRole = item.role?.trim();  // ✅ Đổi thành item.role
-        const userRole = currentUser.role?.trim();
-        
-        console.log(`Comparing: "${itemRole}" == "${userRole}"`);
-        return itemRole && userRole && itemRole === userRole;
-      });
-      
-      console.log(`✅ Filtered history: ${data.length} items`);
-    }
-    
-    console.log(`✅ Filtered history: ${data.length} items`);
-    
     res.json(data);
-    
   } catch (error) {
     console.error('Failed to fetch history:', error);
     res.status(500).json({
       error: 'Failed to fetch history',
-      message: error.message
+      message: error.message,
+    });
+  }
+});
+
+// DELETE /api/history/:sessionId - Xóa session khỏi Supabase
+app.delete('/api/history/:sessionId', requireAuth, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId is required' });
+    }
+
+    const deleted = await deleteHistorySession(sessionId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete history session:', error);
+    res.status(500).json({
+      error: 'Failed to delete session',
+      message: error.message,
     });
   }
 });

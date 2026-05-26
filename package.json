@@ -5,7 +5,7 @@
   "source": "./index.html",
   "type": "module",
   "scripts": {
-    "dev:frontend": "vite",
+    "dev:frontend": "vite --port 5173",
     "dev:server": "node server.js",
     "build": "vite build",
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:server\""

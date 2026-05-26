@@ -93,6 +93,36 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const listRef = useRef<any>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const getRoleFilters = useCallback((): string[] | undefined => {
+    return currentUser?.role === "Admin" && selectedRoles.length > 0
+      ? selectedRoles
+      : undefined;
+  }, [currentUser, selectedRoles]);
+
+  const sessionsToHistoryItems = useCallback((sessions: Awaited<ReturnType<typeof historyService.fetchHistory>>): HistoryItem[] => {
+    return sessions.map((session) => ({
+      id: session.sessionId,
+      describe: session.describe,
+      category: session.category,
+      subCategory: session.subCategory,
+      platform: session.platform,
+      list: session.images.map((img) => ({
+        imageUrl: img.imageUrl,
+        prompt: img.prompt,
+        category: img.category,
+        subCategory: img.subCategory,
+        platform: img.platform,
+        timestamp: img.timestamp,
+        AdCreativeA: "",
+        AdCreativeB: "",
+      })),
+      thumbnail: session.images[0]?.imageUrl || "",
+      imageCount: session.images.length,
+      timestamp: session.timestamp,
+    }));
+  }, []);
 
   // ✅ FIX: Close dropdown when click outside - ĐẶT NGOÀI loadHistoryData
   useEffect(() => {
@@ -135,80 +165,98 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     fetchRoles();
   }, [currentUser]);
 
-  // ✅ FIX: loadHistoryData với selectedRoles (array)
-  const loadHistoryData = useCallback(async () => {
+  // Prefetch history when user is known (background, no UI blocking)
+  useEffect(() => {
+    if (currentUser) {
+      historyService.prefetch(getRoleFilters());
+    }
+  }, [currentUser, getRoleFilters]);
+
+  const loadHistoryData = useCallback(async (forceRefresh = false) => {
     if (loadingRef.current) return;
 
+    const roleFilters = getRoleFilters();
+
+    // Stale-while-revalidate: show cached data instantly
+    const cached = historyService.getCachedHistory(roleFilters);
+    const hasCachedData = cached.length > 0;
+
+    if (hasCachedData && !forceRefresh) {
+      setAllHistoryItems(sessionsToHistoryItems(cached));
+      setIsLoading(false);
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+      setIsRefreshing(false);
+    }
+
     loadingRef.current = true;
-    setIsLoading(true);
 
     try {
-      // ✅ FIX: Truyền selectedRoles (array) thay vì roleFilter (string)
-      const sessions = await historyService.fetchHistory(
-        currentUser?.role === "Admin" && selectedRoles.length > 0
-          ? selectedRoles
-          : undefined
-      );
+      const sessions = await historyService.fetchHistory(roleFilters, { forceRefresh });
 
-      if (sessions && sessions.length > 0) {
-        console.log("✅ History loaded:", sessions.length, "sessions");
-
-        const allItems: HistoryItem[] = sessions.map((session) => ({
-          id: session.sessionId,
-          describe: session.describe,
-          category: session.category,
-          subCategory: session.subCategory,
-          platform: session.platform,
-          list: session.images.map((img) => ({
-            imageUrl: img.imageUrl,
-            prompt: img.prompt,
-            category: img.category,
-            subCategory: img.subCategory,
-            platform: img.platform,
-            timestamp: img.timestamp,
-            AdCreativeA: "",
-            AdCreativeB: "",
-          })),
-          thumbnail: session.images[0]?.imageUrl || "",
-          imageCount: session.images.length,
-          timestamp: session.timestamp,
-        }));
-
-        setAllHistoryItems(allItems);
+      if (sessions.length > 0) {
+        setAllHistoryItems(sessionsToHistoryItems(sessions));
       } else {
         setAllHistoryItems([]);
       }
+      errorShownRef.current = false;
     } catch (error) {
       console.error("❌ Failed to load history:", error);
-      setAllHistoryItems([]);
+
+      if (!hasCachedData) {
+        setAllHistoryItems([]);
+      }
 
       if (!errorShownRef.current) {
         errorShownRef.current = true;
         showNotification(
           "error",
           "Failed to Load History",
-          "Could not fetch history from server."
+          hasCachedData
+            ? "Showing cached history. Could not refresh from server."
+            : "Could not fetch history from server."
         );
       }
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
       loadingRef.current = false;
     }
-  }, [selectedRoles, currentUser]); // ✅ FIX: Dependencies
+  }, [getRoleFilters, sessionsToHistoryItems]);
 
-  // ✅ FIX: Load khi sidebar visible
   useEffect(() => {
     if (isVisible) {
       loadHistoryData();
     }
   }, [isVisible, loadHistoryData]);
 
-  // ✅ FIX: Reload khi selectedRoles thay đổi
-  useEffect(() => {
-    if (isVisible) {
-      loadHistoryData();
+  const applyCachedHistory = useCallback(() => {
+    const cached = historyService.getCachedHistory(getRoleFilters());
+    setAllHistoryItems(sessionsToHistoryItems(cached));
+  }, [getRoleFilters, sessionsToHistoryItems]);
+
+  const refreshHistoryFromServer = useCallback(async () => {
+    const roleFilters = getRoleFilters();
+    try {
+      const sessions = await historyService.fetchHistory(roleFilters, {
+        forceRefresh: true,
+      });
+      setAllHistoryItems(sessionsToHistoryItems(sessions));
+    } catch {
+      applyCachedHistory();
     }
-  }, [selectedRoles]); // ✅ Chỉ cần selectedRoles
+  }, [getRoleFilters, sessionsToHistoryItems, applyCachedHistory]);
+
+  useEffect(() => {
+    const onHistoryUpdated = () => {
+      applyCachedHistory();
+      void refreshHistoryFromServer();
+    };
+
+    window.addEventListener('history:updated', onHistoryUpdated);
+    return () => window.removeEventListener('history:updated', onHistoryUpdated);
+  }, [applyCachedHistory, refreshHistoryFromServer]);
 
   // ✅ Toggle role selection
   const toggleRole = (role: string) => {
@@ -238,54 +286,26 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   );
 
   const handleItemClick = async (item: HistoryItem) => {
-    {loadingItemId && (
-      <div className="history-item-loading-overlay">
-        <div className="loading-spinner-container">
-          <div className="loading-spinner"></div>
-          <p className="loading-text">Loading images...</p>
-        </div>
-      </div>
-    )}
+    if (isItemSelected(item)) return;
 
-    {/* Existing loading overlay for refresh */}
-    {isLoading && allHistoryItems.length > 0 && (
-      <div className="history-loading-overlay">
-        <div className="loading-spinner"></div>
-      </div>
-    )}
-    if (isItemSelected(item)) {
-      console.log("🔄 Item already selected, skipping:", item.id);
+    if (!item.list || item.list.length === 0) {
+      showNotification(
+        "warning",
+        "No Images",
+        "No valid images found in this history item."
+      );
       return;
     }
 
     try {
-      console.log("🔄 Loading session for:", item.id);
+      setLoadingItemId(item.id);
 
-      const session = await historyService.getSessionById(item.id);
-
-      if (!session || !session.images || session.images.length === 0) {
-        console.warn("⚠️ No valid images found for session:", item.id);
-        showNotification(
-          "warning",
-          "No Images",
-          "No valid images found in this history item."
-        );
-        return;
-      }
-
-      console.log(
-        "✅ Loaded",
-        session.images.length,
-        "images for session:",
-        item.id
-      );
-
-      const imageList = session.images.map((img) => ({
+      const imageList = item.list.map((img) => ({
         imageUrl: img.imageUrl,
         prompt: img.prompt || "",
-        category: img.category || session.category || "",
-        subCategory: img.subCategory || session.subCategory || "",
-        platform: img.platform || session.platform || "",
+        category: img.category || item.category || "",
+        subCategory: img.subCategory || item.subCategory || "",
+        platform: img.platform || item.platform || "",
         timestamp: img.timestamp || new Date().toISOString(),
         size: "Square",
         quality: "Standard",
@@ -300,10 +320,10 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
         sessionId: item.id,
         clickedAt: Date.now(),
         currentImageIndex: 0,
-        describe: session.describe || item.describe || "Image session",
-        category: session.category || "",
-        subCategory: session.subCategory || "",
-        platform: session.platform || "",
+        describe: item.describe || "Image session",
+        category: item.category || "",
+        subCategory: item.subCategory || "",
+        platform: item.platform || "",
         list: imageList,
       };
 
@@ -321,6 +341,8 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
         "Load Failed",
         "Failed to load images from server."
       );
+    } finally {
+      setLoadingItemId(null);
     }
   };
 
@@ -358,7 +380,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
         "History cache cleared. Reloading latest data..."
       );
 
-      await loadHistoryData();
+      await loadHistoryData(true);
     } catch (error) {
       console.error("❌ Failed to refresh history:", error);
       setShowClearConfirm(false);
@@ -447,7 +469,7 @@ const handleDelete = useCallback((sessionId: string) => {
 
   return (
     <div className={`history-sidebar ${isVisible ? "visible" : ""}`}>
-      {isLoading && allHistoryItems.length > 0 && (
+      {isRefreshing && allHistoryItems.length > 0 && (
         <div className="history-loading-overlay">
           <div className="loading-spinner"></div>
         </div>
@@ -457,7 +479,7 @@ const handleDelete = useCallback((sessionId: string) => {
           <span className="history-period">
             History ({allHistoryItems.length})
           </span>
-          {isLoading && (
+          {isRefreshing && (
             <span className="loading-indicator">
               <span className="loading-spinner"></span>
             </span>
@@ -586,7 +608,7 @@ const handleDelete = useCallback((sessionId: string) => {
             <p>No history items found</p>
             <button
               className="history-refresh-button"
-              onClick={loadHistoryData}
+              onClick={() => loadHistoryData(true)}
             >
               Refresh
             </button>

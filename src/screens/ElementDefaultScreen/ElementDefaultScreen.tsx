@@ -843,6 +843,41 @@ const handleEnhanceImage = async () => {
   // FIX: Complete rewrite of processJobResults
   // ❌ XÓA toàn bộ code compress và convert blob
 
+  // ✅ Notify history sidebar of newly generated session
+  const notifyHistoryOfNewGeneration = (
+    sessionId: string,
+    describe: string,
+    category: string,
+    subCategory: string,
+    images: Array<{
+      imageUrl: string;
+      prompt?: string;
+      category?: string;
+      subCategory?: string;
+      platform?: string;
+      timestamp?: string;
+    }>
+  ) => {
+    if (images.length === 0) return;
+
+    historyService.onGenerationComplete({
+      sessionId,
+      describe,
+      category,
+      subCategory,
+      platform: images[0]?.platform || "",
+      role: currentUser?.role,
+      images: images.map((img) => ({
+        imageUrl: img.imageUrl,
+        prompt: img.prompt || describe,
+        category: img.category || category,
+        subCategory: img.subCategory || subCategory,
+        platform: img.platform || "",
+        timestamp: img.timestamp || new Date().toISOString(),
+      })),
+    });
+  };
+
   // ✅ CODE MỚI - ĐƠN GIẢN HƠN NHIỀU
   const processJobResults = async (jobData: any, sessionId: string) => {
     try {
@@ -975,6 +1010,13 @@ const handleEnhanceImage = async () => {
       }
 
       // ✅ Không dispatch historyUpdated event nữa vì không lưu local
+      notifyHistoryOfNewGeneration(
+        sessionId,
+        promptFromLoadingSession || "Generated images",
+        selectedCategory.category,
+        selectedCategory.subcategory || "",
+        sortedImages
+      );
 
       showNotification(
         "success",
@@ -1454,6 +1496,14 @@ const handleEnhanceImage = async () => {
             });
           }
           removeLoadingSession(sessionId);
+
+          notifyHistoryOfNewGeneration(
+            sessionId,
+            currentPromptText,
+            selectedCategory.category,
+            selectedCategory.subcategory || "",
+            sortedValidImages
+          );
 
           showNotification(
             "success",
