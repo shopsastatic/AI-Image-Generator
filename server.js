@@ -21,8 +21,26 @@ import { fetchHistory, deleteHistorySession } from './backend/services/historySe
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ FIX: NOW we can use __dirname safely  
+// ✅ FIX: NOW we can use __dirname safely
 const subcategoriesFilePath = path.join(__dirname, 'static', 'subcategories.json');
+
+// Small mtime-invalidated cache for frequently-read static files
+// (subcategories.json, instruction .txt). Skips the readFileSync syscall on
+// every request while staying correct even when files are edited out of band:
+// a cheap statSync compares mtime and re-reads only when the file changed.
+// Callers JSON.parse the returned string themselves, so each gets a fresh,
+// safely-mutable object.
+const _fileCache = new Map(); // filePath -> { mtimeMs, content }
+function readFileCached(filePath) {
+  const { mtimeMs } = fs.statSync(filePath);
+  const cached = _fileCache.get(filePath);
+  if (cached && cached.mtimeMs === mtimeMs) {
+    return cached.content;
+  }
+  const content = fs.readFileSync(filePath, 'utf8');
+  _fileCache.set(filePath, { mtimeMs, content });
+  return content;
+}
 
 // Load environment variables FIRST
 dotenv.config();
@@ -399,7 +417,7 @@ app.get('/api/public/designer-subcategories', async (req, res) => {
       });
     }
     
-    const subcategoriesArray = JSON.parse(fs.readFileSync(subcategoriesPath, 'utf8'));
+    const subcategoriesArray = JSON.parse(readFileCached(subcategoriesPath));
     
     // Filter subcategories cho Designer role
     const designerSubcategories = subcategoriesArray.filter(sub => {
@@ -2615,7 +2633,7 @@ const loadSubcategories = () => {
       return defaultSubcategories;
     }
 
-    const data = fs.readFileSync(subcategoriesFilePath, 'utf8');
+    const data = readFileCached(subcategoriesFilePath);
     return JSON.parse(data);
   } catch (error) {
     console.error('Error loading subcategories:', error);
@@ -3139,8 +3157,8 @@ app.get('/api/instructions/all-files', async (req, res) => {
     // Read content of each file
     const filesWithContent = allFiles.map(filename => {
       const filePath = path.join(instructionsDir, filename);
-      const content = fs.readFileSync(filePath, 'utf8');
-      
+      const content = readFileCached(filePath);
+
       // Parse content if it has prompt content section
       const parsed = instructionsManager.parseFileContent(content);
       
@@ -3522,7 +3540,7 @@ app.get('/api/instructions/content/:filename', requireAuth, (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readFileCached(filePath);
     res.json({ success: true, content });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3600,7 +3618,7 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       const filePath = path.join(instructionsDir, filename);
       
       if (fs.existsSync(filePath)) {
-        userPromptContent = fs.readFileSync(filePath, 'utf8'); // ✅ LẤY TOÀN BỘ
+        userPromptContent = readFileCached(filePath); // ✅ LẤY TOÀN BỘ
         userPromptFilename = filename;
         console.log(`✅ Found user_prompt: ${filename}`);
         break;
@@ -3612,7 +3630,7 @@ app.post('/api/instructions/resolve', requireAuth, (req, res) => {
       const filePath = path.join(instructionsDir, filename);
       
       if (fs.existsSync(filePath)) {
-        systemPromptContent = fs.readFileSync(filePath, 'utf8'); // ✅ LẤY TOÀN BỘ
+        systemPromptContent = readFileCached(filePath); // ✅ LẤY TOÀN BỘ
         systemPromptFilename = filename;
         console.log(`✅ Found system_prompt: ${filename}`);
         break;
