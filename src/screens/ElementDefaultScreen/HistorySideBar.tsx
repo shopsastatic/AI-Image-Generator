@@ -637,8 +637,10 @@ const handleDelete = useCallback((sessionId: string) => {
             
           />
         ) : isLoading && allHistoryItems.length === 0 ? (
-          <div className="history-empty">
-            <p>Loading...</p>
+          <div className="history-skeleton-grid" aria-label="Loading history" aria-busy="true">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="history-skeleton-item" />
+            ))}
           </div>
         ) : allHistoryItems.length === 0 ? (
           <div className="history-empty">
@@ -651,21 +653,29 @@ const handleDelete = useCallback((sessionId: string) => {
             </button>
           </div>
         ) : (
-          <List
-            ref={listRef}
-            height={window.innerHeight - 120}
-            itemCount={rowCount}
-            itemSize={120}
-            width="100%"
-            overscanCount={3}
-            onItemsRendered={({ visibleStopIndex }: { visibleStopIndex: number }) => {
-              if (nextCursor && !isLoadingMore && visibleStopIndex >= rowCount - 2) {
-                void loadMore();
-              }
-            }}
-          >
-            {Row}
-          </List>
+          <>
+            <List
+              ref={listRef}
+              height={window.innerHeight - 120}
+              itemCount={rowCount}
+              itemSize={120}
+              width="100%"
+              overscanCount={3}
+              onItemsRendered={({ visibleStopIndex }: { visibleStopIndex: number }) => {
+                if (nextCursor && !isLoadingMore && visibleStopIndex >= rowCount - 2) {
+                  void loadMore();
+                }
+              }}
+            >
+              {Row}
+            </List>
+            {isLoadingMore && (
+              <div className="history-loadmore">
+                <span className="history-loadmore-spinner" />
+                Loading more…
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

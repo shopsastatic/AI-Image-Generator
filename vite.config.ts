@@ -61,6 +61,17 @@ export default defineConfig(({ mode }) => {
           drop_console: isProduction,
         },
       },
+      rollupOptions: {
+        output: {
+          // Split stable vendor libraries into their own long-cached chunks so
+          // app-code changes don't invalidate them.
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'dnd-vendor': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+            'ui-vendor': ['lucide-react', 'react-window'],
+          },
+        },
+      },
     },
   };
 });

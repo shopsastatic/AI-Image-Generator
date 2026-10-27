@@ -1,15 +1,23 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
-import { ElementDefault } from "./screens/ElementDefault";
-import { ElementDefaultScreen } from "./screens/ElementDefaultScreen";
-import { ElementDefaultWrapper } from "./screens/ElementDefaultWrapper";
-import { ElementWDefault } from "./screens/ElementWDefault";
-import { ElementWDefaultWrapper } from "./screens/ElementWDefaultWrapper";
-import ProjectManagement from "./screens/ElementDefaultScreen/ProjectManagement";
 import LoginScreen from "./screens/ElementDefaultScreen/LoginScreen";
 import RegisterScreen from "./screens/ElementDefaultScreen/RegisterScreen";
-import EnhanceScreen from "./screens/ElementDefaultScreen/EnhanceScreen";
 import { API_ENDPOINTS } from "./utils/apiConfig";
+
+// Route screens are code-split so the initial/login bundle stays small; each
+// loads on demand behind a Suspense fallback.
+const ElementDefault = lazy(() =>
+  import("./screens/ElementDefault").then((m) => ({ default: m.ElementDefault })));
+const ElementDefaultScreen = lazy(() =>
+  import("./screens/ElementDefaultScreen").then((m) => ({ default: m.ElementDefaultScreen })));
+const ElementDefaultWrapper = lazy(() =>
+  import("./screens/ElementDefaultWrapper").then((m) => ({ default: m.ElementDefaultWrapper })));
+const ElementWDefault = lazy(() =>
+  import("./screens/ElementWDefault").then((m) => ({ default: m.ElementWDefault })));
+const ElementWDefaultWrapper = lazy(() =>
+  import("./screens/ElementWDefaultWrapper").then((m) => ({ default: m.ElementWDefaultWrapper })));
+const ProjectManagement = lazy(() => import("./screens/ElementDefaultScreen/ProjectManagement"));
+const EnhanceScreen = lazy(() => import("./screens/ElementDefaultScreen/EnhanceScreen"));
 
 // ✅ User interface matching backend roles
 interface User {
@@ -118,7 +126,7 @@ const ProtectedRoute: React.FC<{
   if (adminOnly && user?.role !== "Admin") {
     return <AccessDenied />;
   }
-  return <>{children}</>;
+  return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
 };
 
 // ✅ Create Router with User Context

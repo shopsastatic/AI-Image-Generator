@@ -3414,3 +3414,71 @@ tbody tr.dragging {
 .history-image-container:hover .history-delete-icon {
   opacity: 1;
 }
+/* ============================================================
+   History loading UX (redesigned) — skeleton + infinite-scroll
+   Scoped classes to avoid the older duplicate .loading-spinner
+   ============================================================ */
+.history-sidebar .history-content {
+  position: relative;
+}
+
+/* Skeleton shown on first load instead of a bare "Loading..." */
+.history-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 12px;
+}
+.history-skeleton-item {
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  background: linear-gradient(100deg, #eef0f3 28%, #e2e4ea 48%, #eef0f3 68%);
+  background-size: 220% 100%;
+  animation: historyShimmer 1.25s ease-in-out infinite;
+}
+@keyframes historyShimmer {
+  0%   { background-position: 220% 0; }
+  100% { background-position: -220% 0; }
+}
+
+/* Load-more indicator pinned to the bottom of the scroll area */
+.history-loadmore {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 10px 14px;
+  font-size: 13px;
+  color: #6e6e80;
+  background: linear-gradient(to top, #ffffff 35%, rgba(255, 255, 255, 0));
+  pointer-events: none;
+  animation: historyFadeIn 0.2s ease-out;
+}
+.history-loadmore-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d9d9e0;
+  border-top-color: #10a37f;
+  border-radius: 50%;
+  animation: historySpin 0.7s linear infinite;
+}
+@keyframes historySpin {
+  to { transform: rotate(360deg); }
+}
+@keyframes historyFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Subtle "end of list" marker */
+.history-end {
+  text-align: center;
+  padding: 14px 10px 18px;
+  font-size: 12px;
+  color: #a2a2ad;
+  letter-spacing: 0.02em;
+}
