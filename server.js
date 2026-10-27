@@ -1451,15 +1451,16 @@ app.get('/api/auth/verify', (req, res) => {
   });
 });
 
-// GET /api/history - Lấy history từ Supabase (không qua N8N)
+// GET /api/history - Lấy history từ Supabase (không qua N8N), phân trang keyset
 app.get('/api/history', requireAuth, async (req, res) => {
   try {
-    const { roleFilter, refresh } = req.query;
-    const data = await fetchHistory(req.user, {
+    const { roleFilter, limit, cursor } = req.query;
+    const result = await fetchHistory(req.user, {
       roleFilter,
-      refresh: refresh === 'true',
+      limit,
+      cursor,
     });
-    res.json(data);
+    res.json(result);
   } catch (error) {
     console.error('Failed to fetch history:', error);
     res.status(500).json({

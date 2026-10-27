@@ -89,11 +89,18 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
 
   const loadingRef = useRef<boolean>(false);
+  const loadingMoreRef = useRef<boolean>(false);
   const errorShownRef = useRef<boolean>(false);
   const listRef = useRef<any>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Keyset pagination: cursor for the next page (null = no more), plus a loading flag.
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const nextCursorRef = useRef<string | null>(null);
+  nextCursorRef.current = nextCursor;
 
   const getRoleFilters = useCallback((): string[] | undefined => {
     return currentUser?.role === "Admin" && selectedRoles.length > 0
@@ -101,7 +108,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
       : undefined;
   }, [currentUser, selectedRoles]);
 
-  const sessionsToHistoryItems = useCallback((sessions: Awaited<ReturnType<typeof historyService.fetchHistory>>): HistoryItem[] => {
+  const sessionsToHistoryItems = useCallback((sessions: Awaited<ReturnType<typeof historyService.fetchPage>>["sessions"]): HistoryItem[] => {
     return sessions.map((session) => ({
       id: session.sessionId,
       describe: session.describe,
@@ -193,13 +200,14 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     loadingRef.current = true;
 
     try {
-      const sessions = await historyService.fetchHistory(roleFilters, { forceRefresh });
+      const { sessions, nextCursor: cursor } = await historyService.fetchPage(roleFilters);
 
       if (sessions.length > 0) {
         setAllHistoryItems(sessionsToHistoryItems(sessions));
       } else {
         setAllHistoryItems([]);
       }
+      setNextCursor(cursor);
       errorShownRef.current = false;
     } catch (error) {
       console.error("❌ Failed to load history:", error);
@@ -231,6 +239,36 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     }
   }, [isVisible, loadHistoryData]);
 
+  // Load the next page when the user scrolls near the end of the list.
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current) return;
+    const cursor = nextCursorRef.current;
+    if (!cursor) return;
+
+    loadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    try {
+      const { sessions, nextCursor: cursor2 } = await historyService.fetchPage(
+        getRoleFilters(),
+        { cursor }
+      );
+      if (sessions.length > 0) {
+        const mapped = sessionsToHistoryItems(sessions);
+        setAllHistoryItems(prev => {
+          const seen = new Set(prev.map(i => i.id));
+          const appended = mapped.filter(i => !seen.has(i.id));
+          return appended.length > 0 ? [...prev, ...appended] : prev;
+        });
+      }
+      setNextCursor(cursor2);
+    } catch (error) {
+      console.error("Failed to load more history:", error);
+    } finally {
+      setIsLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [getRoleFilters, sessionsToHistoryItems]);
+
   const applyCachedHistory = useCallback(() => {
     const cached = historyService.getCachedHistory(getRoleFilters());
     setAllHistoryItems(sessionsToHistoryItems(cached));
@@ -239,10 +277,9 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const refreshHistoryFromServer = useCallback(async () => {
     const roleFilters = getRoleFilters();
     try {
-      const sessions = await historyService.fetchHistory(roleFilters, {
-        forceRefresh: true,
-      });
+      const { sessions, nextCursor: cursor } = await historyService.fetchPage(roleFilters);
       setAllHistoryItems(sessionsToHistoryItems(sessions));
+      setNextCursor(cursor);
     } catch {
       applyCachedHistory();
     }
@@ -621,6 +658,11 @@ const handleDelete = useCallback((sessionId: string) => {
             itemSize={120}
             width="100%"
             overscanCount={3}
+            onItemsRendered={({ visibleStopIndex }: { visibleStopIndex: number }) => {
+              if (nextCursor && !isLoadingMore && visibleStopIndex >= rowCount - 2) {
+                void loadMore();
+              }
+            }}
           >
             {Row}
           </List>

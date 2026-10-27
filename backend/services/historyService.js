@@ -1,91 +1,63 @@
 import { supabase } from '../config/supabase.js';
 
 const TABLE = 'ai-images';
-const PAGE_SIZE = 1000;
-const CACHE_TTL = 60_000;
+const DEFAULT_LIMIT = 30;
+const MAX_LIMIT = 100;
 
-const cache = new Map();
-
-function getCacheKey(roleKey) {
-  return roleKey || 'all';
-}
-
-function getCached(roleKey) {
-  const entry = cache.get(getCacheKey(roleKey));
-  if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
-    return entry.data;
-  }
-  return null;
-}
-
-function setCache(roleKey, data) {
-  cache.set(getCacheKey(roleKey), { data, timestamp: Date.now() });
-}
-
-export function clearHistoryCache() {
-  cache.clear();
-}
-
-async function fetchPaginated(buildQuery) {
-  const rows = [];
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    if (!data?.length) break;
-
-    rows.push(...data);
-    if (data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-
-  return rows;
-}
-
-function buildRoleQuery(roleFilter) {
-  return () => {
-    let query = supabase
-      .from(TABLE)
-      .select('id, data, created_at, role')
-      .order('created_at', { ascending: false });
-
-    if (roleFilter?.type === 'user') {
-      query = query.eq('role', roleFilter.role);
-    } else if (roleFilter?.type === 'admin' && roleFilter.roles?.length) {
-      query = query.in('role', roleFilter.roles);
-    }
-
-    return query;
-  };
-}
-
+// Resolve the role-based row filter for the current user.
+// - Admin with a roleFilter: only the selected roles.
+// - Admin without a filter: all rows.
+// - Non-admin: only their own role's rows.
 function resolveRoleFilter(currentUser, roleFilterParam) {
   if (currentUser.role === 'Admin') {
     if (roleFilterParam) {
       const roles = roleFilterParam.split(',').map(r => r.trim()).filter(Boolean);
-      if (roles.length > 0) {
-        return { type: 'admin', roles, cacheKey: roles.slice().sort().join(',') };
-      }
+      if (roles.length > 0) return { type: 'admin', roles };
     }
-    return { type: 'admin', roles: null, cacheKey: 'admin-all' };
+    return { type: 'admin', roles: null };
   }
 
-  const userRole = currentUser.role?.trim();
-  return { type: 'user', role: userRole, cacheKey: `user:${userRole}` };
+  return { type: 'user', role: currentUser.role?.trim() };
 }
 
-export async function fetchHistory(currentUser, { roleFilter, refresh = false } = {}) {
-  const roleFilterConfig = resolveRoleFilter(currentUser, roleFilter);
+function applyRoleFilter(query, rf) {
+  if (rf.type === 'user') return query.eq('role', rf.role);
+  if (rf.type === 'admin' && rf.roles?.length) return query.in('role', rf.roles);
+  return query;
+}
 
-  if (!refresh) {
-    const cached = getCached(roleFilterConfig.cacheKey);
-    if (cached) return cached;
+/**
+ * Fetch ONE page of history, newest first, using keyset pagination on
+ * created_at (microsecond precision makes boundary ties effectively impossible;
+ * the client also de-dupes by id when appending pages).
+ *
+ * Returns { items, nextCursor }. Pass nextCursor back as `cursor` for the next page;
+ * nextCursor is null when there are no more rows.
+ */
+export async function fetchHistory(currentUser, { roleFilter, limit, cursor } = {}) {
+  const pageSize = Math.min(MAX_LIMIT, Math.max(1, parseInt(limit, 10) || DEFAULT_LIMIT));
+  const rf = resolveRoleFilter(currentUser, roleFilter);
+
+  let query = supabase
+    .from(TABLE)
+    .select('id, data, created_at, role')
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(pageSize);
+
+  query = applyRoleFilter(query, rf);
+
+  if (cursor) {
+    query = query.lt('created_at', cursor);
   }
 
-  const rows = await fetchPaginated(buildRoleQuery(roleFilterConfig));
-  setCache(roleFilterConfig.cacheKey, rows);
-  return rows;
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const items = data || [];
+  const nextCursor = items.length === pageSize ? items[items.length - 1].created_at : null;
+
+  return { items, nextCursor };
 }
 
 export async function deleteHistorySession(sessionId) {
@@ -95,6 +67,5 @@ export async function deleteHistorySession(sessionId) {
     .eq('id', sessionId);
 
   if (error) throw error;
-  clearHistoryCache();
   return (count ?? 0) > 0;
 }

@@ -47,8 +47,10 @@ interface HistoryDateGroup {
   }[];
 }
 
-interface FetchHistoryOptions {
-  forceRefresh?: boolean;
+// One page of history plus the cursor for the next page (null when exhausted).
+export interface HistoryPage {
+  sessions: HistorySession[];
+  nextCursor: string | null;
 }
 
 export interface NewHistorySessionInput {
@@ -62,12 +64,15 @@ export interface NewHistorySessionInput {
 }
 
 const STORAGE_PREFIX = 'history_cache_v1_';
-const MEMORY_CACHE_TTL = 30_000;
 const STORAGE_CACHE_TTL = 24 * 60 * 60 * 1000;
+const PAGE_SIZE = 30;
 
 class HistoryService {
   private readonly apiUrl = '/api/history';
+  // Cache holds only the FIRST page per role filter, for instant render on reopen.
   private cacheMap: Map<string, { data: HistorySession[]; timestamp: number }> = new Map();
+
+  readonly pageSize = PAGE_SIZE;
 
   private getCacheKey(roleFilters?: string[]): string {
     return roleFilters?.length ? roleFilters.slice().sort().join(',') : 'none';
@@ -99,6 +104,11 @@ class HistoryService {
     } catch {
       // Ignore quota errors
     }
+  }
+
+  private setFirstPageCache(cacheKey: string, data: HistorySession[]): void {
+    this.cacheMap.set(cacheKey, { data, timestamp: Date.now() });
+    this.writeStorageCache(cacheKey, data);
   }
 
   private getAllCacheKeys(): Set<string> {
@@ -133,13 +143,13 @@ class HistoryService {
 
     if (existing.some(s => s.sessionId === session.sessionId)) return;
 
-    const updated = [session, ...existing];
-    this.cacheMap.set(cacheKey, { data: updated, timestamp: Date.now() });
-    this.writeStorageCache(cacheKey, updated);
+    // Keep the cached first page bounded so localStorage stays small.
+    const updated = [session, ...existing].slice(0, PAGE_SIZE);
+    this.setFirstPageCache(cacheKey, updated);
   }
 
   /**
-   * Add a newly generated session to local cache immediately (before server sync).
+   * Add a newly generated session to the local first-page cache immediately.
    */
   addLocalSession(session: HistorySession): void {
     for (const cacheKey of this.getAllCacheKeys()) {
@@ -170,7 +180,7 @@ class HistoryService {
     for (const delay of delays) {
       await new Promise(resolve => setTimeout(resolve, delay));
       try {
-        await this.fetchHistory(undefined, { forceRefresh: true });
+        await this.fetchPage(undefined);
         window.dispatchEvent(new CustomEvent('history:updated'));
         return;
       } catch {
@@ -180,7 +190,7 @@ class HistoryService {
   }
 
   /**
-   * Returns cached data synchronously for instant UI render (memory → localStorage).
+   * Returns the cached FIRST page synchronously for instant UI render.
    */
   getCachedHistory(roleFilters?: string[]): HistorySession[] {
     const cacheKey = this.getCacheKey(roleFilters);
@@ -197,32 +207,30 @@ class HistoryService {
   }
 
   /**
-   * Prefetch history in background (e.g. on app load).
+   * Prefetch the first page in the background (e.g. on app load).
    */
   prefetch(roleFilters?: string[]): void {
-    void this.fetchHistory(roleFilters).catch(() => {});
+    void this.fetchPage(roleFilters).catch(() => {});
   }
 
-  async fetchHistory(
+  /**
+   * Fetch one page of history. Pass `cursor` to load the page after a given one.
+   * The first page (no cursor) is cached for instant render on reopen.
+   */
+  async fetchPage(
     roleFilters?: string[],
-    options: FetchHistoryOptions = {}
-  ): Promise<HistorySession[]> {
+    options: { cursor?: string | null } = {}
+  ): Promise<HistoryPage> {
+    const { cursor = null } = options;
     const cacheKey = this.getCacheKey(roleFilters);
-    const { forceRefresh = false } = options;
-
-    if (!forceRefresh) {
-      const cached = this.cacheMap.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < MEMORY_CACHE_TTL) {
-        return cached.data;
-      }
-    }
 
     const url = new URL(this.apiUrl, window.location.origin);
     if (roleFilters && roleFilters.length > 0) {
       url.searchParams.append('roleFilter', roleFilters.join(','));
     }
-    if (forceRefresh) {
-      url.searchParams.append('refresh', 'true');
+    url.searchParams.append('limit', String(PAGE_SIZE));
+    if (cursor) {
+      url.searchParams.append('cursor', cursor);
     }
 
     const response = await fetch(url.toString(), {
@@ -235,27 +243,14 @@ class HistoryService {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data: N8NHistoryItem[] = await response.json();
-    let sessions = this.transformN8NData(data);
+    const payload = (await response.json()) as { items: N8NHistoryItem[]; nextCursor: string | null };
+    const sessions = this.transformN8NData(payload.items || []);
 
-    if (forceRefresh) {
-      const previous = this.getCachedHistory(roleFilters);
-      const serverIds = new Set(sessions.map(s => s.sessionId));
-      const pendingLocal = previous.filter(s => !serverIds.has(s.sessionId));
-      if (pendingLocal.length > 0) {
-        sessions = [...pendingLocal, ...sessions].sort((a, b) => {
-          const timeA = new Date(a.timestamp || a.createdAt).getTime();
-          const timeB = new Date(b.timestamp || b.createdAt).getTime();
-          return timeB - timeA;
-        });
-      }
+    if (!cursor) {
+      this.setFirstPageCache(cacheKey, sessions);
     }
 
-    const entry = { data: sessions, timestamp: Date.now() };
-    this.cacheMap.set(cacheKey, entry);
-    this.writeStorageCache(cacheKey, sessions);
-
-    return sessions;
+    return { sessions, nextCursor: payload.nextCursor ?? null };
   }
 
   private transformN8NData(data: N8NHistoryItem[]): HistorySession[] {
@@ -346,7 +341,7 @@ class HistoryService {
     if (fromCache) return fromCache;
 
     try {
-      const sessions = await this.fetchHistory(roleFilters);
+      const { sessions } = await this.fetchPage(roleFilters);
       return sessions.find(s => s.sessionId === sessionId) || null;
     } catch {
       return null;
